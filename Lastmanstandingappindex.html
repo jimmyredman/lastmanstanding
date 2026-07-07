@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+<title>Last Man Standing</title>
+<link rel="apple-touch-icon" href="data:image/png;base64,">
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#212124" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
+  html, body { background:#212124; margin:0; font-family:'Inter', sans-serif; }
+  .font-scoreboard { font-family: 'Teko', sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/plain" id="app-source">
+const { useState, useMemo, useEffect, useRef } = React;
+
+/* ---- lightweight icon replacements (no external icon library needed) ---- */
+function makeIcon(symbol) {
+  return function IconCmp({ size = 16, className = "", fill }) {
+    return React.createElement("span", {
+      className,
+      style: { fontSize: size, lineHeight: 1, display: "inline-block" }
+    }, symbol);
+  };
+}
+const Flame = makeIcon("🔥");
+const Trophy = makeIcon("🏆");
+const Lock = makeIcon("🔒");
+const ShieldAlert = makeIcon("🛡️");
+const Check = makeIcon("✅");
+const X = makeIcon("✕");
+const SettingsIcon = makeIcon("⚙️");
+const ChevronRight = makeIcon("›");
+const ChevronLeft = makeIcon("‹");
+const Users = makeIcon("👥");
+const Clock = makeIcon("⏰");
+const Apple = makeIcon("");
+const CreditCard = makeIcon("💳");
+const Crown = makeIcon("👑");
+const WalletIcon = makeIcon("👛");
+const ArrowDownCircle = makeIcon("⬇️");
+const ArrowUpCircle = makeIcon("⬆️");
+const LogIn = makeIcon("→");
+const UserPlus = makeIcon("＋");
+const Pencil = makeIcon("✏️");
+const Eye = makeIcon("👁️");
+const EyeOff = makeIcon("🚫");
+const Camera = makeIcon("📷");
+const Palette = makeIcon("🎨");
+const User = makeIcon("🙂");
+
+const FIXTURES_R1 = [
+  ["Storm","Titans"], ["Broncos","Dragons"], ["Knights","Sharks"],
+  ["Eels","Bulldogs"], ["Panthers","Warriors"], ["Roosters","Cowboys"],
+  ["Tigers","Manly"], ["Raiders","Rabbitohs"]
+];
+const ALL_TEAMS = FIXTURES_R1.flat();
+
+const TEAM_COLORS = {
+  Storm: "#4B2E83", Broncos: "#6E0E20", Knights: "#1B3A6B", Sharks: "#0098DB",
+  Eels: "#0057A8", Bulldogs: "#0C3C74", Panthers: "#1B1B1B", Warriors: "#7A1F2B",
+  Roosters: "#7A1F2B", Cowboys: "#002B5C", Tigers: "#F58220", Manly: "#7A0C1E",
+  Raiders: "#0B6E3D", Rabbitohs: "#146B3A", Titans: "#C79A00", Dragons: "#C8102E",
+};
+
+const MOCK_FIELD = [
+  { name: "Jack C.", history: ["W"], pick: "Broncos" },
+  { name: "Brendan", history: ["W"], pick: "Storm" },
+  { name: "Cassidy", history: ["L"], pick: "Manly" },
+  { name: "Mars", history: ["W"], pick: "Panthers" },
+  { name: "Boogers", history: ["W"], pick: "Knights" },
+  { name: "Keelan", history: ["W"], pick: "Roosters" },
+  { name: "Naudis", history: ["L"], pick: "Warriors" },
+  { name: "Peta N.", history: ["W"], pick: "Raiders" },
+];
+
+const SPORTS = [
+  { id: "nrl", name: "NRL", tagline: "Last Man Standing, live now", active: true },
+  { id: "afl", name: "AFL", tagline: "Coming soon", active: false },
+  { id: "epl", name: "EPL", tagline: "Coming soon", active: false },
+];
+
+const ACCENT_OPTIONS = [
+  { id: "teal", label: "Teal" },
+  { id: "violet", label: "Violet" },
+  { id: "amber", label: "Amber" },
+  { id: "rose", label: "Rose" },
+  { id: "sky", label: "Sky" },
+  { id: "emerald", label: "Emerald" },
+];
+
+const BG = "#212124";
+const PANEL_BORDER = "border-white/10";
+
+function formatCountdown(ms) {
+  if (ms <= 0) return "Started";
+  const totalMin = Math.floor(ms / 60000);
+  const days = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins = totalMin % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+function useAccentTheme(accent) {
+  return useMemo(() => ({
+    id: accent,
+    text: `text-${accent}-300`,
+    textStrong: `text-${accent}-400`,
+    bg: `bg-${accent}-400`,
+    bgHover: `hover:bg-${accent}-300`,
+    bgSoft: `bg-${accent}-400/10`,
+    border: `border-${accent}-400`,
+    borderSoft: `border-${accent}-400/40`,
+    borderHalf: `border-${accent}-400/50`,
+  }), [accent]);
+}
+
+function Scoreboard({ value, label, accent = "gold" }) {
+  const ring = accent === "gold" ? "text-amber-300" : accent.startsWith("text-") ? accent : "text-violet-300";
+  return (
+    <div className="flex flex-col items-center">
+      <div className={`font-scoreboard ${ring} text-5xl leading-none tracking-wide tabular-nums`}>{value}</div>
+      <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mt-1">{label}</div>
+    </div>
+  );
+}
+
+function TeamBadge({ team, size = 36 }) {
+  const color = TEAM_COLORS[team] || "#555";
+  const initials = team.slice(0, 2).toUpperCase();
+  return (
+    <div style={{ backgroundColor: color, width: size, height: size }} className="rounded-full flex items-center justify-center text-white font-bold shrink-0">
+      <span style={{ fontSize: size * 0.34 }}>{initials}</span>
+    </div>
+  );
+}
+
+function AuthScreen({ onAuthed }) {
+  const [mode, setMode] = useState("create");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const canSubmit = mode === "create" ? name && email && password : email && password;
+
+  return (
+    <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG }}>
+      <div className="max-w-sm mx-auto w-full">
+        <div className="flex items-center gap-2 mb-8 justify-center">
+          <Flame className="text-rose-500" size={22} />
+          <h1 className="font-scoreboard text-3xl tracking-wide">LAST MAN STANDING</h1>
+        </div>
+        <div className={`flex rounded-xl bg-neutral-800 border ${PANEL_BORDER} p-1 mb-6`}>
+          <button onClick={() => setMode("create")} className={`flex-1 rounded-lg py-2 text-sm font-medium ${mode === "create" ? "bg-teal-400 text-neutral-950" : "text-neutral-400"}`}>Create account</button>
+          <button onClick={() => setMode("login")} className={`flex-1 rounded-lg py-2 text-sm font-medium ${mode === "login" ? "bg-teal-400 text-neutral-950" : "text-neutral-400"}`}>Log in</button>
+        </div>
+        <div className="space-y-3">
+          {mode === "create" && (
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
+              className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
+          )}
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address"
+            className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Password"
+            className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
+        </div>
+        <button disabled={!canSubmit} onClick={() => onAuthed(name || email.split("@")[0] || "Player")}
+          className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
+          {mode === "create" ? <UserPlus size={16} /> : <LogIn size={16} />}
+          {mode === "create" ? "Create account" : "Log in"}
+        </button>
+        <p className="text-[11px] text-neutral-500 mt-4 text-center leading-relaxed">
+          Friends-only test version — no real payments are processed yet.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const AU_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
+
+function calcAge(dobString) {
+  if (!dobString) return null;
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
+function IDCheckScreen({ initialName, onVerified }) {
+  const [fullName, setFullName] = useState(initialName || "");
+  const [dob, setDob] = useState("");
+  const [licenceNumber, setLicenceNumber] = useState("");
+  const [licenceState, setLicenceState] = useState("NSW");
+  const [checked, setChecked] = useState(false);
+  const [denied, setDenied] = useState(false);
+
+  const canSubmit = fullName && dob && licenceNumber;
+
+  const submit = () => {
+    const age = calcAge(dob);
+    setChecked(true);
+    if (age === null || age < 18) {
+      setDenied(true);
+    } else {
+      setDenied(false);
+      onVerified({ fullName, dob, licenceNumber, licenceState, age });
+    }
+  };
+
+  const tryAgain = () => {
+    setChecked(false);
+    setDenied(false);
+    setDob("");
+    setLicenceNumber("");
+  };
+
+  if (checked && denied) {
+    return (
+      <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG }}>
+        <div className="max-w-sm mx-auto w-full text-center">
+          <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-rose-500/10 flex items-center justify-center">
+            <ShieldAlert size={26} className="text-rose-400" />
+          </div>
+          <h2 className="font-scoreboard text-2xl tracking-wide text-rose-400">ACCESS DENIED</h2>
+          <p className="text-sm text-neutral-400 mt-2 leading-relaxed">
+            Our records show you're under 18. You must be 18 or older to create an account or join any competition on this app.
+          </p>
+          <button onClick={tryAgain} className="mt-6 w-full rounded-xl bg-neutral-800 border border-white/10 text-slate-200 font-semibold py-3 text-sm">
+            Go back
+          </button>
+          <p className="text-[11px] text-neutral-500 mt-4 leading-relaxed">
+            This is a practice check only — a live version would verify a real driver's licence or passport through a licensed identity provider (e.g. GreenID, Stripe Identity), not a self-entered date of birth.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG }}>
+      <div className="max-w-sm mx-auto w-full">
+        <h2 className="font-scoreboard text-3xl tracking-wide mb-1">VERIFY YOUR DETAILS</h2>
+        <p className="text-sm text-neutral-500 mb-6">Quick licence check before you can join any competition — required to confirm you're 18+.</p>
+
+        <div className="space-y-3">
+          <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full legal name (as on licence)"
+            className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
+          <div>
+            <label className="text-[11px] text-neutral-500 mb-1 block">Date of birth</label>
+            <input value={dob} onChange={(e) => setDob(e.target.value)} type="date"
+              className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-400`} />
+          </div>
+          <input value={licenceNumber} onChange={(e) => setLicenceNumber(e.target.value)} placeholder="Driver licence number"
+            className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
+          <div>
+            <label className="text-[11px] text-neutral-500 mb-1 block">Licence state</label>
+            <select value={licenceState} onChange={(e) => setLicenceState(e.target.value)}
+              className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-400`}>
+              {AU_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <button disabled={!canSubmit} onClick={submit}
+          className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
+          Verify my details
+        </button>
+        <p className="text-[11px] text-neutral-500 mt-4 text-center leading-relaxed">
+          Practice check only — nothing here is verified against a real licence database yet. It just confirms the date of birth you enter is 18+.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SportScreen({ userName, onPick, onBack, showBack }) {
+  return (
+    <div className="min-h-screen text-slate-100 px-6 pt-14" style={{ backgroundColor: BG }}>
+      <div className="max-w-sm mx-auto">
+        {showBack && (
+          <button onClick={onBack} className="flex items-center gap-1 text-neutral-400 text-sm mb-4 hover:text-neutral-200">
+            <ChevronLeft size={16} /> Back
+          </button>
+        )}
+        <p className="text-neutral-500 text-sm">Welcome, {userName}</p>
+        <h2 className="font-scoreboard text-3xl tracking-wide mt-1 mb-6">CHOOSE YOUR SPORT</h2>
+        <div className="space-y-3">
+          {SPORTS.map((s) => (
+            <button key={s.id} disabled={!s.active} onClick={() => onPick(s.id)}
+              className={`w-full flex items-center justify-between rounded-2xl border px-5 py-4 text-left transition ${s.active ? "border-teal-400/40 bg-neutral-800 hover:border-teal-400" : "border-white/5 bg-white/[0.02] opacity-40 cursor-not-allowed"}`}>
+              <div>
+                <div className="font-scoreboard text-2xl tracking-wide">{s.name}</div>
+                <div className="text-xs text-neutral-500 mt-0.5">{s.tagline}</div>
+              </div>
+              <ChevronRight size={18} className="text-neutral-500" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TierCard({ tier, now, onJoin, joined, theme }) {
+  const isHigh = tier.id === "highroller";
+  const msToStart = tier.startTime.getTime() - now.getTime();
+  const started = msToStart <= 0;
+  const countdown = formatCountdown(msToStart);
+
+  return (
+    <div className={`relative rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
+      {isHigh && (
+        <div className="absolute -top-3 left-5 flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">
+          <Crown size={12} /> High Rollers
+        </div>
+      )}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3>
+        <span className="text-xs text-neutral-500">Round {tier.round}</span>
+      </div>
+      <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
+
+      <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${started ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
+        <Clock size={13} />
+        {started ? "Entries closed — round underway" : `Round ${tier.round} starts in ${countdown} (${tier.startLabel})`}
+      </div>
+
+      <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
+        <Scoreboard value={`$${tier.pool.toLocaleString()}`} label="Prize Pool" accent="gold" />
+        <div className="h-10 w-px bg-white/10" />
+        <Scoreboard value={tier.entries} label="Entries" accent={isHigh ? "text-violet-300" : theme.text} />
+      </div>
+
+      <button onClick={() => onJoin(tier)} disabled={joined || started}
+        className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition ${joined || started ? "bg-neutral-700 text-neutral-500 cursor-default" : isHigh ? "bg-violet-500 text-white hover:bg-violet-400" : `${theme.bg} text-neutral-950 ${theme.bgHover}`}`}>
+        {joined ? "You're in — good luck" : started ? "Entries closed" : `Enter for $${tier.buyIn}`}
+      </button>
+    </div>
+  );
+}
+
+function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, theme }) {
+  const insufficient = balance < tier.buyIn;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
+      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-slate-100 font-semibold">Confirm your entry</h4>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button>
+        </div>
+        <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 mb-3 flex items-center justify-between`}>
+          <span className="text-neutral-300 text-sm">{tier.name} entry</span>
+          <span className="text-slate-100 font-scoreboard text-2xl">${tier.buyIn}.00</span>
+        </div>
+        <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 mb-4 flex items-center justify-between`}>
+          <span className="text-neutral-300 text-sm">Wallet balance</span>
+          <span className={`font-scoreboard text-2xl ${insufficient ? "text-rose-400" : theme.text}`}>${balance.toFixed(2)}</span>
+        </div>
+        {insufficient ? (
+          <>
+            <p className="text-sm text-neutral-400 mb-3">Your balance is a bit short. Top up your wallet to enter.</p>
+            <button onClick={onGoToWallet} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>Go to Wallet</button>
+          </>
+        ) : (
+          <button onClick={onConfirm} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>Confirm — deduct ${tier.buyIn} from wallet</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DepositModal({ onClose, onConfirm, theme }) {
+  const [amount, setAmount] = useState(50);
+  const [method, setMethod] = useState("applepay");
+  const [processing, setProcessing] = useState(false);
+  const presets = [20, 50, 100, 250];
+  const pay = () => { setProcessing(true); setTimeout(() => { setProcessing(false); onConfirm(amount); }, 900); };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
+      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-slate-100 font-semibold">Add funds (tracked balance only)</h4>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button>
+        </div>
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          {presets.map((p) => (
+            <button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-300"}`}>${p}</button>
+          ))}
+        </div>
+        <div className="space-y-2 mb-4">
+          <button onClick={() => setMethod("applepay")} className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold border ${method === "applepay" ? theme.border : "border-white/10"} bg-black text-white`}>
+             Pay
+          </button>
+          <button onClick={() => setMethod("card")} className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold border ${method === "card" ? theme.border : "border-white/10"} bg-neutral-700 text-neutral-200`}>
+            <CreditCard size={16} /> Debit or credit card
+          </button>
+        </div>
+        <button onClick={pay} disabled={processing} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm disabled:opacity-60`}>
+          {processing ? "Processing…" : `Add $${amount} to balance`}
+        </button>
+        <p className="text-[11px] text-neutral-500 mt-3 text-center">
+          This is a tracked balance for the friends test — no card is actually charged. Settle up buy-ins the way your group already does (bank transfer, cash, etc).
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function WithdrawModal({ balance, onClose, onConfirm, theme }) {
+  const [amount, setAmount] = useState("");
+  const num = parseFloat(amount) || 0;
+  const valid = num > 0 && num <= balance;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
+      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-slate-100 font-semibold">Withdraw (tracked balance)</h4>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button>
+        </div>
+        <p className="text-xs text-neutral-500 mb-3">Available balance: ${balance.toFixed(2)}</p>
+        <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" inputMode="decimal"
+          className={`w-full rounded-xl bg-black/30 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400 mb-4`} />
+        <button disabled={!valid} onClick={() => onConfirm(num)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>
+          Withdraw ${num > 0 ? num.toFixed(2) : "0.00"}
+        </button>
+        <p className="text-[11px] text-neutral-500 mt-3 text-center">No real money moves here yet — this just adjusts the tracked balance.</p>
+      </div>
+    </div>
+  );
+}
+
+function WalletTab({ balance, transactions, onDeposit, onWithdraw, theme }) {
+  return (
+    <div className="space-y-4">
+      <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-6 text-center`}>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Wallet balance</div>
+        <div className={`font-scoreboard text-6xl ${theme.text} tabular-nums`}>${balance.toFixed(2)}</div>
+        <div className="flex gap-3 mt-5">
+          <button onClick={onDeposit} className={`flex-1 flex items-center justify-center gap-2 rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>
+            <ArrowDownCircle size={16} /> Deposit
+          </button>
+          <button onClick={onWithdraw} className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-neutral-700 hover:bg-neutral-600 text-slate-200 font-semibold py-3 text-sm">
+            <ArrowUpCircle size={16} /> Withdraw
+          </button>
+        </div>
+      </div>
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2">Recent activity</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
+          {transactions.length === 0 && <div className="px-4 py-6 text-center text-sm text-neutral-500">No activity yet — add funds to get started.</div>}
+          {transactions.map((t, i) => (
+            <div key={i} className={`flex items-center justify-between px-4 py-3 text-sm ${i !== 0 ? "border-t border-white/5" : ""}`}>
+              <div className="flex items-center gap-2">
+                {t.amount > 0 ? <ArrowDownCircle size={14} className={theme.text} /> : <ArrowUpCircle size={14} className="text-rose-400" />}
+                <span className="text-neutral-300">{t.label}</span>
+              </div>
+              <span className={t.amount > 0 ? theme.text : "text-rose-400"}>{t.amount > 0 ? "+" : "-"}${Math.abs(t.amount).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme }) {
+  const renderSide = (team, align) => {
+    const selected = myPick === team;
+    const disabled = team === lockedTeam || locked;
+    return (
+      <button
+        onClick={() => !disabled && onSelect(team)}
+        disabled={disabled}
+        className={`flex-1 flex items-center gap-2 rounded-xl px-3 py-3 border transition ${align === "right" ? "flex-row-reverse text-right" : "text-left"} ${
+          selected ? `${theme.border} ${theme.bgSoft}` : disabled ? "border-white/5 opacity-40 cursor-not-allowed" : `border-white/10 hover:${theme.borderHalf}`
+        }`}
+      >
+        <TeamBadge team={team} size={32} />
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-slate-100 truncate">{team}</div>
+          {selected && <div className={`text-[10px] ${theme.text} flex items-center gap-1 justify-start`}>{align !== "right" && <Check size={10} />}Tipped{align === "right" && <Check size={10} />}</div>}
+          {team === lockedTeam && <div className="text-[10px] text-rose-400">Used last round</div>}
+        </div>
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {renderSide(home, "left")}
+      <span className="text-[11px] text-neutral-500 shrink-0">vs</span>
+      {renderSide(away, "right")}
+    </div>
+  );
+}
+
+function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, onPick, onSubmit, onEdit, theme }) {
+  if (eliminated) {
+    return (
+      <div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-5 text-center">
+        <ShieldAlert className="mx-auto mb-2 text-rose-400" size={28} />
+        <p className="text-slate-200 font-semibold">You're out this round</p>
+        <p className="text-neutral-500 text-sm mt-1">Your team came up short. Follow the standings to see who takes the pool.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 pb-24">
+      <div className={`rounded-xl px-4 py-3 flex items-center gap-2 text-xs font-medium ${locked ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
+        <Clock size={13} />
+        {locked ? "Tips are locked for this round" : `Tips lock in ${lockCountdown} — 1 day before kickoff`}
+      </div>
+
+      <p className="text-xs text-neutral-500">Tap a team on any match to make it your pick for the round. You can't reuse a team you've already won with.</p>
+
+      <div className="space-y-2">
+        {fixtures.map(([home, away], i) => (
+          <FixtureRow key={i} home={home} away={away} myPick={myPick} lockedTeam={lockedTeam} locked={locked} onSelect={onPick} theme={theme} />
+        ))}
+      </div>
+
+      <div className="fixed bottom-16 inset-x-0 px-5">
+        <div className="max-w-md mx-auto">
+          {locked ? (
+            <div className={`rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 flex items-center justify-between`}>
+              <div className="flex items-center gap-2 text-sm text-slate-200">
+                <Lock size={14} className="text-neutral-500" />
+                {myPick ? <>Locked in: <TeamBadge team={myPick} size={20} /> {myPick}</> : "No pick was submitted"}
+              </div>
+            </div>
+          ) : submitted ? (
+            <div className={`rounded-xl ${theme.bgSoft} border ${theme.borderSoft} px-4 py-3 flex items-center justify-between`}>
+              <span className={`text-sm ${theme.text} flex items-center gap-2`}><Check size={14} /> Pick submitted: {myPick}</span>
+              <button onClick={onEdit} className="text-xs text-neutral-300 flex items-center gap-1 hover:text-white"><Pencil size={12} /> Edit</button>
+            </div>
+          ) : (
+            <button onClick={onSubmit} disabled={!myPick}
+              className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm`}>
+              {myPick ? `Submit pick — ${myPick}` : "Select a team to submit"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StandingsTab({ tier, myName, myHistory, myPick, submitted, locked, theme }) {
+  const field = useMemo(() => {
+    const you = { name: myName, history: myHistory, isYou: true, pick: submitted ? myPick : null };
+    return [you, ...MOCK_FIELD].sort((a, b) => {
+      const aOut = a.history.includes("L") ? 1 : 0;
+      const bOut = b.history.includes("L") ? 1 : 0;
+      return aOut - bOut;
+    });
+  }, [myHistory, myName, myPick, submitted]);
+
+  return (
+    <div className="space-y-4">
+      <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 flex items-center justify-around`}>
+        <Scoreboard value={tier.alive} label="Still Alive" accent={theme.text} />
+        <div className="h-10 w-px bg-white/10" />
+        <Scoreboard value={`$${tier.pool.toLocaleString()}`} label="Prize Pool" accent="gold" />
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2">
+          {locked ? <Eye size={14} className={theme.text} /> : <EyeOff size={14} className="text-neutral-500" />}
+          This round's tips
+        </h4>
+        {!locked ? (
+          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>
+            Everyone's tips stay hidden until picks lock, 1 day before kickoff. No peeking!
+          </div>
+        ) : (
+          <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
+            {field.map((p, i) => (
+              <div key={p.name + i} className={`flex items-center justify-between px-4 py-3 ${i !== 0 ? "border-t border-white/5" : ""} ${p.isYou ? theme.bgSoft : ""}`}>
+                <span className="text-sm text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+                {p.pick ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-neutral-400">{p.pick}</span>
+                    <TeamBadge team={p.pick} size={24} />
+                  </div>
+                ) : (
+                  <span className="text-xs text-rose-400">No pick</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2">Overall standings</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
+          {field.map((p, i) => {
+            const out = p.history.includes("L");
+            return (
+              <div key={p.name + i} className={`flex items-center justify-between px-4 py-3 text-sm ${i !== 0 ? "border-t border-white/5" : ""} ${out ? "opacity-40" : ""} ${p.isYou ? theme.bgSoft : ""}`}>
+                <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+                <div className="flex gap-1">
+                  {p.history.map((h, j) => (
+                    <span key={j} className={`inline-flex h-5 w-5 items-center justify-center rounded ${h === "W" ? `${theme.bgSoft} ${theme.text}` : "bg-rose-500/20 text-rose-400"}`}>
+                      {h === "W" ? <Check size={12} /> : <X size={12} />}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab({ profile, onProfileChange, accent, onAccentChange, theme, devTools }) {
+  const fileRef = useRef(null);
+
+  return (
+    <div className="space-y-6 pb-6">
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2"><User size={14} /> Profile</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+          <div className="flex items-center gap-4 mb-4">
+            <button onClick={() => fileRef.current && fileRef.current.click()} className="relative">
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="avatar" className="h-16 w-16 rounded-full object-cover" />
+              ) : (
+                <div className={`h-16 w-16 rounded-full ${theme.bgSoft} flex items-center justify-center ${theme.text} font-scoreboard text-2xl`}>
+                  {profile.name ? profile.name.slice(0, 1).toUpperCase() : "?"}
+                </div>
+              )}
+              <div className={`absolute -bottom-1 -right-1 h-6 w-6 rounded-full ${theme.bg} flex items-center justify-center`}>
+                <Camera size={12} className="text-neutral-950" />
+              </div>
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => {
+              const file = e.target.files && e.target.files[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = () => onProfileChange({ avatarUrl: reader.result });
+              reader.readAsDataURL(file);
+            }} />
+            <div>
+              <div className="text-slate-100 font-medium">{profile.name || "Player"}</div>
+              <div className="text-xs text-neutral-500">{profile.email || "no email set"}</div>
+              {profile.ageVerified && (
+                <div className={`inline-flex items-center gap-1 mt-1 text-[10px] ${theme.text}`}>
+                  <Check size={10} /> 18+ verified (practice check)
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <input value={profile.name} onChange={(e) => onProfileChange({ name: e.target.value })} placeholder="Full name"
+              className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+            <input value={profile.email} onChange={(e) => onProfileChange({ email: e.target.value })} placeholder="Email address"
+              className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2">Favourite team</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 grid grid-cols-4 gap-3`}>
+          {ALL_TEAMS.map((team) => {
+            const selected = profile.favouriteTeam === team;
+            return (
+              <button key={team} onClick={() => onProfileChange({ favouriteTeam: team })} className="flex flex-col items-center gap-1">
+                <div className={`rounded-full p-0.5 border-2 ${selected ? theme.border : "border-transparent"}`}>
+                  <TeamBadge team={team} size={40} />
+                </div>
+                <span className="text-[10px] text-neutral-400 truncate w-full text-center">{team}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2"><Palette size={14} /> Display settings</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+          <p className="text-xs text-neutral-500 mb-3">Choose the accent colour used across your tabs and buttons.</p>
+          <div className="grid grid-cols-3 gap-2">
+            {ACCENT_OPTIONS.map((opt) => (
+              <button key={opt.id} onClick={() => onAccentChange(opt.id)}
+                className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${accent === opt.id ? `border-${opt.id}-400 bg-${opt.id}-400/10 text-${opt.id}-300` : "border-white/10 text-neutral-300"}`}>
+                <span className={`h-3 w-3 rounded-full bg-${opt.id}-400`} />
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2">Results & scoring</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 text-sm text-neutral-400`}>
+          In the real version, match results will pull automatically from a live sports data feed. For this friends test, use the tool below to simulate results.
+        </div>
+      </div>
+
+      {devTools}
+    </div>
+  );
+}
+
+function App() {
+  const [screen, setScreen] = useState("auth");
+  const [sport, setSport] = useState(null);
+  const [tab, setTab] = useState("compete");
+  const [now, setNow] = useState(new Date());
+
+  const [profile, setProfile] = useState({ name: "", email: "", avatarUrl: null, favouriteTeam: null });
+  const [accent, setAccent] = useState("teal");
+  const theme = useAccentTheme(accent);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+
+  const [tiers, setTiers] = useState(() => {
+    const base = Date.now();
+    return [
+      { id: "classic", name: "Classic", buyIn: 5, entries: 94, pool: 470, alive: 61, round: 1, startTime: new Date(base + 1000 * 60 * 60 * 30), startLabel: "Thu 7:50pm" },
+      { id: "highroller", name: "High Rollers", buyIn: 100, entries: 22, pool: 2200, alive: 15, round: 1, startTime: new Date(base + 1000 * 60 * 60 * 30), startLabel: "Thu 7:50pm" },
+    ];
+  });
+  const [joinedTier, setJoinedTier] = useState(null);
+  const [entryTarget, setEntryTarget] = useState(null);
+  const [myPick, setMyPick] = useState(null);
+  const [pickSubmitted, setPickSubmitted] = useState(false);
+  const [lockedTeam, setLockedTeam] = useState(null);
+  const [myHistory, setMyHistory] = useState([]);
+  const [results, setResults] = useState({});
+  const [eliminated, setEliminated] = useState(false);
+
+  const currentTier = tiers.find((t) => t.id === joinedTier);
+  const lockTime = currentTier ? new Date(currentTier.startTime.getTime() - 1000 * 60 * 60 * 24) : null;
+  const tipsLocked = lockTime ? now.getTime() >= lockTime.getTime() : false;
+  const lockCountdown = lockTime ? formatCountdown(lockTime.getTime() - now.getTime()) : "";
+
+  const confirmEntry = () => {
+    const tier = entryTarget;
+    setBalance((b) => b - tier.buyIn);
+    setTransactions((t) => [{ label: `${tier.name} entry`, amount: -tier.buyIn }, ...t]);
+    setTiers((prev) => prev.map((t) => (t.id === tier.id ? { ...t, entries: t.entries + 1, pool: t.pool + t.buyIn, alive: t.alive + 1 } : t)));
+    setJoinedTier(tier.id);
+    setEntryTarget(null);
+    setTab("pick");
+  };
+
+  const handleSetResult = (fixtureIndex, winner) => {
+    const next = { ...results, [fixtureIndex]: winner };
+    setResults(next);
+    if (myPick) {
+      const myFixtureIndex = FIXTURES_R1.findIndex((f) => f.includes(myPick));
+      if (myFixtureIndex === fixtureIndex) {
+        const won = winner === myPick;
+        setMyHistory((h) => [...h, won ? "W" : "L"]);
+        if (won) setLockedTeam(myPick);
+        else setEliminated(true);
+      }
+    }
+  };
+
+  if (screen === "auth") return <AuthScreen onAuthed={(name) => { setProfile((p) => ({ ...p, name })); setScreen("idcheck"); }} />;
+  if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { setProfile((p) => ({ ...p, ...idInfo, ageVerified: true })); setScreen("sport"); }} />;
+  if (screen === "sport") return <SportScreen userName={profile.name} showBack={!!sport} onBack={() => setScreen("app")} onPick={(s) => { setSport(s); setScreen("app"); }} />;
+
+  const devTools = (
+    <details className="rounded-xl border border-dashed border-white/10 p-4">
+      <summary className="text-xs text-neutral-500 cursor-pointer">Friends-test tools — simulate a round's results</summary>
+      <p className="text-[11px] text-neutral-500 mt-2 mb-2">Stand-in for the live scores feed while we're just testing with the group.</p>
+      <div className="space-y-2">
+        {FIXTURES_R1.map(([home, away], i) => (
+          <div key={i} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
+            <span className="text-xs text-neutral-400">{home} vs {away}</span>
+            <div className="flex gap-1">
+              {[home, away].map((team) => (
+                <button key={team} onClick={() => handleSetResult(i, team)}
+                  className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>
+                  {team} won
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+
+  return (
+    <div className="min-h-screen text-slate-100 pb-20" style={{ backgroundColor: BG }}>
+      <header className="px-5 pt-6 pb-4 border-b border-white/5 flex items-center justify-between">
+        <button onClick={() => setScreen("sport")} className="flex items-center gap-1 text-neutral-400 text-xs hover:text-neutral-200">
+          <ChevronLeft size={16} /> Sport
+        </button>
+        <div className="flex items-center gap-2">
+          <Flame className="text-rose-500" size={20} />
+          <h1 className="font-scoreboard text-2xl tracking-wide">LAST MAN STANDING</h1>
+        </div>
+        <span className="text-[11px] uppercase tracking-widest text-neutral-500 border border-white/10 rounded-full px-2 py-1">{sport}</span>
+      </header>
+
+      <main className="px-5 py-5 max-w-md mx-auto">
+        {tab === "compete" && (
+          <div className="space-y-4">
+            <p className="text-sm text-neutral-500">Pick a tier, and survive the rounds. This test build tracks buy-ins as points only — settle up with your group the normal way.</p>
+            {tiers.map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} joined={joinedTier === tier.id} theme={theme} />)}
+          </div>
+        )}
+
+        {tab === "pick" && currentTier && (
+          <PickTab
+            fixtures={FIXTURES_R1}
+            myPick={myPick}
+            lockedTeam={lockedTeam}
+            submitted={pickSubmitted}
+            locked={tipsLocked}
+            lockCountdown={lockCountdown}
+            eliminated={eliminated}
+            onPick={(team) => setMyPick(team)}
+            onSubmit={() => setPickSubmitted(true)}
+            onEdit={() => setPickSubmitted(false)}
+            theme={theme}
+          />
+        )}
+        {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
+
+        {tab === "standings" && currentTier && (
+          <StandingsTab tier={currentTier} myName={profile.name || "You"} myHistory={myHistory} myPick={myPick} submitted={pickSubmitted} locked={tipsLocked} theme={theme} />
+        )}
+        {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
+
+        {tab === "wallet" && (
+          <WalletTab balance={balance} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />
+        )}
+
+        {tab === "settings" && (
+          <SettingsTab profile={profile} onProfileChange={(patch) => setProfile((p) => ({ ...p, ...patch }))} accent={accent} onAccentChange={setAccent} theme={theme} devTools={devTools} />
+        )}
+      </main>
+
+      <nav className="fixed bottom-0 inset-x-0 border-t border-white/10 px-2 py-2" style={{ backgroundColor: BG, opacity: 0.98 }}>
+        <div className="max-w-md mx-auto grid grid-cols-5 gap-1">
+          {[
+            { id: "compete", label: "Compete", icon: Trophy },
+            { id: "pick", label: "My Pick", icon: Check },
+            { id: "standings", label: "Standings", icon: Users },
+            { id: "wallet", label: "Wallet", icon: WalletIcon },
+            { id: "settings", label: "Settings", icon: SettingsIcon },
+          ].map(({ id, label, icon: Icon }) => (
+            <button key={id} onClick={() => setTab(id)} className={`flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] ${tab === id ? theme.text : "text-neutral-500"}`}>
+              <Icon size={17} />
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {entryTarget && (
+        <EntryConfirmModal tier={entryTarget} balance={balance} onClose={() => setEntryTarget(null)} onConfirm={confirmEntry}
+          onGoToWallet={() => { setEntryTarget(null); setTab("wallet"); setShowDeposit(true); }} theme={theme} />
+      )}
+      {showDeposit && (
+        <DepositModal onClose={() => setShowDeposit(false)} onConfirm={(amount) => { setBalance((b) => b + amount); setTransactions((t) => [{ label: "Balance added", amount }, ...t]); setShowDeposit(false); }} theme={theme} />
+      )}
+      {showWithdraw && (
+        <WithdrawModal balance={balance} onClose={() => setShowWithdraw(false)} onConfirm={(amount) => { setBalance((b) => b - amount); setTransactions((t) => [{ label: "Withdrawal", amount: -amount }, ...t]); setShowWithdraw(false); }} theme={theme} />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script>
+  var src = document.getElementById("app-source").textContent;
+  var out = Babel.transform(src, { presets: [["react", { runtime: "classic" }]] }).code;
+  var s = document.createElement("script");
+  s.textContent = out;
+  document.body.appendChild(s);
+</script>
+</body>
+</html>
