@@ -1,2 +1,2 @@
 # lastmanstanding
-Last man standing app
+index.html
