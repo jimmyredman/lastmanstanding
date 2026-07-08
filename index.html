@@ -82,35 +82,46 @@ const db = window.__db;
 const FieldValue = firebase.firestore.FieldValue;
 const Timestamp = firebase.firestore.Timestamp;
 
-function makeIcon(symbol) {
+function svgIcon(children, viewBox = "0 0 24 24") {
   return function IconCmp({ size = 16, className = "" }) {
-    return React.createElement("span", { className, style: { fontSize: size, lineHeight: 1, display: "inline-block" } }, symbol);
+    return (
+      <svg width={size} height={size} viewBox={viewBox} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+        className={className} style={{ display: "inline-block", verticalAlign: "middle", flexShrink: 0 }}>
+        {children}
+      </svg>
+    );
   };
 }
-const Flame = makeIcon("🔥");
-const Users = makeIcon("👥");
-const Lock = makeIcon("🔒");
-const CreditCard = makeIcon("💳");
-const ShieldAlert = makeIcon("🛡️");
-const Check = makeIcon("✅");
-const X = makeIcon("✕");
-const ChevronRight = makeIcon("›");
-const ChevronLeft = makeIcon("‹");
-const ChevronDown = makeIcon("⌄");
-const Clock = makeIcon("⏰");
-const Crown = makeIcon("👑");
-const ArrowDownCircle = makeIcon("⬇️");
-const ArrowUpCircle = makeIcon("⬆️");
-const LogIn = makeIcon("→");
-const LogOut = makeIcon("⎋");
-const UserPlus = makeIcon("＋");
-const Pencil = makeIcon("✏️");
-const Trash = makeIcon("🗑️");
-const Eye = makeIcon("👁️");
-const EyeOff = makeIcon("🚫");
-const Camera = makeIcon("📷");
-const Palette = makeIcon("🎨");
-const User = makeIcon("🙂");
+
+const Flame = svgIcon(<>
+  <path d="M12 21c-4 0-7-2.7-7-6.5C5 10.3 8 7.3 9 3c1 2 1 4 3 4s2-2 3-4c1 4.3 4 7.3 4 11.5C19 18.3 16 21 12 21z" />
+  <path d="M12 17a2.4 2.4 0 01-2.4-2.4c0-1.4.9-2.1 1.5-3.1.3.7.8 1.2 1.3 1.2s1-.5 1.3-1.2c.6 1 1.6 1.7 1.6 3.1A2.4 2.4 0 0112 17z" fill="currentColor" stroke="none" opacity="0.55" />
+</>);
+const Users = svgIcon(<>
+  <circle cx="9" cy="8" r="3" /><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2" />
+  <circle cx="17" cy="8.5" r="2.3" /><path d="M15.5 14c2.7.3 5 2.4 5 6" />
+</>);
+const Lock = svgIcon(<><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></>);
+const CreditCard = svgIcon(<><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /><circle cx="17" cy="15" r="1" fill="currentColor" stroke="none" /></>);
+const ShieldAlert = svgIcon(<><path d="M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z" /><line x1="12" y1="8" x2="12" y2="13" /><circle cx="12" cy="16" r="0.6" fill="currentColor" stroke="none" /></>);
+const Check = svgIcon(<polyline points="4 12 9 17 20 6" />);
+const X = svgIcon(<><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></>);
+const ChevronRight = svgIcon(<polyline points="9 5 16 12 9 19" />);
+const ChevronLeft = svgIcon(<polyline points="15 5 8 12 15 19" />);
+const ChevronDown = svgIcon(<polyline points="6 9 12 15 18 9" />);
+const Clock = svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" /></>);
+const Crown = svgIcon(<path d="M4 18h16l-1.4-8-4.1 3-2.5-5-2.5 5-4.1-3L4 18z" />);
+const ArrowDownCircle = svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="8 11 12 15 16 11" /><line x1="12" y1="8" x2="12" y2="15" /></>);
+const ArrowUpCircle = svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="8 13 12 9 16 13" /><line x1="12" y1="16" x2="12" y2="9" /></>);
+const LogIn = svgIcon(<><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></>);
+const LogOut = svgIcon(<><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>);
+const UserPlus = svgIcon(<><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6" /><line x1="18" y1="8" x2="18" y2="14" /><line x1="15" y1="11" x2="21" y2="11" /></>);
+const Pencil = svgIcon(<><path d="M4 20l1-4 11-11 3 3-11 11-4 1z" /><line x1="14" y1="6" x2="18" y2="10" /></>);
+const Trash = svgIcon(<><polyline points="4 7 20 7" /><path d="M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /><path d="M9 7V4h6v3" /></>);
+const Eye = svgIcon(<><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></>);
+const EyeOff = svgIcon(<><path d="M3 3l18 18" /><path d="M10.6 5.2A10.6 10.6 0 0112 5c6.5 0 10 7 10 7a17.6 17.6 0 01-3.1 4" /><path d="M6.6 6.6C4 8.3 2 12 2 12s3.5 7 10 7c1.4 0 2.6-.3 3.7-.7" /><path d="M9.5 9.7A3 3 0 0012 15a3 3 0 002.6-1.5" /></>);
+const Palette = svgIcon(<><rect x="3" y="3" width="7.5" height="7.5" rx="1.2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.2" /></>);
+const User = svgIcon(<><circle cx="12" cy="8" r="3.5" /><path d="M4.5 20c0-4.1 3.4-7 7.5-7s7.5 2.9 7.5 7" /></>);
 
 /* ---- neon-outline nav icons (hand-built SVG, no external assets) ---- */
 function NavSvg({ active, children }) {
@@ -761,6 +772,7 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
   const closeTime = tier.lockTime || tier.startTime; // entries close at lockout, which is always before kickoff
   const msToClose = closeTime.getTime() - now.getTime();
   const entriesClosed = msToClose <= 0;
+  const isUrgent = !entriesClosed && msToClose <= 1000 * 60 * 60 * 6;
   const started = now.getTime() >= tier.startTime.getTime();
   const countdown = formatCountdown(msToClose);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -775,11 +787,11 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
           </div>
         </div>
       )}
-      {isHigh && (<div className="absolute -top-3 left-5 flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"><Crown size={12} /> High Stakes</div>)}
+      {isHigh && (<div className="inline-flex items-center gap-1 mb-2 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"><Crown size={12} /> High Stakes</div>)}
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
       <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
-      <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
+      <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : isUrgent ? "bg-rose-500/15 text-rose-300 animate-pulse" : "bg-amber-400/10 text-amber-300"}`}>
+        <Clock size={13} />{entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : isUrgent ? `Locking in ${countdown} — last chance to join!` : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
       </div>
       <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
         <Scoreboard value={`$${netPool.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
@@ -952,7 +964,7 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
   return (<div className="flex items-center gap-2">{renderSide(home, "left")}<span className="text-[11px] text-neutral-500 shrink-0">vs</span>{renderSide(away, "right")}</div>);
 }
 
-function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving }) {
+function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving }) {
   if (eliminated) {
     const copy = {
       eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who takes the pool." },
@@ -963,8 +975,8 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
   }
   return (
     <div className="space-y-4 pb-24">
-      <div className={`rounded-xl px-4 py-3 flex items-center gap-2 text-xs font-medium ${locked ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{locked ? "Tips are locked for this round" : `Tips lock in ${lockCountdown} — 24 hours before the round's first game`}
+      <div className={`rounded-xl px-4 py-3 flex items-center gap-2 text-xs font-medium ${locked ? "bg-rose-500/10 text-rose-400" : lockUrgent ? "bg-rose-500/15 text-rose-300 animate-pulse" : "bg-amber-400/10 text-amber-300"}`}>
+        <Clock size={13} />{locked ? "Tips are locked for this round" : lockUrgent ? `Tips lock in ${lockCountdown} — get your pick in now!` : `Tips lock in ${lockCountdown} — 24 hours before the round's first game`}
       </div>
       <div className="flex items-center justify-between">
         <p className="text-xs text-neutral-500">Tap a team to make it your pick. You can't reuse a team you've already won with.</p>
@@ -996,7 +1008,7 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
   );
 }
 
-function StandingsTab({ players, locked, poolAmount, lockCountdown, entryCount }) {
+function StandingsTab({ players, locked, poolAmount, lockCountdown, lockUrgent, entryCount }) {
   const grouped = useMemo(() => {
     const withPick = players.filter((p) => p.pick);
     const noPick = players.filter((p) => !p.pick);
@@ -1019,7 +1031,7 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown, entryCount }
         {!locked ? (
           <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
             <p className="text-center text-sm text-neutral-500 mb-4">Everyone's tips stay hidden until picks lock.</p>
-            {lockCountdown && <p className="text-center text-xs text-amber-300 mb-4">Locking in {lockCountdown} — 24 hours before the round's first game kicks off. Once locked, only your host can change results.</p>}
+            {lockCountdown && <p className={`text-center text-xs mb-4 ${lockUrgent ? "text-rose-300 font-semibold animate-pulse" : "text-amber-300"}`}>{lockUrgent ? `Locking in ${lockCountdown} — almost time! ` : `Locking in ${lockCountdown} — `}24 hours before the round's first game kicks off. Once locked, only your host can change results.</p>}
             {placeholderCount > 0 && (
               <div className="grid grid-cols-6 gap-2">
                 {Array.from({ length: placeholderCount }).map((_, i) => (
@@ -1116,7 +1128,7 @@ function PinSettings({ uid, theme, onChange }) {
         {!editing ? (
           hasPin ? (
             <div className="flex items-center justify-between">
-              <span className={`text-xs ${theme.text} flex items-center gap-1`}><Check size={12} /> PIN set on this device{saved ? " — saved ✓" : ""}</span>
+              <span className={`text-xs ${theme.text} flex items-center gap-1`}><Check size={12} /> PIN set on this device{saved ? " — saved" : ""}</span>
               <div className="flex gap-2">
                 <button onClick={() => setEditing(true)} className="text-xs text-neutral-300 underline">Change</button>
                 <button onClick={remove} className="text-xs text-rose-400 underline">Remove</button>
@@ -1170,7 +1182,7 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
           <div className="space-y-2">
             <input value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Full name" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
             <input value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} placeholder="Email address" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
-            <button onClick={save} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>{saved ? "Saved ✓" : "Save changes"}</button>
+            <button onClick={save} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>{saved ? "Saved" : "Save changes"}</button>
           </div>
         </div>
       </div>
@@ -1275,7 +1287,7 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
           {NRL_ROUNDS.map((r) => <option key={r.id} value={r.id}>{r.label} — kicks off {formatStartLabel(r.firstKickoff)}</option>)}
         </select>
         {roundAlreadyStarted && (
-          <p className="text-[11px] text-rose-400 mt-1">⚠ This round's first game has already kicked off — entries will show as closed immediately. Pick a later round, or this is likely fine if you're intentionally running a mid-round test.</p>
+          <p className="text-[11px] text-rose-400 mt-1 flex items-start gap-1"><ShieldAlert size={12} className="mt-0.5 shrink-0" /> This round's first game has already kicked off — entries will show as closed immediately. Pick a later round, or this is likely fine if you're intentionally running a mid-round test.</p>
         )}
       </div>
       <div>
@@ -1429,7 +1441,7 @@ function HostResultsPanel({ tier, now, theme }) {
             </div>
           ))}
           {finalized && (
-            <p className="text-[11px] text-teal-300">✓ Last confirmed — eliminations applied{wipeoutSurvived ? "." : " and the competition has moved to the next round."}{wipeoutSurvived ? " Everyone lost this round, so nobody was eliminated — same round repeats (as per the rules)." : ""}</p>
+            <p className="text-[11px] text-teal-300 flex items-start gap-1"><Check size={12} className="mt-0.5 shrink-0" /> Last confirmed — eliminations applied{wipeoutSurvived ? "." : " and the competition has moved to the next round."}{wipeoutSurvived ? " Everyone lost this round, so nobody was eliminated — same round repeats (as per the rules)." : ""}</p>
           )}
           <button onClick={applyResults} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>
             {finalized ? "Update results & re-apply" : "Confirm round results"}
@@ -1484,6 +1496,39 @@ function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onClo
   );
 }
 
+function InvitePanel({ tier, theme }) {
+  const [open, setOpen] = useState(false);
+  const [emails, setEmails] = useState("");
+
+  const sendInvite = () => {
+    const hoursLeft = Math.max(1, Math.round((tier.lockTime.getTime() - Date.now()) / (1000 * 60 * 60)));
+    const roundLabel = getRound(tier.roundId).label;
+    const baseUrl = window.location.origin + window.location.pathname;
+    const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&buyIn=${tier.buyIn}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft}`;
+    const subject = "You're invited to play Last Man Standing!";
+    const body = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a $${tier.buyIn} buy-in competition. ${roundLabel} locks in about ${hoursLeft} hours, so don't wait around!\n\nTap the link below to see the competition and jump in:\n${inviteUrl}\n\nHurry — last one standing takes the pool!`;
+    const list = emails.split(/[,;\n]/).map((e) => e.trim()).filter(Boolean);
+    const mailto = `mailto:?bcc=${encodeURIComponent(list.join(","))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+  };
+
+  return (
+    <div className="mt-3">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
+        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} /> {open ? "Hide invite" : "Invite players by email"}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} placeholder="Paste email addresses, separated by commas or new lines"
+            className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-xs text-slate-100 placeholder:text-neutral-500 outline-none resize-none" />
+          <button onClick={sendInvite} disabled={!emails.trim()} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>Open invite email</button>
+          <p className="text-[10px] text-neutral-500">Opens your email app with the invite ready to go — the link shows them a visual invite card before they sign up.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onCancelRefund, rollingEarnings, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -1524,6 +1569,7 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                       </button>
                     </div>
                     <HostResultsPanel tier={tier} now={now} theme={theme} />
+                    <InvitePanel tier={tier} theme={theme} />
                     {cancelling === tier.id ? (
                       <div className="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3">
                         <p className="text-[11px] text-rose-300 mb-2">This refunds every active entrant's buy-in and closes the competition. This can't be undone.</p>
@@ -1648,7 +1694,9 @@ function AppShell({ user }) {
 
   const lockTime = currentTier?.lockTime || null;
   const tipsLocked = lockTime ? now.getTime() >= lockTime.getTime() : false;
-  const lockCountdown = lockTime ? formatCountdown(lockTime.getTime() - now.getTime()) : "";
+  const msToLock = lockTime ? lockTime.getTime() - now.getTime() : null;
+  const lockCountdown = lockTime ? formatCountdown(msToLock) : "";
+  const lockUrgent = !tipsLocked && msToLock !== null && msToLock <= 1000 * 60 * 60 * 6;
 
   const players = useMemo(() => {
     if (!currentRound) return [];
@@ -1795,11 +1843,11 @@ function AppShell({ user }) {
         )}
         {tab === "pick" && currentTier && currentRound && (
           <PickTab round={currentRound} myPick={myPick} lockedTeam={lockedTeam} submitted={pickSubmitted} locked={tipsLocked}
-            lockCountdown={lockCountdown} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
+            lockCountdown={lockCountdown} lockUrgent={lockUrgent} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
             onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
-        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool * (1 - PLATFORM_FEE_RATE)} lockCountdown={lockCountdown} entryCount={currentTier.entries} />}
+        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool * (1 - PLATFORM_FEE_RATE)} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
         {tab === "wallet" && <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />}
         {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onCancelRefund={cancelAndRefund} rollingEarnings={rollingEarnings} now={now} theme={theme} />}
@@ -1858,6 +1906,42 @@ function SplashScreen({ onFinish }) {
   );
 }
 
+function InviteLandingScreen({ params, onContinue }) {
+  const name = params.get("name") || "Last Man Standing";
+  const buyIn = params.get("buyIn") || "5";
+  const round = params.get("round") || "";
+  const hours = params.get("hours") || "";
+  return (
+    <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6 relative overflow-hidden" style={{ backgroundColor: "#050506" }}>
+      <div className="smoke-layer-a" /><div className="smoke-layer-b" />
+      <div className="relative z-10 max-w-sm mx-auto w-full">
+        <div className="text-center mb-6">
+          <span className="text-[11px] uppercase tracking-[0.35em] text-rose-400">You're invited</span>
+          <h1 className="neon-title font-scoreboard text-4xl tracking-wide mt-1" style={{ color: "#fff1e0" }}>LAST MAN STANDING</h1>
+        </div>
+
+        <div className="relative overflow-hidden rounded-2xl border border-teal-400/40 bg-neutral-800 p-5" style={{ boxShadow: "0 0 30px rgba(45,212,191,0.15)" }}>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-slate-100">{name}</h3>
+            {round && <span className="text-xs text-neutral-500">{round}</span>}
+          </div>
+          <p className="text-sm text-neutral-400 mt-1">${buyIn} buy-in · winner takes the pool</p>
+          {hours && (
+            <div className="mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium bg-rose-500/15 text-rose-300 animate-pulse">
+              <Clock size={13} /> Locks in about {hours} hours — don't wait around!
+            </div>
+          )}
+          <button onClick={onContinue} className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 text-neutral-950 font-semibold py-3 text-sm">
+            Join now
+          </button>
+        </div>
+
+        <p className="text-center text-[11px] text-neutral-500 mt-5">Create a free account to jump in — takes less than a minute.</p>
+      </div>
+    </div>
+  );
+}
+
 function TapToEnterScreen({ onEnter }) {
   const handleTap = () => {
     getSharedAudioCtx(); // primed synchronously inside the real tap gesture — the most reliable moment to unlock audio
@@ -1880,8 +1964,13 @@ function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState(undefined);
   const [pinUnlocked, setPinUnlocked] = useState(false);
+  const inviteParams = useMemo(() => new URLSearchParams(window.location.search), []);
+  const [inviteDismissed, setInviteDismissed] = useState(false);
   useEffect(() => auth.onAuthStateChanged((u) => { setUser(u); setPinUnlocked(false); }), []);
   if (!entered) return <TapToEnterScreen onEnter={() => setEntered(true)} />;
+  if (inviteParams.get("invite") && !inviteDismissed) {
+    return <InviteLandingScreen params={inviteParams} onContinue={() => setInviteDismissed(true)} />;
+  }
   if (showSplash) return <SplashScreen onFinish={() => setShowSplash(false)} />;
   if (user === undefined) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
   if (!user) return <AuthScreen />;
