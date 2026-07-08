@@ -862,6 +862,7 @@ function AppShell({ user }) {
   const [rawTiers, setRawTiers] = useState([]);
   const [entryCounts, setEntryCounts] = useState({});
   const [myEntries, setMyEntries] = useState({});
+  const [viewingTierId, setViewingTierId] = useState(null);
   const [entryTarget, setEntryTarget] = useState(null);
   const [entryError, setEntryError] = useState("");
 
@@ -912,8 +913,11 @@ function AppShell({ user }) {
     return () => { unsubs.forEach((u) => u()); unsubMine(); };
   }, [rawTiers.map((t) => t.id).join(","), user.uid]);
 
-  const joinedTierId = Object.keys(myEntries)[0] || null;
+  const joinedTierIds = Object.keys(myEntries);
   const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0, pool: (entryCounts[t.id] || 0) * t.buyIn })), [rawTiers, entryCounts]);
+  // viewingTierId is which joined competition you're actively looking at on My Pick / Standings —
+  // falls back to whichever joined competition comes first if nothing's been explicitly chosen yet.
+  const joinedTierId = (viewingTierId && myEntries[viewingTierId]) ? viewingTierId : (joinedTierIds[0] || null);
   const currentTier = tiers.find((t) => t.id === joinedTierId);
   // Older competitions created before round selection existed won't have a roundId yet —
   // fall back to the first known round so they still work instead of crashing.
@@ -925,7 +929,7 @@ function AppShell({ user }) {
     const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("roundId", "==", effectiveRoundId).onSnapshot((snap) => {
       const list = snap.docs.map((d) => d.data()); setAllPicks(list);
       const mine = list.find((p) => p.uid === user.uid);
-      if (mine) { setMyPick(mine.team); setPickSubmitted(true); }
+      if (mine) { setMyPick(mine.team); setPickSubmitted(true); } else { setMyPick(null); setPickSubmitted(false); }
     });
     const unsubResults = db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).onSnapshot((doc) => setResults(doc.exists ? doc.data().fixtureResults || {} : {}));
     return () => { unsubPicks(); unsubResults(); };
@@ -963,6 +967,7 @@ function AppShell({ user }) {
         tx.set(db.collection("users").doc(user.uid).collection("transactions").doc(), { label: `${tier.name} entry`, amount: -tier.buyIn, createdAt: FieldValue.serverTimestamp() });
         tx.set(db.collection("entries").doc(`${tier.id}_${user.uid}`), { tierId: tier.id, uid: user.uid, name: profile.name, joinedAt: FieldValue.serverTimestamp() });
       });
+      setViewingTierId(tier.id);
       setEntryTarget(null); setTab("pick");
     } catch (e) { setEntryError(e.message); }
   };
@@ -1002,6 +1007,21 @@ function AppShell({ user }) {
       </header>
 
       <main className="px-5 py-5 max-w-md mx-auto">
+        {(tab === "pick" || tab === "standings") && joinedTierIds.length > 1 && (
+          <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+            {joinedTierIds.map((id) => {
+              const t = tiers.find((x) => x.id === id);
+              if (!t) return null;
+              const active = id === joinedTierId;
+              return (
+                <button key={id} onClick={() => setViewingTierId(id)}
+                  className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium border ${active ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-400"}`}>
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {tab === "compete" && (
           <div className="space-y-4">
             <p className="text-sm text-neutral-500">Pick a tier, and survive the rounds.</p>
