@@ -54,6 +54,9 @@
 
   @keyframes stampPop { 0% { transform: scale(2.2) rotate(-18deg); opacity: 0; } 60% { transform: scale(0.92) rotate(-18deg); opacity: 1; } 80% { transform: scale(1.05) rotate(-18deg); } 100% { transform: scale(1) rotate(-18deg); opacity: 1; } }
   .stamp-pop > div { animation: stampPop 0.45s cubic-bezier(.2,1.6,.3,1) both; }
+
+  @keyframes tapPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+  .tap-pulse { animation: tapPulse 1.8s ease-in-out infinite; }
 </style>
 </head>
 <body>
@@ -387,6 +390,68 @@ function UserAvatar({ preset, name, size = 64 }) {
       <span className="font-scoreboard" style={{ fontSize: size * 0.42, color: "#5eead4", textShadow: "0 0 10px rgba(45,212,191,0.85), 0 0 20px rgba(45,212,191,0.4)" }}>{initials}</span>
     </div>
   );
+}
+
+// Shared audio context for the whole app. Browsers block sound until the user has
+// interacted with the page at all — creating a fresh AudioContext each time (as the
+// splash screen used to) meant it was blocked on every truly first load. Reusing one
+// shared, primed context means sound works reliably everywhere after the very first tap.
+function getSharedAudioCtx() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return null;
+  if (!window.__lmsAudioCtx) window.__lmsAudioCtx = new Ctx();
+  if (window.__lmsAudioCtx.state === "suspended") window.__lmsAudioCtx.resume().catch(() => {});
+  return window.__lmsAudioCtx;
+}
+
+function playThumpSound(freq, boom) {
+  try {
+    const ctx = getSharedAudioCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const dur = boom ? 0.55 : 0.32;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq * 1.7, now);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.3, 18), now + dur);
+    gain.gain.setValueAtTime(boom ? 1.0 : 0.75, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(now); osc.stop(now + dur + 0.05);
+
+    const clickLen = Math.floor(ctx.sampleRate * 0.06);
+    const buffer = ctx.createBuffer(1, clickLen, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < clickLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / clickLen);
+    const click = ctx.createBufferSource();
+    click.buffer = buffer;
+    const clickGain = ctx.createGain();
+    clickGain.gain.setValueAtTime(boom ? 0.55 : 0.4, now);
+    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    click.connect(clickGain); clickGain.connect(ctx.destination);
+    click.start(now);
+  } catch (e) { /* audio blocked or unavailable — visuals still carry the moment */ }
+}
+
+function playDingSound() {
+  try {
+    const ctx = getSharedAudioCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [[1200, now], [1650, now + 0.15]].forEach(([freq, t]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.4, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t); osc.stop(t + 0.25);
+    });
+  } catch (e) { /* audio blocked or unavailable */ }
 }
 
 async function hashPin(pin, salt) {
@@ -1640,6 +1705,7 @@ function AppShell({ user }) {
         tx.set(db.collection("users").doc(user.uid).collection("transactions").doc(), { label: `${tier.name} entry`, amount: -tier.buyIn, createdAt: FieldValue.serverTimestamp() });
         tx.set(db.collection("entries").doc(`${tier.id}_${user.uid}`), { tierId: tier.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
       });
+      playDingSound();
       setViewingTierId(tier.id);
       setEntryTarget(null); setTab("pick");
     } catch (e) { setEntryError(e.message); }
@@ -1763,45 +1829,8 @@ function AppShell({ user }) {
 function SplashScreen({ onFinish }) {
   const [revealCount, setRevealCount] = useState(0);
   const [phase, setPhase] = useState("in");
-  const audioCtxRef = useRef(null);
 
-  const playThump = (freq, boom) => {
-    try {
-      if (!audioCtxRef.current) {
-        const Ctx = window.AudioContext || window.webkitAudioContext;
-        if (!Ctx) return;
-        audioCtxRef.current = new Ctx();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === "suspended") ctx.resume().catch(() => {});
-      const now = ctx.currentTime;
-      const dur = boom ? 0.55 : 0.32;
-
-      // low tonal thump (the "boom")
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq * 1.7, now);
-      osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.3, 18), now + dur);
-      gain.gain.setValueAtTime(boom ? 1.0 : 0.75, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.start(now); osc.stop(now + dur + 0.05);
-
-      // percussive click transient layered on top for real impact
-      const clickLen = Math.floor(ctx.sampleRate * 0.06);
-      const buffer = ctx.createBuffer(1, clickLen, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < clickLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / clickLen);
-      const click = ctx.createBufferSource();
-      click.buffer = buffer;
-      const clickGain = ctx.createGain();
-      clickGain.gain.setValueAtTime(boom ? 0.55 : 0.4, now);
-      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-      click.connect(clickGain); clickGain.connect(ctx.destination);
-      click.start(now);
-    } catch (e) { /* audio blocked or unavailable — visuals still carry the beat */ }
-  };
+  const playThump = (freq, boom) => playThumpSound(freq, boom);
 
   useEffect(() => {
     const timers = [
@@ -1829,11 +1858,30 @@ function SplashScreen({ onFinish }) {
   );
 }
 
+function TapToEnterScreen({ onEnter }) {
+  const handleTap = () => {
+    getSharedAudioCtx(); // primed synchronously inside the real tap gesture — the most reliable moment to unlock audio
+    onEnter();
+  };
+  return (
+    <div onClick={handleTap} onTouchStart={handleTap} className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden cursor-pointer" style={{ backgroundColor: "#050506" }}>
+      <div className="smoke-layer-a" style={{ filter: "blur(24px) grayscale(1)" }} />
+      <div className="smoke-layer-b" style={{ filter: "blur(30px) grayscale(1)" }} />
+      <div className="relative z-10 text-center px-6">
+        <Flame className="text-neutral-500 mx-auto mb-5" size={30} />
+        <p className="tap-pulse text-neutral-300 text-sm tracking-[0.35em] uppercase">Tap to enter</p>
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [entered, setEntered] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState(undefined);
   const [pinUnlocked, setPinUnlocked] = useState(false);
   useEffect(() => auth.onAuthStateChanged((u) => { setUser(u); setPinUnlocked(false); }), []);
+  if (!entered) return <TapToEnterScreen onEnter={() => setEntered(true)} />;
   if (showSplash) return <SplashScreen onFinish={() => setShowSplash(false)} />;
   if (user === undefined) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
   if (!user) return <AuthScreen />;
