@@ -915,18 +915,21 @@ function AppShell({ user }) {
   const joinedTierId = Object.keys(myEntries)[0] || null;
   const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0, pool: (entryCounts[t.id] || 0) * t.buyIn })), [rawTiers, entryCounts]);
   const currentTier = tiers.find((t) => t.id === joinedTierId);
-  const currentRound = currentTier ? getRound(currentTier.roundId) : null;
+  // Older competitions created before round selection existed won't have a roundId yet —
+  // fall back to the first known round so they still work instead of crashing.
+  const effectiveRoundId = currentTier?.roundId || NRL_ROUNDS[0].id;
+  const currentRound = currentTier ? getRound(effectiveRoundId) : null;
 
   useEffect(() => {
     if (!joinedTierId || !currentTier) { setAllPicks([]); setMyPick(null); setPickSubmitted(false); return; }
-    const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("roundId", "==", currentTier.roundId).onSnapshot((snap) => {
+    const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("roundId", "==", effectiveRoundId).onSnapshot((snap) => {
       const list = snap.docs.map((d) => d.data()); setAllPicks(list);
       const mine = list.find((p) => p.uid === user.uid);
       if (mine) { setMyPick(mine.team); setPickSubmitted(true); }
     });
-    const unsubResults = db.collection("results").doc(`${joinedTierId}_${currentTier.roundId}`).onSnapshot((doc) => setResults(doc.exists ? doc.data().fixtureResults || {} : {}));
+    const unsubResults = db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).onSnapshot((doc) => setResults(doc.exists ? doc.data().fixtureResults || {} : {}));
     return () => { unsubPicks(); unsubResults(); };
-  }, [joinedTierId, currentTier?.roundId, user.uid]);
+  }, [joinedTierId, effectiveRoundId, user.uid]);
 
   const lockTime = currentTier?.lockTime || null;
   const tipsLocked = lockTime ? now.getTime() >= lockTime.getTime() : false;
@@ -967,11 +970,11 @@ function AppShell({ user }) {
   const submitPick = async () => {
     if (!myPick || !joinedTierId || !currentTier) return;
     setPickSaving(true);
-    await db.collection("picks").doc(`${joinedTierId}_${currentTier.roundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: currentTier.roundId, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
+    await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
     setPickSaving(false); setPickSubmitted(true);
   };
 
-  const setFixtureResult = (fixtureIndex, winner) => db.collection("results").doc(`${joinedTierId}_${currentTier.roundId}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
+  const setFixtureResult = (fixtureIndex, winner) => db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
   const createTier = (data) => db.collection("tiers").add({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
