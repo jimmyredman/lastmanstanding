@@ -261,7 +261,25 @@ const AVATAR_PRESETS = [
   { id: "tiger", symbol: "🐯", color: "#ffb020" },
   { id: "scorpion", symbol: "🦂", color: "#fb7185" },
   { id: "moon", symbol: "🌙", color: "#a78bfa" },
+  { id: "gorilla", symbol: "🦍", color: "#22c55e" },
+  { id: "croc", symbol: "🐊", color: "#22c55e" },
+  { id: "bat", symbol: "🦇", color: "#a78bfa" },
+  { id: "octopus", symbol: "🐙", color: "#fb7185" },
+  { id: "rhino", symbol: "🦏", color: "#ffb020" },
+  { id: "dynamite", symbol: "🧨", color: "#ff3b5c" },
+  { id: "slots", symbol: "🎰", color: "#38bdf8" },
+  { id: "trophy", symbol: "🏆", color: "#ffb020" },
+  { id: "spade", symbol: "♠️", color: "#2dd4bf" },
+  { id: "tornado", symbol: "🌪️", color: "#38bdf8" },
 ];
+
+function getInitials(name) {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 function UserAvatar({ preset, name, size = 64 }) {
   const found = AVATAR_PRESETS.find((a) => a.id === preset);
@@ -274,7 +292,7 @@ function UserAvatar({ preset, name, size = 64 }) {
       </div>
     );
   }
-  const initials = (name || "?").trim().slice(0, 2).toUpperCase();
+  const initials = getInitials(name);
   return (
     <div style={{ width: size, height: size, backgroundColor: "#111114", border: "2px solid rgba(45,212,191,0.55)", boxShadow: "0 0 14px rgba(45,212,191,0.35)" }} className="rounded-full flex items-center justify-center shrink-0">
       <span className="font-scoreboard" style={{ fontSize: size * 0.42, color: "#5eead4", textShadow: "0 0 10px rgba(45,212,191,0.85), 0 0 20px rgba(45,212,191,0.4)" }}>{initials}</span>
@@ -989,9 +1007,13 @@ function AppShell({ user }) {
 
   const submitPick = async () => {
     if (!myPick || !joinedTierId || !currentTier) return;
-    setPickSaving(true);
-    await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
-    setPickSaving(false); setPickSubmitted(true);
+    setPickSubmitted(true); // show confirmation instantly, don't wait on the network
+    setPickSaving(false);
+    try {
+      await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
+    } catch (e) {
+      setPickSubmitted(false); // roll back if it genuinely failed to save
+    }
   };
 
   const setFixtureResult = (fixtureIndex, winner) => db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
@@ -1029,7 +1051,7 @@ function AppShell({ user }) {
               if (!t) return null;
               const active = id === joinedTierId;
               return (
-                <button key={id} onClick={() => setViewingTierId(id)}
+                <button key={id} onClick={() => { setViewingTierId(id); setMyPick(null); setPickSubmitted(false); }}
                   className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium border ${active ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-400"}`}>
                   {t.name}
                 </button>
