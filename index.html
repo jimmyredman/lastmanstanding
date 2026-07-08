@@ -43,6 +43,14 @@
   .splash-ring { position: absolute; width: 160px; height: 160px; border-radius: 9999px; border: 2px solid rgba(255,90,60,0.6); animation: splashRing 2.2s ease-out both; }
   .splash-ring2 { position: absolute; width: 160px; height: 160px; border-radius: 9999px; border: 2px solid rgba(255,140,90,0.5); animation: splashRing2 2.2s ease-out 0.3s both; }
   .splash-sub { animation: splashSub 1s ease-out 1.1s both; }
+
+  @keyframes wordSlam { 0% { transform: scale(2.4); opacity: 0; } 50% { transform: scale(0.9); opacity: 1; } 72% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes screenShake { 0%, 100% { transform: translate(0, 0); } 15% { transform: translate(-7px, 4px); } 30% { transform: translate(6px, -5px); } 45% { transform: translate(-5px, 3px); } 60% { transform: translate(4px, -3px); } 75% { transform: translate(-3px, 2px); } 90% { transform: translate(2px, -1px); } }
+  @keyframes flashPulse { 0% { opacity: 0.6; } 100% { opacity: 0; } }
+  .splash-word { animation: wordSlam 0.32s cubic-bezier(.2,1.8,.3,1) both; text-shadow: 0 0 22px rgba(255,90,60,0.85), 0 0 50px rgba(255,50,30,0.5); line-height: 1; }
+  .splash-word-big { animation: wordSlam 0.4s cubic-bezier(.2,1.9,.3,1) both; text-shadow: 0 0 30px rgba(255,110,70,0.95), 0 0 70px rgba(255,60,40,0.6); line-height: 1; }
+  .splash-shake { animation: screenShake 0.32s ease-out; }
+  .splash-flash { position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,120,80,0.9), rgba(255,60,40,0.3) 60%, transparent 80%); animation: flashPulse 0.3s ease-out forwards; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -74,6 +82,7 @@ function makeIcon(symbol) {
   };
 }
 const Flame = makeIcon("🔥");
+const CreditCard = makeIcon("💳");
 const ShieldAlert = makeIcon("🛡️");
 const Check = makeIcon("✅");
 const X = makeIcon("✕");
@@ -170,9 +179,80 @@ const NRL_ROUNDS = [
       { home: "Tigers", away: "Eels", kickoff: "Sun 2 Aug, 4:05pm AEST — CommBank Stadium" },
     ],
   },
+  {
+    id: "r23", label: "NRL Round 23", firstKickoff: new Date("2026-08-06T19:50:00+10:00"),
+    byes: ["Tigers"],
+    fixtures: [
+      { home: "Titans", away: "Cowboys", kickoff: "Thu 6 Aug, 7:50pm AEST — Cbus Super Stadium" },
+      { home: "Warriors", away: "Panthers", kickoff: "Fri 7 Aug, 6:00pm AEST — Go Media Stadium" },
+      { home: "Roosters", away: "Bulldogs", kickoff: "Fri 7 Aug, 8:00pm AEST — Allianz Stadium" },
+      { home: "Storm", away: "Manly", kickoff: "Sat 8 Aug, 3:00pm AEST — HBF Park" },
+      { home: "Dolphins", away: "Broncos", kickoff: "Sat 8 Aug, 5:30pm AEST — Suncorp Stadium" },
+      { home: "Rabbitohs", away: "Eels", kickoff: "Sat 8 Aug, 7:30pm AEST — Allianz Stadium" },
+      { home: "Raiders", away: "Knights", kickoff: "Sun 9 Aug, 2:00pm AEST — GIO Stadium" },
+      { home: "Dragons", away: "Sharks", kickoff: "Sun 9 Aug, 4:05pm AEST — St George Venues Stadium" },
+    ],
+  },
+  {
+    id: "r24", label: "NRL Round 24", firstKickoff: new Date("2026-08-13T19:50:00+10:00"),
+    byes: ["Storm"],
+    fixtures: [
+      { home: "Panthers", away: "Roosters", kickoff: "Thu 13 Aug, 7:50pm AEST — CommBank Stadium" },
+      { home: "Manly", away: "Dolphins", kickoff: "Fri 14 Aug, 6:00pm AEST — 4 Pines Park" },
+      { home: "Bulldogs", away: "Rabbitohs", kickoff: "Fri 14 Aug, 8:00pm AEST — Accor Stadium" },
+      { home: "Sharks", away: "Raiders", kickoff: "Sat 15 Aug, 3:00pm AEST — Ocean Protect Stadium" },
+      { home: "Eels", away: "Cowboys", kickoff: "Sat 15 Aug, 5:30pm AEST — CommBank Stadium" },
+      { home: "Broncos", away: "Warriors", kickoff: "Sat 15 Aug, 7:30pm AEST — Suncorp Stadium" },
+      { home: "Knights", away: "Titans", kickoff: "Sun 16 Aug, 2:00pm AEST — McDonald Jones Stadium" },
+      { home: "Tigers", away: "Dragons", kickoff: "Sun 16 Aug, 4:05pm AEST — CommBank Stadium" },
+    ],
+  },
+  {
+    id: "r25", label: "NRL Round 25", firstKickoff: new Date("2026-08-20T19:50:00+10:00"),
+    byes: ["Cowboys"],
+    fixtures: [
+      { home: "Storm", away: "Panthers", kickoff: "Thu 20 Aug, 7:50pm AEST — AAMI Park" },
+      { home: "Raiders", away: "Broncos", kickoff: "Fri 21 Aug, 6:00pm AEST — GIO Stadium" },
+      { home: "Dolphins", away: "Eels", kickoff: "Fri 21 Aug, 8:00pm AEST — Suncorp Stadium" },
+      { home: "Knights", away: "Manly", kickoff: "Sat 22 Aug, 3:00pm AEST — McDonald Jones Stadium" },
+      { home: "Rabbitohs", away: "Warriors", kickoff: "Sat 22 Aug, 5:30pm AEST — Accor Stadium" },
+      { home: "Dragons", away: "Bulldogs", kickoff: "Sat 22 Aug, 7:30pm AEST — Allianz Stadium" },
+      { home: "Titans", away: "Sharks", kickoff: "Sun 23 Aug, 2:00pm AEST — Cbus Super Stadium" },
+      { home: "Roosters", away: "Tigers", kickoff: "Sun 23 Aug, 4:05pm AEST — Allianz Stadium" },
+    ],
+  },
+  {
+    id: "r26", label: "NRL Round 26", firstKickoff: new Date("2026-08-27T19:50:00+10:00"),
+    byes: ["Raiders"],
+    fixtures: [
+      { home: "Broncos", away: "Storm", kickoff: "Thu 27 Aug, 7:50pm AEST — Suncorp Stadium" },
+      { home: "Manly", away: "Dragons", kickoff: "Fri 28 Aug, 6:00pm AEST — 4 Pines Park" },
+      { home: "Panthers", away: "Bulldogs", kickoff: "Fri 28 Aug, 8:00pm AEST — CommBank Stadium" },
+      { home: "Titans", away: "Rabbitohs", kickoff: "Sat 29 Aug, 3:00pm AEST — Cbus Super Stadium" },
+      { home: "Roosters", away: "Dolphins", kickoff: "Sat 29 Aug, 5:30pm AEST — Allianz Stadium" },
+      { home: "Cowboys", away: "Tigers", kickoff: "Sat 29 Aug, 7:30pm AEST — QLD Country Bank Stadium" },
+      { home: "Warriors", away: "Knights", kickoff: "Sun 30 Aug, 2:00pm AEST — Go Media Stadium" },
+      { home: "Eels", away: "Sharks", kickoff: "Sun 30 Aug, 4:05pm AEST — CommBank Stadium" },
+    ],
+  },
+  {
+    id: "r27", label: "NRL Round 27", firstKickoff: new Date("2026-09-03T19:50:00+10:00"),
+    byes: ["Knights"],
+    fixtures: [
+      { home: "Bulldogs", away: "Broncos", kickoff: "Thu 3 Sep, 7:50pm AEST — Accor Stadium" },
+      { home: "Titans", away: "Dolphins", kickoff: "Fri 4 Sep, 6:00pm AEST — Cbus Super Stadium" },
+      { home: "Rabbitohs", away: "Roosters", kickoff: "Fri 4 Sep, 8:00pm AEST — Allianz Stadium" },
+      { home: "Warriors", away: "Manly", kickoff: "Sat 5 Sep, 3:00pm AEST — Go Media Stadium" },
+      { home: "Cowboys", away: "Raiders", kickoff: "Sat 5 Sep, 5:30pm AEST — QLD Country Bank Stadium" },
+      { home: "Sharks", away: "Storm", kickoff: "Sat 5 Sep, 7:30pm AEST — Ocean Protect Stadium" },
+      { home: "Dragons", away: "Eels", kickoff: "Sun 6 Sep, 2:00pm AEST — WIN Stadium" },
+      { home: "Panthers", away: "Tigers", kickoff: "Sun 6 Sep, 4:05pm AEST — CommBank Stadium" },
+    ],
+  },
 ];
 function getRound(roundId) { return NRL_ROUNDS.find((r) => r.id === roundId) || NRL_ROUNDS[0]; }
 const ALL_TEAMS = [...new Set(NRL_ROUNDS.flatMap((r) => r.fixtures.flatMap((f) => [f.home, f.away])))];
+const PLATFORM_FEE_RATE = 0.10;
 
 const DEFAULT_RULES = `HOW TO PLAY
 
@@ -182,11 +262,15 @@ Once you've won with a team, you can't pick that same team again the following r
 
 If everyone happens to pick the same team, tips reopen and nobody can select that team again for that round.
 
-Get your pick in before the deadline each week. If you miss it, you're automatically given the underdog in the first game of the round. If that's the team you used last round, you get the underdog of the second game instead. No exceptions — deadlines are firm.
+Get your pick in before the deadline each week. If you miss it, you're automatically given a random team. No exceptions — deadlines are firm.
 
-There's real money on the line, so set a reminder and don't miss your window.
+Once you're eliminated, you're out of that competition — no buy-backs. You're welcome to join a different competition to keep playing. If literally everyone loses in the same round, nobody is eliminated and the competition continues.
 
-Entry fees are due by the date set at the start of each competition. If that doesn't work for you, message your host directly to sort out an alternative.`;
+Entries close once picks lock for the round — you can't join a competition after that point. You'll need to wait for the next one.
+
+A fee of 10% will be taken from the total prize money for operating fees to LMS. Prize pool figures shown in the app already reflect this.
+
+There's real money on the line, so set a reminder and don't miss your window.`;
 
 const TEAM_COLORS = {
   Storm: "#4B2E83", Broncos: "#6E0E20", Knights: "#1B3A6B", Sharks: "#0098DB",
@@ -501,6 +585,33 @@ function IDCheckScreen({ initialName, onVerified }) {
   );
 }
 
+function HowToPlayScreen({ onAccept }) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <div className="min-h-screen text-slate-100 px-6 pt-14 pb-10" style={{ backgroundColor: BG }}>
+      <div className="max-w-sm mx-auto">
+        <h2 className="font-scoreboard text-3xl tracking-wide mb-4">HOW TO PLAY</h2>
+        <div className="space-y-3 text-sm text-neutral-300">
+          <p>• Each round, choose one NRL team. You can't choose the same team twice.</p>
+          <p>• If you don't submit a pick in time, you'll automatically be given a random team.</p>
+          <p>• Picks lock 24 hours before the first game of the round — no changes after that.</p>
+          <p>• If your team loses, or draws, you're eliminated that round.</p>
+          <p>• Once you're out, you're out — no buy-backs.</p>
+          <p>• If literally everyone loses in the same round, nobody is eliminated and the competition continues — as per the rules.</p>
+          <p>• Your entry stays in the prize pool for the remaining players even after you're eliminated.</p>
+        </div>
+        <label className="flex items-start gap-3 mt-6 rounded-xl border border-white/10 bg-neutral-800 p-4 cursor-pointer">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="text-xs text-neutral-300">I understand how to play, prior to depositing money.</span>
+        </label>
+        <button disabled={!checked} onClick={onAccept} className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
+          Continue
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SportScreen({ userName, onPick, onBack, showBack }) {
   return (
     <div className="min-h-screen text-slate-100 px-6 pt-14" style={{ backgroundColor: BG }}>
@@ -524,23 +635,27 @@ function SportScreen({ userName, onPick, onBack, showBack }) {
 
 function TierCard({ tier, now, onJoin, joined, theme }) {
   const isHigh = tier.buyIn >= 50;
-  const msToStart = tier.startTime.getTime() - now.getTime();
-  const started = msToStart <= 0;
-  const countdown = formatCountdown(msToStart);
+  const closeTime = tier.lockTime || tier.startTime; // entries close at lockout, which is always before kickoff
+  const msToClose = closeTime.getTime() - now.getTime();
+  const entriesClosed = msToClose <= 0;
+  const started = now.getTime() >= tier.startTime.getTime();
+  const countdown = formatCountdown(msToClose);
   const [rulesOpen, setRulesOpen] = useState(false);
   const roundLabel = getRound(tier.roundId).label;
+  const netPool = tier.pool * (1 - PLATFORM_FEE_RATE);
   return (
     <div className={`relative rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
       {isHigh && (<div className="absolute -top-3 left-5 flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"><Crown size={12} /> High Stakes</div>)}
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
       <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
-      <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${started ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{started ? "Entries closed — round underway" : `${roundLabel} starts in ${countdown} (${tier.startLabel})`}
+      <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
+        <Clock size={13} />{entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : `Entries close in ${countdown} (picks lock 24h before kickoff)`}
       </div>
       <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
-        <Scoreboard value={`$${tier.pool.toLocaleString()}`} label="Prize Pool" accent="gold" />
+        <Scoreboard value={`$${netPool.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
         <div className="h-10 w-px bg-white/10" /><Scoreboard value={tier.entries} label="Entries" accent={isHigh ? "text-violet-300" : theme.text} />
       </div>
+      <p className="text-[10px] text-neutral-500 text-center mt-1">Prize pool shown after 10% LMS operating fee</p>
       {tier.rules && (
         <div className="mt-4">
           <button onClick={() => setRulesOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
@@ -549,9 +664,9 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
           {rulesOpen && <p className={`mt-2 rounded-lg bg-black/30 border ${PANEL_BORDER} p-3 text-xs text-neutral-300 whitespace-pre-wrap`}>{tier.rules}</p>}
         </div>
       )}
-      <button onClick={() => onJoin(tier)} disabled={joined || started}
-        className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition ${joined || started ? "bg-neutral-700 text-neutral-500 cursor-default" : isHigh ? "bg-violet-500 text-white hover:bg-violet-400" : `${theme.bg} text-neutral-950 ${theme.bgHover}`}`}>
-        {joined ? "You're in — good luck" : started ? "Entries closed" : `Enter for $${tier.buyIn}`}
+      <button onClick={() => onJoin(tier)} disabled={joined || entriesClosed}
+        className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition ${joined || entriesClosed ? "bg-neutral-700 text-neutral-500 cursor-default" : isHigh ? "bg-violet-500 text-white hover:bg-violet-400" : `${theme.bg} text-neutral-950 ${theme.bgHover}`}`}>
+        {joined ? "You're in — good luck" : entriesClosed ? "Entries closed" : `Enter for $${tier.buyIn}`}
       </button>
     </div>
   );
@@ -576,15 +691,64 @@ function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, th
 
 function DepositModal({ onClose, onConfirm, theme }) {
   const [amount, setAmount] = useState(50);
-  const [processing, setProcessing] = useState(false);
+  const [step, setStep] = useState("method"); // method -> applepay | cardform -> processing
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvc, setCardCvc] = useState("");
   const presets = [20, 50, 100, 250];
-  const pay = async () => { setProcessing(true); await onConfirm(amount); setProcessing(false); onClose(); };
+
+  const finish = async () => { await onConfirm(amount); onClose(); };
+  const payApplePay = () => { setStep("processing-ap"); setTimeout(finish, 1100); };
+  const cardValid = cardNumber.replace(/\s/g, "").length >= 12 && cardExpiry.length >= 4 && cardCvc.length >= 3;
+  const payCard = () => { setStep("processing-card"); setTimeout(finish, 1100); };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
       <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
-        <div className="flex items-center justify-between mb-4"><h4 className="text-slate-100 font-semibold">Add funds (tracked balance only)</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
-        <div className="grid grid-cols-4 gap-2 mb-4">{presets.map((p) => (<button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-300"}`}>${p}</button>))}</div>
-        <button onClick={pay} disabled={processing} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm disabled:opacity-60`}>{processing ? "Adding…" : `Add $${amount} to balance`}</button>
+        <div className="flex items-center justify-between mb-3"><h4 className="text-slate-100 font-semibold">Add funds</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
+        <p className="text-[10px] text-amber-300 font-semibold mb-4 leading-relaxed">FOR BETA MODE THIS IS ONLY A SIMULATION, NO REAL MONEY WILL BE USED.</p>
+
+        {step === "method" && (
+          <>
+            <div className="grid grid-cols-4 gap-2 mb-4">{presets.map((p) => (<button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-300"}`}>${p}</button>))}</div>
+            <div className="space-y-2">
+              <button onClick={payApplePay} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold bg-black text-white">
+                 Pay — Apple Pay
+              </button>
+              <button onClick={() => setStep("cardform")} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold bg-neutral-700 text-neutral-200">
+                <CreditCard size={16} /> Add Credit / Debit Card
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "cardform" && (
+          <>
+            <div className="space-y-2 mb-4">
+              <input value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="Card number" inputMode="numeric" maxLength={19}
+                className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2.5 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+              <div className="flex gap-2">
+                <input value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="MM/YY" maxLength={5}
+                  className={`flex-1 rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2.5 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+                <input value={cardCvc} onChange={(e) => setCardCvc(e.target.value)} placeholder="CVC" inputMode="numeric" maxLength={4}
+                  className={`flex-1 rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2.5 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+              </div>
+              <p className="text-[10px] text-neutral-500">Simulated card entry — nothing here is transmitted or stored.</p>
+            </div>
+            <div className="grid grid-cols-4 gap-2 mb-4">{presets.map((p) => (<button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-300"}`}>${p}</button>))}</div>
+            <div className="flex gap-2">
+              <button onClick={() => setStep("method")} className="flex-1 rounded-xl border border-white/10 text-neutral-300 py-3 text-sm">Back</button>
+              <button onClick={payCard} disabled={!cardValid} className={`flex-1 rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>Add ${amount}</button>
+            </div>
+          </>
+        )}
+
+        {(step === "processing-ap" || step === "processing-card") && (
+          <div className="py-8 text-center">
+            <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-teal-400 border-t-transparent animate-spin" />
+            <p className="text-sm text-neutral-300">{step === "processing-ap" ? "Confirming with Apple Pay…" : "Processing card payment…"}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -600,6 +764,7 @@ function WithdrawModal({ balance, onClose, onConfirm, theme }) {
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
       <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
         <div className="flex items-center justify-between mb-4"><h4 className="text-slate-100 font-semibold">Withdraw (tracked balance)</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
+        <p className="text-[10px] text-amber-300 font-semibold mb-3">FOR BETA MODE THIS IS ONLY A SIMULATION, NO REAL MONEY WILL BE USED.</p>
         <p className="text-xs text-neutral-500 mb-3">Available balance: ${balance.toFixed(2)}</p>
         <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" inputMode="decimal" className={`w-full rounded-xl bg-black/30 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400 mb-4`} />
         <button disabled={!valid || processing} onClick={go} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>{processing ? "Processing…" : `Withdraw $${num > 0 ? num.toFixed(2) : "0.00"}`}</button>
@@ -611,6 +776,9 @@ function WithdrawModal({ balance, onClose, onConfirm, theme }) {
 function WalletTab({ balance, transactions, onDeposit, onWithdraw, theme }) {
   return (
     <div className="space-y-4">
+      <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-4 py-3">
+        <p className="text-[11px] text-amber-300 font-semibold text-center leading-relaxed">FOR BETA MODE THIS IS ONLY A SIMULATION, NO REAL MONEY WILL BE USED.</p>
+      </div>
       <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-6 text-center`}>
         <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Wallet balance</div>
         <div className={`font-scoreboard text-6xl ${theme.text} tabular-nums`}>${balance.toFixed(2)}</div>
@@ -654,9 +822,14 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
   return (<div className="flex items-center gap-2">{renderSide(home, "left")}<span className="text-[11px] text-neutral-500 shrink-0">vs</span>{renderSide(away, "right")}</div>);
 }
 
-function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, onPick, onSubmit, onEdit, theme, saving }) {
+function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving }) {
   if (eliminated) {
-    return (<div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-5 text-center"><ShieldAlert className="mx-auto mb-2 text-rose-400" size={28} /><p className="text-slate-200 font-semibold">You're out this round</p><p className="text-neutral-500 text-sm mt-1">Your team came up short.</p></div>);
+    const copy = {
+      eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who takes the pool." },
+      kicked: { title: "You've been removed from this competition", body: "Your host has removed you from this competition. Reach out to them if you think this is a mistake." },
+      refunded: { title: "This competition was cancelled", body: "Your entry was refunded to your wallet. Head to Compete to join another one." },
+    }[entryStatus] || { title: "You're out this round", body: "You're no longer active in this competition." };
+    return (<div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-5 text-center"><ShieldAlert className="mx-auto mb-2 text-rose-400" size={28} /><p className="text-slate-200 font-semibold">{copy.title}</p><p className="text-neutral-500 text-sm mt-1">{copy.body}</p></div>);
   }
   return (
     <div className="space-y-4 pb-24">
@@ -693,29 +866,75 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
   );
 }
 
-function StandingsTab({ players, locked, poolAmount, lockCountdown }) {
+function StandingsTab({ players, locked, poolAmount, lockCountdown, entryCount }) {
+  const grouped = useMemo(() => {
+    const withPick = players.filter((p) => p.pick);
+    const noPick = players.filter((p) => !p.pick);
+    const map = {};
+    withPick.forEach((p) => { (map[p.pick] = map[p.pick] || []).push(p); });
+    const groups = Object.entries(map).sort((a, b) => b[1].length - a[1].length);
+    return { groups, noPick };
+  }, [players]);
+
+  const placeholderCount = Math.max(entryCount || 0, players.length);
+
   return (
     <div className="space-y-4">
       <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 flex items-center justify-around`}>
         <Scoreboard value={players.filter((p) => p.status !== "L").length} label="Still Alive" accent="text-teal-300" />
-        <div className="h-10 w-px bg-white/10" /><Scoreboard value={`$${poolAmount.toLocaleString()}`} label="Prize Pool" accent="gold" />
+        <div className="h-10 w-px bg-white/10" /><Scoreboard value={`$${poolAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
       </div>
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2">{locked ? <Eye size={14} className="text-teal-300" /> : <EyeOff size={14} className="text-neutral-500" />}This round's tips</h4>
         {!locked ? (
-          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>
-            Everyone's tips stay hidden until picks lock.
-            {lockCountdown && <div className="mt-1 text-xs text-amber-300">Locking in {lockCountdown} — 24 hours before kickoff</div>}
+          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+            <p className="text-center text-sm text-neutral-500 mb-4">Everyone's tips stay hidden until picks lock.</p>
+            {lockCountdown && <p className="text-center text-xs text-amber-300 mb-4">Locking in {lockCountdown} — 24 hours before kickoff</p>}
+            {placeholderCount > 0 && (
+              <div className="grid grid-cols-6 gap-2">
+                {Array.from({ length: placeholderCount }).map((_, i) => (
+                  <div key={i} className="h-9 w-9 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mx-auto">
+                    <span className="text-neutral-600 text-xs">?</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        ) :
-          players.length === 0 ? (<div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>Nobody has entered yet.</div>) : (
-          <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
-            {players.map((p) => (
-              <div key={p.uid} className={`flex items-center justify-between px-4 py-3 border-t border-white/5 first:border-t-0 ${p.isYou ? "bg-teal-400/5" : ""}`}>
-                <span className="text-sm text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
-                {p.pick ? (<div className="flex items-center gap-2"><span className="text-xs text-neutral-400">{p.pick}</span><TeamBadge team={p.pick} size={24} /></div>) : (<span className="text-xs text-rose-400">No pick</span>)}
+        ) : players.length === 0 ? (
+          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>Nobody has entered yet.</div>
+        ) : (
+          <div className="space-y-3">
+            {grouped.groups.map(([team, group]) => (
+              <div key={team} className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
+                <div className="flex items-center gap-2 px-4 py-2 bg-black/30">
+                  <TeamBadge team={team} size={22} />
+                  <span className="text-xs font-semibold text-slate-200">{team}</span>
+                  <span className="text-[10px] text-neutral-500">· {group.length} tipped this</span>
+                </div>
+                {group.map((p) => (
+                  <div key={p.uid} className={`flex items-center justify-between px-4 py-2.5 text-sm border-t border-white/5 ${p.isYou ? "bg-teal-400/5" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <UserAvatar preset={p.avatarPreset} name={p.name} size={24} />
+                      <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+                    </div>
+                    {p.status && (<span className={`inline-flex h-5 w-5 items-center justify-center rounded ${p.status === "W" ? "bg-teal-400/20 text-teal-300" : "bg-rose-500/20 text-rose-400"}`}>{p.status === "W" ? <Check size={12} /> : <X size={12} />}</span>)}
+                  </div>
+                ))}
               </div>
             ))}
+            {grouped.noPick.length > 0 && (
+              <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
+                <div className="px-4 py-2 bg-black/30"><span className="text-xs font-semibold text-rose-400">No pick submitted</span></div>
+                {grouped.noPick.map((p) => (
+                  <div key={p.uid} className={`flex items-center justify-between px-4 py-2.5 text-sm border-t border-white/5 ${p.isYou ? "bg-teal-400/5" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <UserAvatar preset={p.avatarPreset} name={p.name} size={24} />
+                      <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -725,7 +944,10 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown }) {
           {players.length === 0 && <div className="px-4 py-6 text-center text-sm text-neutral-500">No entries yet.</div>}
           {players.map((p) => (
             <div key={p.uid} className={`flex items-center justify-between px-4 py-3 text-sm border-t border-white/5 first:border-t-0 ${p.status === "L" ? "opacity-40" : ""} ${p.isYou ? "bg-teal-400/5" : ""}`}>
-              <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+              <div className="flex items-center gap-2">
+                <UserAvatar preset={p.avatarPreset} name={p.name} size={24} />
+                <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+              </div>
               {p.status && (<span className={`inline-flex h-5 w-5 items-center justify-center rounded ${p.status === "W" ? "bg-teal-400/20 text-teal-300" : "bg-rose-500/20 text-rose-400"}`}>{p.status === "W" ? <Check size={12} /> : <X size={12} />}</span>)}
             </div>
           ))}
@@ -735,7 +957,7 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown }) {
   );
 }
 
-function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, onSignOut, isHost }) {
+function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, onSignOut, isHost, history }) {
   const [draftName, setDraftName] = useState(profile.name || "");
   const [draftEmail, setDraftEmail] = useState(profile.email || "");
   const [saved, setSaved] = useState(false);
@@ -799,6 +1021,29 @@ function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAcce
         </div>
       </div>
 
+      {history.length > 0 && (
+        <div>
+          <h4 className="text-sm font-semibold text-neutral-300 mb-2">Your competition history</h4>
+          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 overflow-hidden`}>
+            {history.map((h) => (
+              <div key={h.id} className="flex items-center justify-between px-4 py-3 text-sm border-t border-white/5 first:border-t-0">
+                <div>
+                  <div className="text-slate-200">{h.tierName}</div>
+                  <div className="text-[10px] text-neutral-500">
+                    {h.status === "eliminated" && "Eliminated"}
+                    {h.status === "kicked" && "Removed by host"}
+                    {h.status === "refunded" && "Refunded — competition cancelled"}
+                  </div>
+                </div>
+                <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${h.status === "refunded" ? "bg-sky-400/10 text-sky-300" : h.status === "kicked" ? "bg-rose-500/10 text-rose-400" : "bg-neutral-700 text-neutral-300"}`}>
+                  {h.status === "refunded" ? "Refunded" : h.status === "kicked" ? "Kicked" : "Lost"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 text-neutral-300 font-semibold py-3 text-sm hover:bg-white/5"><LogOut size={15} /> Sign out</button>
     </div>
   );
@@ -851,25 +1096,232 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
   );
 }
 
-function HostTab({ tiers, onCreate, onUpdate, onDelete, theme }) {
+function FixtureEditor({ tier, effectiveFixtures, theme }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(effectiveFixtures);
+  const hasOverride = !!tier.fixtureOverrides;
+  useEffect(() => { if (!editing) setDraft(effectiveFixtures); }, [effectiveFixtures, editing]);
+
+  const updateRow = (i, field, value) => setDraft((prev) => prev.map((f, idx) => (idx === i ? { ...f, [field]: value } : f)));
+  const save = async () => { await db.collection("tiers").doc(tier.id).set({ fixtureOverrides: draft }, { merge: true }); setEditing(false); };
+  const resetToOfficial = async () => { await db.collection("tiers").doc(tier.id).set({ fixtureOverrides: FieldValue.delete() }, { merge: true }); setEditing(false); };
+
+  return (
+    <div className="rounded-lg border border-dashed border-white/10 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-neutral-400">{hasOverride ? "This round has host-corrected fixtures." : "Fixtures shown are from the official draw."}</span>
+        <button onClick={() => setEditing((e) => !e)} className="text-[11px] text-neutral-300 underline">{editing ? "Cancel" : "Fix fixtures"}</button>
+      </div>
+      {editing && (
+        <div className="mt-2 space-y-2">
+          {draft.map((f, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <select value={f.home} onChange={(e) => updateRow(i, "home", e.target.value)} className="flex-1 rounded bg-black/30 border border-white/10 px-1.5 py-1 text-[11px] text-slate-100">
+                {ALL_TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <span className="text-[10px] text-neutral-500">vs</span>
+              <select value={f.away} onChange={(e) => updateRow(i, "away", e.target.value)} className="flex-1 rounded bg-black/30 border border-white/10 px-1.5 py-1 text-[11px] text-slate-100">
+                {ALL_TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          ))}
+          {draft.map((f, i) => (
+            <input key={`ko-${i}`} value={f.kickoff || ""} onChange={(e) => updateRow(i, "kickoff", e.target.value)} placeholder={`Kickoff details for ${f.home} vs ${f.away}`}
+              className="w-full rounded bg-black/30 border border-white/10 px-2 py-1 text-[10px] text-slate-300 placeholder:text-neutral-600" />
+          ))}
+          <div className="flex gap-2 pt-1">
+            {hasOverride && <button onClick={resetToOfficial} className="flex-1 rounded-lg border border-white/10 text-neutral-300 py-1.5 text-xs">Reset to official draw</button>}
+            <button onClick={save} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-1.5 text-xs`}>Save fixture corrections</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HostResultsPanel({ tier, now, theme }) {
+  const [open, setOpen] = useState(false);
+  const [results, setResults] = useState({});
+  const [finalized, setFinalized] = useState(false);
+  const [wipeoutSurvived, setWipeoutSurvived] = useState(false);
+  const [picks, setPicks] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const round = getRound(tier.roundId);
+  const effectiveFixtures = tier.fixtureOverrides || round.fixtures;
+  const resultsDocId = `${tier.id}_${tier.roundId}`;
+  const locked = tier.lockTime ? now.getTime() >= tier.lockTime.getTime() : false;
+
+  useEffect(() => {
+    if (!open) return;
+    const unsubResults = db.collection("results").doc(resultsDocId).onSnapshot((doc) => {
+      const data = doc.exists ? doc.data() : {};
+      setResults(data.fixtureResults || {});
+      setFinalized(!!data.finalized);
+      setWipeoutSurvived(!!data.wipeoutSurvived);
+    });
+    const unsubPicks = db.collection("picks").where("tierId", "==", tier.id).where("roundId", "==", tier.roundId).onSnapshot((snap) => setPicks(snap.docs.map((d) => d.data())));
+    const unsubEntries = db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { unsubResults(); unsubPicks(); unsubEntries(); };
+  }, [open, tier.id, tier.roundId]);
+
+  const setFixtureResult = (i, winner) => db.collection("results").doc(resultsDocId).set({ fixtureResults: { ...results, [i]: winner } }, { merge: true });
+
+  // Re-runnable on purpose: hosts can come back and correct a result any time, even after
+  // confirming once — this both eliminates new losers and restores anyone wrongly eliminated
+  // by a previous (mistaken) confirmation, without touching anyone kicked or refunded.
+  const applyResults = async () => {
+    const eligible = entries.filter((e) => e.status === "active" || e.status === "eliminated");
+    const decided = picks.filter((p) => eligible.some((e) => e.uid === p.uid)).map((p) => {
+      const fi = effectiveFixtures.findIndex((f) => f.home === p.team || f.away === p.team);
+      const winner = results[fi];
+      return { uid: p.uid, status: winner ? (winner === p.team ? "W" : "L") : null };
+    }).filter((p) => p.status);
+    if (decided.length === 0) return;
+
+    const allLost = decided.every((p) => p.status === "L");
+    const batch = db.batch();
+    if (allLost) {
+      // Special rule: if literally everyone loses, restore anyone this round had eliminated and survive the wipeout.
+      decided.forEach((p) => {
+        const entry = eligible.find((e) => e.uid === p.uid);
+        if (entry.status === "eliminated") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "active" });
+      });
+      batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: true }, { merge: true });
+    } else {
+      decided.forEach((p) => {
+        const entry = eligible.find((e) => e.uid === p.uid);
+        if (p.status === "L" && entry.status === "active") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "eliminated" });
+        if (p.status === "W" && entry.status === "eliminated") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "active" });
+      });
+      batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: false }, { merge: true });
+    }
+    await batch.commit();
+  };
+
+  if (!locked) return <p className="mt-3 text-[11px] text-neutral-500">Results entry unlocks once picks lock for this round.</p>;
+
+  return (
+    <div className="mt-3">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
+        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} /> {open ? "Hide round results" : "Enter round results"}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <FixtureEditor tier={tier} effectiveFixtures={effectiveFixtures} theme={theme} />
+          {effectiveFixtures.map((f, i) => (
+            <div key={i} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
+              <span className="text-xs text-neutral-400">{f.home} vs {f.away}</span>
+              <div className="flex gap-1">
+                {[f.home, f.away].map((team) => (
+                  <button key={team} onClick={() => setFixtureResult(i, team)} className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>{team} won</button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {finalized && (
+            <p className="text-[11px] text-teal-300">✓ Last confirmed — eliminations applied.{wipeoutSurvived ? " Everyone lost this round, so nobody was eliminated (as per the rules)." : ""}</p>
+          )}
+          <button onClick={applyResults} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>
+            {finalized ? "Update results & re-apply eliminations" : "Confirm round results & apply eliminations"}
+          </button>
+          <p className="text-[10px] text-neutral-500">You can come back and correct a result any time — re-confirming will fix eliminations to match, restoring anyone wrongly eliminated by mistake.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HostEntrantsPanel({ tier, theme, onKick, onRestore, onMarkEliminated }) {
+  const [open, setOpen] = useState(false);
+  const [entrants, setEntrants] = useState([]);
+  useEffect(() => {
+    if (!open) return;
+    const unsub = db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => {
+      setEntrants(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsub;
+  }, [open, tier.id]);
+
+  return (
+    <div className="mt-3">
+      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
+        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} /> {open ? "Hide entrants" : "Manage entrants"}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {entrants.length === 0 && <p className="text-[11px] text-neutral-500">No entrants yet.</p>}
+          {entrants.map((e) => (
+            <div key={e.id} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
+              <div>
+                <span className="text-xs text-slate-200">{e.name}</span>
+                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${e.status === "active" ? `${theme.bgSoft} ${theme.text}` : "bg-neutral-700 text-neutral-400"}`}>{e.status}</span>
+              </div>
+              <div className="flex gap-1">
+                {e.status === "active" ? (
+                  <>
+                    <button onClick={() => onMarkEliminated(tier.id, e.uid)} className="rounded px-2 py-1 text-[10px] font-medium bg-rose-500/10 text-rose-400">Mark lost</button>
+                    <button onClick={() => onKick(tier.id, e.uid)} className="rounded px-2 py-1 text-[10px] font-medium bg-neutral-700 text-neutral-300">Kick</button>
+                  </>
+                ) : (
+                  <button onClick={() => onRestore(tier.id, e.uid)} className="rounded px-2 py-1 text-[10px] font-medium bg-neutral-700 text-neutral-300">Restore</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onCancelRefund, rollingEarnings, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [cancelling, setCancelling] = useState(null);
   return (
     <div className="space-y-4 pb-6">
+      <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 text-center`}>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Rolling LMS Earnings</div>
+        <div className="font-scoreboard text-4xl text-amber-300 tabular-nums">${rollingEarnings.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+        <p className="text-[10px] text-neutral-500 mt-1">10% platform fee across all active competitions</p>
+      </div>
       {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ Create new competition</button>)}
       {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={async (data) => { await onCreate(data); setCreating(false); }} />)}
       <div className="space-y-3">
         {tiers.map((tier) => (
-          <div key={tier.id} className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+          <div key={tier.id} className={`rounded-xl border ${tier.cancelled ? "border-rose-500/20" : PANEL_BORDER} bg-neutral-800 p-4`}>
             {editingId === tier.id ? (
               <HostTierForm initial={tier} theme={theme} onCancel={() => setEditingId(null)} onSave={async (data) => { await onUpdate(tier.id, data); setEditingId(null); }} />
             ) : (
               <>
                 <div className="flex items-center justify-between">
-                  <div><div className="text-slate-100 font-medium">{tier.name}</div><div className="text-xs text-neutral-500">${tier.buyIn} buy-in · starts {tier.startLabel} · {tier.entries} entered</div></div>
-                  <div className="flex gap-2"><button onClick={() => setEditingId(tier.id)} className="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600"><Pencil size={14} /></button><button onClick={() => { if (confirm(`Delete "${tier.name}"?`)) onDelete(tier.id); }} className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"><Trash size={14} /></button></div>
+                  <div>
+                    <div className="text-slate-100 font-medium">{tier.name}{tier.cancelled && <span className="ml-2 text-[10px] text-rose-400">(Cancelled)</span>}</div>
+                    <div className="text-xs text-neutral-500">${tier.buyIn} buy-in · starts {tier.startLabel} · {tier.entries} entered</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingId(tier.id)} className="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600"><Pencil size={14} /></button>
+                    <button onClick={() => { if (confirm(`Delete "${tier.name}"?`)) onDelete(tier.id); }} className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"><Trash size={14} /></button>
+                  </div>
                 </div>
                 {tier.rules && <p className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{tier.rules}</p>}
+                {!tier.cancelled && (
+                  <>
+                    <HostEntrantsPanel tier={tier} theme={theme} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} />
+                    <HostResultsPanel tier={tier} now={now} theme={theme} />
+                    {cancelling === tier.id ? (
+                      <div className="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3">
+                        <p className="text-[11px] text-rose-300 mb-2">This refunds every active entrant's buy-in and closes the competition. This can't be undone.</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => setCancelling(null)} className="flex-1 rounded-lg border border-white/10 text-neutral-300 py-1.5 text-xs">Never mind</button>
+                          <button onClick={async () => { await onCancelRefund(tier); setCancelling(null); }} className="flex-1 rounded-lg bg-rose-500 text-white py-1.5 text-xs font-semibold">Confirm cancel &amp; refund</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setCancelling(tier.id)} className="mt-3 text-xs text-rose-400 hover:text-rose-300">Cancel competition &amp; refund everyone</button>
+                    )}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -904,6 +1356,7 @@ function AppShell({ user }) {
   const [pickSubmitted, setPickSubmitted] = useState(false);
   const [pickSaving, setPickSaving] = useState(false);
   const [results, setResults] = useState({});
+  const [picksLoaded, setPicksLoaded] = useState(false);
 
   const accent = profile?.accent || "teal";
   const theme = useAccentTheme(accent);
@@ -920,7 +1373,9 @@ function AppShell({ user }) {
         setProfile(data);
         if (!screenInitialized.current) {
           screenInitialized.current = true;
-          setScreen(!data.ageVerified ? "idcheck" : "sport");
+          if (!data.ageVerified) setScreen("idcheck");
+          else if (!data.hasSeenHowToPlay) setScreen("howtoplay");
+          else setScreen("sport");
         }
       }
     });
@@ -942,7 +1397,7 @@ function AppShell({ user }) {
 
   useEffect(() => {
     const unsubs = rawTiers.map((tier) => db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => setEntryCounts((prev) => ({ ...prev, [tier.id]: snap.size }))));
-    const unsubMine = db.collection("entries").where("uid", "==", user.uid).onSnapshot((snap) => { const mine = {}; snap.docs.forEach((d) => { mine[d.data().tierId] = true; }); setMyEntries(mine); });
+    const unsubMine = db.collection("entries").where("uid", "==", user.uid).onSnapshot((snap) => { const mine = {}; snap.docs.forEach((d) => { mine[d.data().tierId] = { id: d.id, ...d.data() }; }); setMyEntries(mine); });
     return () => { unsubs.forEach((u) => u()); unsubMine(); };
   }, [rawTiers.map((t) => t.id).join(","), user.uid]);
 
@@ -955,16 +1410,21 @@ function AppShell({ user }) {
   // Older competitions created before round selection existed won't have a roundId yet —
   // fall back to the first known round so they still work instead of crashing.
   const effectiveRoundId = currentTier?.roundId || NRL_ROUNDS[0].id;
-  const currentRound = currentTier ? getRound(effectiveRoundId) : null;
+  const currentRound = currentTier ? { ...getRound(effectiveRoundId), fixtures: currentTier.fixtureOverrides || getRound(effectiveRoundId).fixtures } : null;
 
   useEffect(() => {
+    setPicksLoaded(false);
     if (!joinedTierId || !currentTier) { setAllPicks([]); setMyPick(null); setPickSubmitted(false); return; }
     const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("roundId", "==", effectiveRoundId).onSnapshot((snap) => {
       const list = snap.docs.map((d) => d.data()); setAllPicks(list);
       const mine = list.find((p) => p.uid === user.uid);
       if (mine) { setMyPick(mine.team); setPickSubmitted(true); } else { setMyPick(null); setPickSubmitted(false); }
+      setPicksLoaded(true);
     });
-    const unsubResults = db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).onSnapshot((doc) => setResults(doc.exists ? doc.data().fixtureResults || {} : {}));
+    const unsubResults = db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).onSnapshot((doc) => {
+      const data = doc.exists ? doc.data() : {};
+      setResults(data.fixtureResults || {});
+    });
     return () => { unsubPicks(); unsubResults(); };
   }, [joinedTierId, effectiveRoundId, user.uid]);
 
@@ -978,13 +1438,29 @@ function AppShell({ user }) {
       const fixtureIndex = currentRound.fixtures.findIndex((f) => f.home === p.team || f.away === p.team);
       const winner = results[fixtureIndex];
       const status = winner ? (winner === p.team ? "W" : "L") : null;
-      return { uid: p.uid, name: p.name, pick: p.team, isYou: p.uid === user.uid, status };
+      return { uid: p.uid, name: p.name, avatarPreset: p.avatarPreset || null, pick: p.team, isYou: p.uid === user.uid, status };
     });
   }, [allPicks, results, user.uid, currentRound]);
 
   const myStatus = players.find((p) => p.isYou)?.status || null;
-  const eliminated = myStatus === "L";
+  const myEntryStatus = myEntries[joinedTierId]?.status;
+  const eliminated = !!myEntryStatus && myEntryStatus !== "active"; // covers eliminated, kicked, and refunded alike
   const lockedTeam = myStatus === "W" ? myPick : null;
+
+  // If tips have locked and this user never submitted a pick, auto-assign a random
+  // team on their behalf (excluding whichever team they can't reuse), per the rules.
+  useEffect(() => {
+    if (!picksLoaded || !tipsLocked || !joinedTierId || !currentRound || eliminated || myPick || pickSubmitted) return;
+    const available = currentRound.fixtures.flatMap((f) => [f.home, f.away]).filter((t) => t !== lockedTeam);
+    if (available.length === 0) return;
+    const randomTeam = available[Math.floor(Math.random() * available.length)];
+    setMyPick(randomTeam);
+    setPickSubmitted(true);
+    db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({
+      tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: randomTeam,
+      submittedAt: FieldValue.serverTimestamp(), autoAssigned: true,
+    }).catch(() => { setMyPick(null); setPickSubmitted(false); });
+  }, [picksLoaded, tipsLocked, joinedTierId, currentRound, eliminated, myPick, pickSubmitted, lockedTeam]);
 
   const updateProfile = (patch) => db.collection("users").doc(user.uid).set(patch, { merge: true });
 
@@ -998,7 +1474,7 @@ function AppShell({ user }) {
         if (bal < tier.buyIn) throw new Error("Insufficient balance");
         tx.update(userRef, { walletBalance: FieldValue.increment(-tier.buyIn) });
         tx.set(db.collection("users").doc(user.uid).collection("transactions").doc(), { label: `${tier.name} entry`, amount: -tier.buyIn, createdAt: FieldValue.serverTimestamp() });
-        tx.set(db.collection("entries").doc(`${tier.id}_${user.uid}`), { tierId: tier.id, uid: user.uid, name: profile.name, joinedAt: FieldValue.serverTimestamp() });
+        tx.set(db.collection("entries").doc(`${tier.id}_${user.uid}`), { tierId: tier.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
       });
       setViewingTierId(tier.id);
       setEntryTarget(null); setTab("pick");
@@ -1010,19 +1486,40 @@ function AppShell({ user }) {
     setPickSubmitted(true); // show confirmation instantly, don't wait on the network
     setPickSaving(false);
     try {
-      await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
+      await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: myPick, submittedAt: FieldValue.serverTimestamp() });
     } catch (e) {
       setPickSubmitted(false); // roll back if it genuinely failed to save
     }
   };
 
-  const setFixtureResult = (fixtureIndex, winner) => db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
   const createTier = (data) => db.collection("tiers").add({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
+  const kickEntrant = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "kicked" });
+  const restoreEntrant = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "active" });
+  const markEliminated = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "eliminated" });
+
+  const cancelAndRefund = async (tier) => {
+    const snap = await db.collection("entries").where("tierId", "==", tier.id).get();
+    const batch = db.batch();
+    snap.docs.forEach((d) => {
+      const entry = d.data();
+      if (entry.status !== "active") return;
+      batch.update(d.ref, { status: "refunded" });
+      batch.update(db.collection("users").doc(entry.uid), { walletBalance: FieldValue.increment(tier.buyIn) });
+      batch.set(db.collection("users").doc(entry.uid).collection("transactions").doc(), {
+        label: `Refund — ${tier.name} cancelled`, amount: tier.buyIn, createdAt: FieldValue.serverTimestamp(),
+      });
+    });
+    batch.update(db.collection("tiers").doc(tier.id), { cancelled: true });
+    await batch.commit();
+  };
+
+  const rollingEarnings = useMemo(() => tiers.filter((t) => !t.cancelled).reduce((sum, t) => sum + t.pool * PLATFORM_FEE_RATE, 0), [tiers]);
 
   if (screen === "loading" || !profile) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
-  if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { updateProfile({ ...idInfo, ageVerified: true }); setScreen("sport"); }} />;
+  if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { updateProfile({ ...idInfo, ageVerified: true }); setScreen("howtoplay"); }} />;
+  if (screen === "howtoplay") return <HowToPlayScreen onAccept={() => { updateProfile({ hasSeenHowToPlay: true }); setScreen("sport"); }} />;
   if (screen === "sport") return <SportScreen userName={profile.name} showBack={!!sport} onBack={() => setScreen("app")} onPick={(s) => { setSport(s); setScreen("app"); }} />;
 
   const isHost = profile.role === "host";
@@ -1062,35 +1559,23 @@ function AppShell({ user }) {
         {tab === "compete" && (
           <div className="space-y-4">
             <p className="text-sm text-neutral-500">Pick a tier, and survive the rounds.</p>
-            {tiers.length === 0 && <p className="text-center text-sm text-neutral-500 py-12">No competitions live yet — ask your host to set one up.</p>}
-            {tiers.map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} joined={!!myEntries[tier.id]} theme={theme} />)}
+            {tiers.filter((t) => !t.cancelled).length === 0 && <p className="text-center text-sm text-neutral-500 py-12">No competitions live yet — ask your host to set one up.</p>}
+            {tiers.filter((t) => !t.cancelled).map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} joined={!!myEntries[tier.id]} theme={theme} />)}
           </div>
         )}
         {tab === "pick" && currentTier && currentRound && (
           <PickTab round={currentRound} myPick={myPick} lockedTeam={lockedTeam} submitted={pickSubmitted} locked={tipsLocked}
-            lockCountdown={lockCountdown} eliminated={eliminated} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
+            lockCountdown={lockCountdown} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
             onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
-        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool} lockCountdown={lockCountdown} />}
+        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool * (1 - PLATFORM_FEE_RATE)} lockCountdown={lockCountdown} entryCount={currentTier.entries} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
         {tab === "wallet" && <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />}
-        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} theme={theme} />}
+        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onCancelRefund={cancelAndRefund} rollingEarnings={rollingEarnings} now={now} theme={theme} />}
         {tab === "settings" && (
-          <SettingsTab profile={profile} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost} />
-        )}
-        {currentTier && currentRound && (
-          <details className="mt-6 rounded-xl border border-dashed border-white/10 p-4">
-            <summary className="text-xs text-neutral-500 cursor-pointer">Friends-test tools — simulate this round's results</summary>
-            <div className="space-y-2 mt-2">
-              {currentRound.fixtures.map((f, i) => (
-                <div key={i} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
-                  <span className="text-xs text-neutral-400">{f.home} vs {f.away}</span>
-                  <div className="flex gap-1">{[f.home, f.away].map((team) => (<button key={team} onClick={() => setFixtureResult(i, team)} className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>{team} won</button>))}</div>
-                </div>
-              ))}
-            </div>
-          </details>
+          <SettingsTab profile={profile} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost}
+            history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
         )}
       </main>
 
@@ -1112,20 +1597,54 @@ function AppShell({ user }) {
 }
 
 function SplashScreen({ onFinish }) {
+  const [revealCount, setRevealCount] = useState(0);
   const [phase, setPhase] = useState("in");
+  const audioCtxRef = useRef(null);
+
+  const playThump = (freq, boom) => {
+    try {
+      if (!audioCtxRef.current) {
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        audioCtxRef.current = new Ctx();
+      }
+      const ctx = audioCtxRef.current;
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      const dur = boom ? 0.42 : 0.2;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.35, 20), ctx.currentTime + dur);
+      gain.gain.setValueAtTime(boom ? 0.9 : 0.55, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + dur + 0.05);
+    } catch (e) { /* audio blocked or unavailable — visuals still carry the beat */ }
+  };
+
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase("out"), 2600);
-    const t2 = setTimeout(() => onFinish(), 3200);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const timers = [
+      setTimeout(() => { setRevealCount(1); playThump(95, false); }, 400),
+      setTimeout(() => { setRevealCount(2); playThump(85, false); }, 1700),
+      setTimeout(() => { setRevealCount(3); playThump(55, true); }, 3000),
+      setTimeout(() => setPhase("out"), 4600),
+      setTimeout(() => onFinish(), 5100),
+    ];
+    return () => timers.forEach(clearTimeout);
   }, []);
+
   return (
-    <div className={`fixed inset-0 z-50 flex items-center justify-center transition-opacity duration-[600ms] ${phase === "out" ? "opacity-0" : "opacity-100"}`} style={{ backgroundColor: "#050506" }}>
-      <div className="relative flex flex-col items-center">
-        <div className="absolute rounded-full blur-3xl opacity-70" style={{ width: 260, height: 260, background: "radial-gradient(circle, rgba(255,80,55,0.6), transparent 70%)" }} />
-        <div className="splash-ring" />
-        <div className="splash-ring2" />
-        <h1 className="splash-logo font-scoreboard text-6xl tracking-wide relative" style={{ color: "#fff1e0" }}>LMS</h1>
-        <p className="splash-sub text-[11px] tracking-[0.4em] uppercase text-neutral-400 mt-4 relative">Last Man Standing</p>
+    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden transition-opacity duration-[600ms] ${phase === "out" ? "opacity-0" : "opacity-100"}`} style={{ backgroundColor: "#050506" }}>
+      <div key={revealCount} className={revealCount > 0 ? "splash-shake" : ""}>
+        {revealCount > 0 && <div key={`flash-${revealCount}`} className="splash-flash" />}
+        <div className="flex flex-col items-center gap-0.5 relative">
+          {revealCount >= 1 && <div key="w1" className="splash-word font-scoreboard text-5xl tracking-wide" style={{ color: "#fff1e0" }}>LAST.</div>}
+          {revealCount >= 2 && <div key="w2" className="splash-word font-scoreboard text-5xl tracking-wide" style={{ color: "#fff1e0" }}>MAN.</div>}
+          {revealCount >= 3 && <div key="w3" className="splash-word-big font-scoreboard text-6xl tracking-wide" style={{ color: "#fff1e0" }}>STANDING!</div>}
+        </div>
+        {revealCount >= 3 && <p className="splash-sub text-[11px] tracking-[0.4em] uppercase text-neutral-400 mt-4 text-center relative">Beta</p>}
       </div>
     </div>
   );
