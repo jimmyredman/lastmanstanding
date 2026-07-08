@@ -51,6 +51,9 @@
   .splash-word-big { animation: wordSlam 0.4s cubic-bezier(.2,1.9,.3,1) both; text-shadow: 0 0 30px rgba(255,110,70,0.95), 0 0 70px rgba(255,60,40,0.6); line-height: 1; }
   .splash-shake { animation: screenShake 0.32s ease-out; }
   .splash-flash { position: absolute; inset: 0; background: radial-gradient(circle, rgba(255,120,80,0.9), rgba(255,60,40,0.3) 60%, transparent 80%); animation: flashPulse 0.3s ease-out forwards; pointer-events: none; }
+
+  @keyframes stampPop { 0% { transform: scale(2.2) rotate(-18deg); opacity: 0; } 60% { transform: scale(0.92) rotate(-18deg); opacity: 1; } 80% { transform: scale(1.05) rotate(-18deg); } 100% { transform: scale(1) rotate(-18deg); opacity: 1; } }
+  .stamp-pop > div { animation: stampPop 0.45s cubic-bezier(.2,1.6,.3,1) both; }
 </style>
 </head>
 <body>
@@ -82,6 +85,8 @@ function makeIcon(symbol) {
   };
 }
 const Flame = makeIcon("🔥");
+const Users = makeIcon("👥");
+const Lock = makeIcon("🔒");
 const CreditCard = makeIcon("💳");
 const ShieldAlert = makeIcon("🛡️");
 const Check = makeIcon("✅");
@@ -384,6 +389,48 @@ function UserAvatar({ preset, name, size = 64 }) {
   );
 }
 
+async function hashPin(pin, salt) {
+  const enc = new TextEncoder();
+  const data = enc.encode(`${pin}:${salt}`);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function PinLockScreen({ uid, onUnlock, onUseEmailInstead }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
+
+  const submit = async () => {
+    setChecking(true); setError("");
+    const stored = window.localStorage.getItem(`lms_pin_${uid}`);
+    const hash = await hashPin(pin, uid);
+    if (hash === stored) { onUnlock(); }
+    else { setError("Incorrect PIN"); setPin(""); }
+    setChecking(false);
+  };
+
+  return (
+    <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG }}>
+      <div className="max-w-sm mx-auto w-full text-center">
+        <Flame className="text-rose-500 mx-auto mb-3" size={26} />
+        <h2 className="font-scoreboard text-2xl tracking-wide mb-1">ENTER YOUR PIN</h2>
+        <p className="text-xs text-neutral-500 mb-6">Quick unlock for this device</p>
+        <input
+          value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+          type="password" inputMode="numeric" autoFocus placeholder="••••"
+          className="w-full text-center tracking-[0.5em] text-2xl rounded-xl bg-neutral-800 border border-white/10 px-4 py-3 text-slate-100 placeholder:text-neutral-600 outline-none focus:border-teal-400" />
+        {error && <p className="text-xs text-rose-400 mt-3">{error}</p>}
+        <button disabled={pin.length < 4 || checking} onClick={submit}
+          className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm">
+          {checking ? "Checking…" : "Unlock"}
+        </button>
+        <button onClick={onUseEmailInstead} className="mt-4 text-xs text-neutral-500 underline">Forgot your PIN? Use email &amp; password instead</button>
+      </div>
+    </div>
+  );
+}
+
 function calcAge(dobString) {
   if (!dobString) return null;
   const dob = new Date(dobString);
@@ -411,10 +458,21 @@ function TeamBadge({ team, size = 36 }) {
   if (logo) return <img src={logo} alt={team} style={{ width: size, height: size }} className="object-contain rounded-md shrink-0" />;
   const color = TEAM_COLORS[team] || "#555";
   const initials = team.slice(0, 2).toUpperCase();
+  const gradId = `shield-grad-${team.replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
-    <svg width={size} height={size * 1.1} viewBox="0 0 40 44" className="shrink-0">
-      <path d="M20 2 L36 8 V21 C36 31 29 39 20 42 C11 39 4 31 4 21 V8 Z" fill={color} stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
-      <text x="20" y="26" textAnchor="middle" fontSize="14" fontWeight="700" fill="white" fontFamily="Teko, sans-serif">{initials}</text>
+    <svg width={size} height={size * 1.15} viewBox="0 0 44 50" className="shrink-0" style={{ filter: `drop-shadow(0 0 ${Math.max(3, size * 0.12)}px ${color}aa)` }}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
+          <stop offset="40%" stopColor={color} stopOpacity="0" />
+          <stop offset="100%" stopColor="#000000" stopOpacity="0.4" />
+        </linearGradient>
+      </defs>
+      <path d="M22 1 L40 8 V23 C40 34 33 43 22 48 C11 43 4 34 4 23 V8 Z" fill={color} stroke="rgba(255,255,255,0.75)" strokeWidth="1" />
+      <path d="M22 1 L40 8 V23 C40 34 33 43 22 48 C11 43 4 34 4 23 V8 Z" fill={`url(#${gradId})`} />
+      <path d="M22 4.5 L36.5 10.3 V22.5 C36.5 32 30.8 39.6 22 44 C13.2 39.6 7.5 32 7.5 22.5 V10.3 Z" fill="none" stroke="rgba(255,255,255,0.32)" strokeWidth="0.8" />
+      <text x="22" y="29" textAnchor="middle" fontSize="15" fontWeight="800" fill="white" fontFamily="Teko, sans-serif">{initials}</text>
+      <circle cx="22" cy="45.8" r="1.1" fill="rgba(255,255,255,0.5)" />
     </svg>
   );
 }
@@ -644,12 +702,19 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
   const roundLabel = getRound(tier.roundId).label;
   const netPool = tier.pool * (1 - PLATFORM_FEE_RATE);
   return (
-    <div className={`relative rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
+    <div className={`relative overflow-hidden rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
+      {joined && (
+        <div className="stamp-pop absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="border-4 border-teal-400 text-teal-300 font-scoreboard text-4xl tracking-widest px-6 py-1 -rotate-[18deg]" style={{ textShadow: "0 0 18px rgba(45,212,191,0.7)", boxShadow: "0 0 24px rgba(45,212,191,0.35)" }}>
+            YOU'RE IN
+          </div>
+        </div>
+      )}
       {isHigh && (<div className="absolute -top-3 left-5 flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"><Crown size={12} /> High Stakes</div>)}
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
       <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
       <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : `Entries close in ${countdown} (picks lock 24h before kickoff)`}
+        <Clock size={13} />{entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
       </div>
       <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
         <Scoreboard value={`$${netPool.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
@@ -834,7 +899,7 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
   return (
     <div className="space-y-4 pb-24">
       <div className={`rounded-xl px-4 py-3 flex items-center gap-2 text-xs font-medium ${locked ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{locked ? "Tips are locked for this round" : `Tips lock in ${lockCountdown} — 1 day before kickoff`}
+        <Clock size={13} />{locked ? "Tips are locked for this round" : `Tips lock in ${lockCountdown} — 24 hours before the round's first game`}
       </div>
       <div className="flex items-center justify-between">
         <p className="text-xs text-neutral-500">Tap a team to make it your pick. You can't reuse a team you've already won with.</p>
@@ -889,7 +954,7 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown, entryCount }
         {!locked ? (
           <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
             <p className="text-center text-sm text-neutral-500 mb-4">Everyone's tips stay hidden until picks lock.</p>
-            {lockCountdown && <p className="text-center text-xs text-amber-300 mb-4">Locking in {lockCountdown} — 24 hours before kickoff</p>}
+            {lockCountdown && <p className="text-center text-xs text-amber-300 mb-4">Locking in {lockCountdown} — 24 hours before the round's first game kicks off. Once locked, only your host can change results.</p>}
             {placeholderCount > 0 && (
               <div className="grid grid-cols-6 gap-2">
                 {Array.from({ length: placeholderCount }).map((_, i) => (
@@ -957,8 +1022,65 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown, entryCount }
   );
 }
 
-function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, onSignOut, isHost, history }) {
+function PinSettings({ uid, theme, onChange }) {
+  const [hasPin, setHasPin] = useState(() => !!window.localStorage.getItem(`lms_pin_${uid}`));
+  const [editing, setEditing] = useState(false);
+  const [pin1, setPin1] = useState("");
+  const [pin2, setPin2] = useState("");
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => { onChange && onChange(hasPin); }, [hasPin]);
+
+  const save = async () => {
+    setError("");
+    if (pin1.length < 4) { setError("PIN must be at least 4 digits"); return; }
+    if (pin1 !== pin2) { setError("PINs don't match"); return; }
+    const hash = await hashPin(pin1, uid);
+    window.localStorage.setItem(`lms_pin_${uid}`, hash);
+    setHasPin(true); setEditing(false); setPin1(""); setPin2("");
+    setSaved(true); setTimeout(() => setSaved(false), 1500);
+  };
+  const remove = () => { window.localStorage.removeItem(`lms_pin_${uid}`); setHasPin(false); setEditing(false); };
+
+  return (
+    <div>
+      <h4 className="text-sm font-semibold text-neutral-300 mb-2">Quick PIN unlock</h4>
+      <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+        <p className="text-xs text-neutral-500 mb-3">Set a PIN to unlock the app quickly on this device — once set, it replaces retyping your password on this device. This doesn't change your account password.</p>
+        {!editing ? (
+          hasPin ? (
+            <div className="flex items-center justify-between">
+              <span className={`text-xs ${theme.text} flex items-center gap-1`}><Check size={12} /> PIN set on this device{saved ? " — saved ✓" : ""}</span>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(true)} className="text-xs text-neutral-300 underline">Change</button>
+                <button onClick={remove} className="text-xs text-rose-400 underline">Remove</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setEditing(true)} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>Set a PIN</button>
+          )
+        ) : (
+          <div className="space-y-2">
+            <input value={pin1} onChange={(e) => setPin1(e.target.value.replace(/\D/g, "").slice(0, 6))} type="password" inputMode="numeric" placeholder="New PIN (4-6 digits)"
+              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none" />
+            <input value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, "").slice(0, 6))} type="password" inputMode="numeric" placeholder="Confirm PIN"
+              className="w-full rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none" />
+            {error && <p className="text-xs text-rose-400">{error}</p>}
+            <div className="flex gap-2">
+              <button onClick={() => { setEditing(false); setError(""); setPin1(""); setPin2(""); }} className="flex-1 rounded-lg border border-white/10 text-neutral-300 py-2 text-sm">Cancel</button>
+              <button onClick={save} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>Save PIN</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, onSignOut, isHost, history }) {
   const [draftName, setDraftName] = useState(profile.name || "");
+  const [hasPinForDevice, setHasPinForDevice] = useState(false);
   const [draftEmail, setDraftEmail] = useState(profile.email || "");
   const [saved, setSaved] = useState(false);
 
@@ -1044,7 +1166,16 @@ function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAcce
         </div>
       )}
 
-      <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 text-neutral-300 font-semibold py-3 text-sm hover:bg-white/5"><LogOut size={15} /> Sign out</button>
+      <PinSettings uid={uid} theme={theme} onChange={setHasPinForDevice} />
+
+      {hasPinForDevice ? (
+        <div className="space-y-2">
+          <button onClick={() => window.location.reload()} className={`w-full flex items-center justify-center gap-2 rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}><Lock size={15} /> Lock app</button>
+          <button onClick={onSignOut} className="w-full text-center text-xs text-neutral-500 underline">Sign out completely instead (you'll need your password next time)</button>
+        </div>
+      ) : (
+        <button onClick={onSignOut} className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/10 text-neutral-300 font-semibold py-3 text-sm hover:bg-white/5"><LogOut size={15} /> Sign out</button>
+      )}
     </div>
   );
 }
@@ -1181,7 +1312,8 @@ function HostResultsPanel({ tier, now, theme }) {
     const allLost = decided.every((p) => p.status === "L");
     const batch = db.batch();
     if (allLost) {
-      // Special rule: if literally everyone loses, restore anyone this round had eliminated and survive the wipeout.
+      // Special rule: if literally everyone loses, restore anyone this round had eliminated and
+      // redo the same round — don't advance, since nobody actually survived to move forward.
       decided.forEach((p) => {
         const entry = eligible.find((e) => e.uid === p.uid);
         if (entry.status === "eliminated") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "active" });
@@ -1194,6 +1326,19 @@ function HostResultsPanel({ tier, now, theme }) {
         if (p.status === "W" && entry.status === "eliminated") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "active" });
       });
       batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: false }, { merge: true });
+
+      // Automatically move the competition to the next round now that results are in —
+      // survivors carry forward, losers stay eliminated, no manual step needed.
+      const idx = NRL_ROUNDS.findIndex((r) => r.id === tier.roundId);
+      const next = NRL_ROUNDS[idx + 1];
+      if (next) {
+        batch.set(db.collection("tiers").doc(tier.id), {
+          roundId: next.id, previousRoundId: tier.roundId,
+          startTime: Timestamp.fromDate(next.firstKickoff),
+          lockTime: Timestamp.fromDate(new Date(next.firstKickoff.getTime() - 1000 * 60 * 60 * 24)),
+          fixtureOverrides: FieldValue.delete(),
+        }, { merge: true });
+      }
     }
     await batch.commit();
   };
@@ -1219,57 +1364,57 @@ function HostResultsPanel({ tier, now, theme }) {
             </div>
           ))}
           {finalized && (
-            <p className="text-[11px] text-teal-300">✓ Last confirmed — eliminations applied.{wipeoutSurvived ? " Everyone lost this round, so nobody was eliminated (as per the rules)." : ""}</p>
+            <p className="text-[11px] text-teal-300">✓ Last confirmed — eliminations applied{wipeoutSurvived ? "." : " and the competition has moved to the next round."}{wipeoutSurvived ? " Everyone lost this round, so nobody was eliminated — same round repeats (as per the rules)." : ""}</p>
           )}
           <button onClick={applyResults} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>
-            {finalized ? "Update results & re-apply eliminations" : "Confirm round results & apply eliminations"}
+            {finalized ? "Update results & re-apply" : "Confirm round results"}
           </button>
-          <p className="text-[10px] text-neutral-500">You can come back and correct a result any time — re-confirming will fix eliminations to match, restoring anyone wrongly eliminated by mistake.</p>
+          <p className="text-[10px] text-neutral-500">Confirming applies eliminations and automatically moves survivors to the next round — no manual step needed. You can come back and correct a result any time if a mistake was made.</p>
         </div>
       )}
     </div>
   );
 }
 
-function HostEntrantsPanel({ tier, theme, onKick, onRestore, onMarkEliminated }) {
-  const [open, setOpen] = useState(false);
+function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onClose }) {
   const [entrants, setEntrants] = useState([]);
   useEffect(() => {
-    if (!open) return;
     const unsub = db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => {
       setEntrants(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return unsub;
-  }, [open, tier.id]);
+  }, [tier.id]);
 
   return (
-    <div className="mt-3">
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
-        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} /> {open ? "Hide entrants" : "Manage entrants"}
-      </button>
-      {open && (
-        <div className="mt-2 space-y-1.5">
-          {entrants.length === 0 && <p className="text-[11px] text-neutral-500">No entrants yet.</p>}
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
+      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5 max-h-[80vh] overflow-y-auto`}>
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="text-slate-100 font-semibold flex items-center gap-2"><Users size={16} /> Manage entrants</h4>
+          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button>
+        </div>
+        <p className="text-xs text-neutral-500 mb-4">{tier.name}</p>
+        <div className="space-y-2">
+          {entrants.length === 0 && <p className="text-sm text-neutral-500">No entrants yet.</p>}
           {entrants.map((e) => (
-            <div key={e.id} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
+            <div key={e.id} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2.5">
               <div>
-                <span className="text-xs text-slate-200">{e.name}</span>
+                <span className="text-sm text-slate-200">{e.name}</span>
                 <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${e.status === "active" ? `${theme.bgSoft} ${theme.text}` : "bg-neutral-700 text-neutral-400"}`}>{e.status}</span>
               </div>
-              <div className="flex gap-1">
+              <div className="flex gap-1.5">
                 {e.status === "active" ? (
                   <>
-                    <button onClick={() => onMarkEliminated(tier.id, e.uid)} className="rounded px-2 py-1 text-[10px] font-medium bg-rose-500/10 text-rose-400">Mark lost</button>
-                    <button onClick={() => onKick(tier.id, e.uid)} className="rounded px-2 py-1 text-[10px] font-medium bg-neutral-700 text-neutral-300">Kick</button>
+                    <button onClick={() => onMarkEliminated(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-rose-500/10 text-rose-400">Mark lost</button>
+                    <button onClick={() => onKick(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300">Kick</button>
                   </>
                 ) : (
-                  <button onClick={() => onRestore(tier.id, e.uid)} className="rounded px-2 py-1 text-[10px] font-medium bg-neutral-700 text-neutral-300">Restore</button>
+                  <button onClick={() => onRestore(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300">Restore</button>
                 )}
               </div>
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1278,6 +1423,7 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [cancelling, setCancelling] = useState(null);
+  const [managingTierId, setManagingTierId] = useState(null);
   return (
     <div className="space-y-4 pb-6">
       <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 text-center`}>
@@ -1307,7 +1453,11 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                 {tier.rules && <p className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{tier.rules}</p>}
                 {!tier.cancelled && (
                   <>
-                    <HostEntrantsPanel tier={tier} theme={theme} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} />
+                    <div className="mt-3 grid grid-cols-1 gap-2">
+                      <button onClick={() => setManagingTierId(tier.id)} className={`w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-semibold py-2.5 text-sm`}>
+                        <Users size={15} /> Manage entrants
+                      </button>
+                    </div>
                     <HostResultsPanel tier={tier} now={now} theme={theme} />
                     {cancelling === tier.id ? (
                       <div className="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3">
@@ -1328,6 +1478,9 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
         ))}
         {tiers.length === 0 && <p className="text-center text-sm text-neutral-500 py-6">No competitions yet — create the first one above.</p>}
       </div>
+      {managingTierId && (
+        <EntrantsModal tier={tiers.find((t) => t.id === managingTierId)} theme={theme} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} onClose={() => setManagingTierId(null)} />
+      )}
     </div>
   );
 }
@@ -1445,7 +1598,18 @@ function AppShell({ user }) {
   const myStatus = players.find((p) => p.isYou)?.status || null;
   const myEntryStatus = myEntries[joinedTierId]?.status;
   const eliminated = !!myEntryStatus && myEntryStatus !== "active"; // covers eliminated, kicked, and refunded alike
-  const lockedTeam = myStatus === "W" ? myPick : null;
+
+  // The team you can't reuse is whatever you picked in this competition's *previous* round
+  // (only relevant once a host has advanced the competition past round 1).
+  const [lockedTeam, setLockedTeam] = useState(null);
+  useEffect(() => {
+    if (!joinedTierId || !currentTier?.previousRoundId) { setLockedTeam(null); return; }
+    let cancelled = false;
+    db.collection("picks").doc(`${joinedTierId}_${currentTier.previousRoundId}_${user.uid}`).get().then((doc) => {
+      if (!cancelled) setLockedTeam(doc.exists ? doc.data().team : null);
+    }).catch(() => { if (!cancelled) setLockedTeam(null); });
+    return () => { cancelled = true; };
+  }, [joinedTierId, currentTier?.previousRoundId, user.uid]);
 
   // If tips have locked and this user never submitted a pick, auto-assign a random
   // team on their behalf (excluding whichever team they can't reuse), per the rules.
@@ -1574,7 +1738,7 @@ function AppShell({ user }) {
         {tab === "wallet" && <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />}
         {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onCancelRefund={cancelAndRefund} rollingEarnings={rollingEarnings} now={now} theme={theme} />}
         {tab === "settings" && (
-          <SettingsTab profile={profile} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost}
+          <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
         )}
       </main>
@@ -1610,17 +1774,32 @@ function SplashScreen({ onFinish }) {
       }
       const ctx = audioCtxRef.current;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      const now = ctx.currentTime;
+      const dur = boom ? 0.55 : 0.32;
+
+      // low tonal thump (the "boom")
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = "triangle";
-      const dur = boom ? 0.42 : 0.2;
-      osc.frequency.setValueAtTime(freq, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.35, 20), ctx.currentTime + dur);
-      gain.gain.setValueAtTime(boom ? 0.9 : 0.55, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq * 1.7, now);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.3, 18), now + dur);
+      gain.gain.setValueAtTime(boom ? 1.0 : 0.75, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
       osc.connect(gain); gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + dur + 0.05);
+      osc.start(now); osc.stop(now + dur + 0.05);
+
+      // percussive click transient layered on top for real impact
+      const clickLen = Math.floor(ctx.sampleRate * 0.06);
+      const buffer = ctx.createBuffer(1, clickLen, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < clickLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / clickLen);
+      const click = ctx.createBufferSource();
+      click.buffer = buffer;
+      const clickGain = ctx.createGain();
+      clickGain.gain.setValueAtTime(boom ? 0.55 : 0.4, now);
+      clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      click.connect(clickGain); clickGain.connect(ctx.destination);
+      click.start(now);
     } catch (e) { /* audio blocked or unavailable — visuals still carry the beat */ }
   };
 
@@ -1653,10 +1832,15 @@ function SplashScreen({ onFinish }) {
 function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState(undefined);
-  useEffect(() => auth.onAuthStateChanged((u) => setUser(u)), []);
+  const [pinUnlocked, setPinUnlocked] = useState(false);
+  useEffect(() => auth.onAuthStateChanged((u) => { setUser(u); setPinUnlocked(false); }), []);
   if (showSplash) return <SplashScreen onFinish={() => setShowSplash(false)} />;
   if (user === undefined) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
   if (!user) return <AuthScreen />;
+  const storedPinHash = window.localStorage.getItem(`lms_pin_${user.uid}`);
+  if (storedPinHash && !pinUnlocked) {
+    return <PinLockScreen uid={user.uid} onUnlock={() => setPinUnlocked(true)} onUseEmailInstead={() => auth.signOut()} />;
+  }
   return <AppShell key={user.uid} user={user} />;
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
