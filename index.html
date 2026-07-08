@@ -4,7 +4,6 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
 <title>Last Man Standing</title>
-<link rel="apple-touch-icon" href="data:image/png;base64,">
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#212124" />
@@ -12,6 +11,9 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
   html, body { background:#212124; margin:0; font-family:'Inter', sans-serif; }
@@ -20,8 +22,25 @@
 </head>
 <body>
 <div id="root"></div>
+<script>
+  var firebaseConfig = {
+    apiKey: "AIzaSyCgZ-dJx1YKarK0aQ60NKHW8S5VwTBJpmI",
+    authDomain: "last-man-standing-6fc91.firebaseapp.com",
+    projectId: "last-man-standing-6fc91",
+    storageBucket: "last-man-standing-6fc91.firebasestorage.app",
+    messagingSenderId: "222533079045",
+    appId: "1:222533079045:web:446fedc18af5e49bc60c6c",
+    measurementId: "G-1C4WKS21VX"
+  };
+  firebase.initializeApp(firebaseConfig);
+  window.__auth = firebase.auth();
+  window.__db = firebase.firestore();
+</script>
 <script type="text/plain" id="app-source">
 const { useState, useMemo, useEffect, useRef } = React;
+const auth = window.__auth;
+const db = window.__db;
+const FieldValue = firebase.firestore.FieldValue;
 
 /* ---- lightweight icon replacements (no external icon library needed) ---- */
 function makeIcon(symbol) {
@@ -43,7 +62,6 @@ const ChevronRight = makeIcon("›");
 const ChevronLeft = makeIcon("‹");
 const Users = makeIcon("👥");
 const Clock = makeIcon("⏰");
-const Apple = makeIcon("");
 const CreditCard = makeIcon("💳");
 const Crown = makeIcon("👑");
 const WalletIcon = makeIcon("👛");
@@ -64,6 +82,7 @@ const FIXTURES_R1 = [
   ["Tigers","Manly"], ["Raiders","Rabbitohs"]
 ];
 const ALL_TEAMS = FIXTURES_R1.flat();
+const ROUND = 1;
 
 const TEAM_COLORS = {
   Storm: "#4B2E83", Broncos: "#6E0E20", Knights: "#1B3A6B", Sharks: "#0098DB",
@@ -72,17 +91,6 @@ const TEAM_COLORS = {
   Raiders: "#0B6E3D", Rabbitohs: "#146B3A", Titans: "#C79A00", Dragons: "#C8102E",
 };
 
-const MOCK_FIELD = [
-  { name: "Jack C.", history: ["W"], pick: "Broncos" },
-  { name: "Brendan", history: ["W"], pick: "Storm" },
-  { name: "Cassidy", history: ["L"], pick: "Manly" },
-  { name: "Mars", history: ["W"], pick: "Panthers" },
-  { name: "Boogers", history: ["W"], pick: "Knights" },
-  { name: "Keelan", history: ["W"], pick: "Roosters" },
-  { name: "Naudis", history: ["L"], pick: "Warriors" },
-  { name: "Peta N.", history: ["W"], pick: "Raiders" },
-];
-
 const SPORTS = [
   { id: "nrl", name: "NRL", tagline: "Last Man Standing, live now", active: true },
   { id: "afl", name: "AFL", tagline: "Coming soon", active: false },
@@ -90,13 +98,18 @@ const SPORTS = [
 ];
 
 const ACCENT_OPTIONS = [
-  { id: "teal", label: "Teal" },
-  { id: "violet", label: "Violet" },
-  { id: "amber", label: "Amber" },
-  { id: "rose", label: "Rose" },
-  { id: "sky", label: "Sky" },
-  { id: "emerald", label: "Emerald" },
+  { id: "teal", label: "Teal" }, { id: "violet", label: "Violet" },
+  { id: "amber", label: "Amber" }, { id: "rose", label: "Rose" },
+  { id: "sky", label: "Sky" }, { id: "emerald", label: "Emerald" },
 ];
+
+const TIERS_CONFIG = (() => {
+  const base = Date.now();
+  return [
+    { id: "classic", name: "Classic", buyIn: 5, round: ROUND, startTime: new Date(base + 1000 * 60 * 60 * 30), startLabel: "Thu 7:50pm" },
+    { id: "highroller", name: "High Rollers", buyIn: 100, round: ROUND, startTime: new Date(base + 1000 * 60 * 60 * 30), startLabel: "Thu 7:50pm" },
+  ];
+})();
 
 const BG = "#212124";
 const PANEL_BORDER = "border-white/10";
@@ -115,14 +128,9 @@ function formatCountdown(ms) {
 function useAccentTheme(accent) {
   return useMemo(() => ({
     id: accent,
-    text: `text-${accent}-300`,
-    textStrong: `text-${accent}-400`,
-    bg: `bg-${accent}-400`,
-    bgHover: `hover:bg-${accent}-300`,
-    bgSoft: `bg-${accent}-400/10`,
-    border: `border-${accent}-400`,
-    borderSoft: `border-${accent}-400/40`,
-    borderHalf: `border-${accent}-400/50`,
+    text: `text-${accent}-300`, textStrong: `text-${accent}-400`,
+    bg: `bg-${accent}-400`, bgHover: `hover:bg-${accent}-300`, bgSoft: `bg-${accent}-400/10`,
+    border: `border-${accent}-400`, borderSoft: `border-${accent}-400/40`, borderHalf: `border-${accent}-400/50`,
   }), [accent]);
 }
 
@@ -146,12 +154,46 @@ function TeamBadge({ team, size = 36 }) {
   );
 }
 
-function AuthScreen({ onAuthed }) {
+function calcAge(dobString) {
+  if (!dobString) return null;
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
+/* ---------------- AUTH (real Firebase accounts) ---------------- */
+function AuthScreen() {
   const [mode, setMode] = useState("create");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const canSubmit = mode === "create" ? name && email && password : email && password;
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const canSubmit = mode === "create" ? name && email && password.length >= 6 : email && password;
+
+  const submit = async () => {
+    setError("");
+    setBusy(true);
+    try {
+      if (mode === "create") {
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        await db.collection("users").doc(cred.user.uid).set({
+          name, email, walletBalance: 0, accent: "teal",
+          ageVerified: false, favouriteTeam: null, avatarUrl: null,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      } else {
+        await auth.signInWithEmailAndPassword(email, password);
+      }
+    } catch (e) {
+      setError(e.message.replace("Firebase: ", ""));
+    }
+    setBusy(false);
+  };
 
   return (
     <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG }}>
@@ -169,36 +211,27 @@ function AuthScreen({ onAuthed }) {
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name"
               className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
           )}
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address"
+          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" type="email"
             className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Password"
+          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" placeholder="Password (min 6 characters)"
             className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
         </div>
-        <button disabled={!canSubmit} onClick={() => onAuthed(name || email.split("@")[0] || "Player")}
+        {error && <p className="text-xs text-rose-400 mt-3">{error}</p>}
+        <button disabled={!canSubmit || busy} onClick={submit}
           className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
           {mode === "create" ? <UserPlus size={16} /> : <LogIn size={16} />}
-          {mode === "create" ? "Create account" : "Log in"}
+          {busy ? "Please wait…" : mode === "create" ? "Create account" : "Log in"}
         </button>
         <p className="text-[11px] text-neutral-500 mt-4 text-center leading-relaxed">
-          Friends-only test version — no real payments are processed yet.
+          Real accounts now — your picks, wallet, and standings sync across every device.
         </p>
       </div>
     </div>
   );
 }
 
+/* ---------------- ID / AGE CHECK ---------------- */
 const AU_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
-
-function calcAge(dobString) {
-  if (!dobString) return null;
-  const dob = new Date(dobString);
-  if (isNaN(dob.getTime())) return null;
-  const today = new Date();
-  let age = today.getFullYear() - dob.getFullYear();
-  const m = today.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
-  return age;
-}
 
 function IDCheckScreen({ initialName, onVerified }) {
   const [fullName, setFullName] = useState(initialName || "");
@@ -207,26 +240,15 @@ function IDCheckScreen({ initialName, onVerified }) {
   const [licenceState, setLicenceState] = useState("NSW");
   const [checked, setChecked] = useState(false);
   const [denied, setDenied] = useState(false);
-
   const canSubmit = fullName && dob && licenceNumber;
 
   const submit = () => {
     const age = calcAge(dob);
     setChecked(true);
-    if (age === null || age < 18) {
-      setDenied(true);
-    } else {
-      setDenied(false);
-      onVerified({ fullName, dob, licenceNumber, licenceState, age });
-    }
+    if (age === null || age < 18) { setDenied(true); }
+    else { setDenied(false); onVerified({ fullName, dob, licenceNumber, licenceState, age }); }
   };
-
-  const tryAgain = () => {
-    setChecked(false);
-    setDenied(false);
-    setDob("");
-    setLicenceNumber("");
-  };
+  const tryAgain = () => { setChecked(false); setDenied(false); setDob(""); setLicenceNumber(""); };
 
   if (checked && denied) {
     return (
@@ -239,11 +261,9 @@ function IDCheckScreen({ initialName, onVerified }) {
           <p className="text-sm text-neutral-400 mt-2 leading-relaxed">
             Our records show you're under 18. You must be 18 or older to create an account or join any competition on this app.
           </p>
-          <button onClick={tryAgain} className="mt-6 w-full rounded-xl bg-neutral-800 border border-white/10 text-slate-200 font-semibold py-3 text-sm">
-            Go back
-          </button>
+          <button onClick={tryAgain} className="mt-6 w-full rounded-xl bg-neutral-800 border border-white/10 text-slate-200 font-semibold py-3 text-sm">Go back</button>
           <p className="text-[11px] text-neutral-500 mt-4 leading-relaxed">
-            This is a practice check only — a live version would verify a real driver's licence or passport through a licensed identity provider (e.g. GreenID, Stripe Identity), not a self-entered date of birth.
+            Practice check only — a live version would verify a real licence through a licensed identity provider, not a self-entered date of birth.
           </p>
         </div>
       </div>
@@ -255,7 +275,6 @@ function IDCheckScreen({ initialName, onVerified }) {
       <div className="max-w-sm mx-auto w-full">
         <h2 className="font-scoreboard text-3xl tracking-wide mb-1">VERIFY YOUR DETAILS</h2>
         <p className="text-sm text-neutral-500 mb-6">Quick licence check before you can join any competition — required to confirm you're 18+.</p>
-
         <div className="space-y-3">
           <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full legal name (as on licence)"
             className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
@@ -274,19 +293,19 @@ function IDCheckScreen({ initialName, onVerified }) {
             </select>
           </div>
         </div>
-
         <button disabled={!canSubmit} onClick={submit}
           className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
           Verify my details
         </button>
         <p className="text-[11px] text-neutral-500 mt-4 text-center leading-relaxed">
-          Practice check only — nothing here is verified against a real licence database yet. It just confirms the date of birth you enter is 18+.
+          Practice check only — confirms the date of birth you enter is 18+, nothing more.
         </p>
       </div>
     </div>
   );
 }
 
+/* ---------------- SPORT PICKER ---------------- */
 function SportScreen({ userName, onPick, onBack, showBack }) {
   return (
     <div className="min-h-screen text-slate-100 px-6 pt-14" style={{ backgroundColor: BG }}>
@@ -315,6 +334,7 @@ function SportScreen({ userName, onPick, onBack, showBack }) {
   );
 }
 
+/* ---------------- COMPETE ---------------- */
 function TierCard({ tier, now, onJoin, joined, theme }) {
   const isHigh = tier.id === "highroller";
   const msToStart = tier.startTime.getTime() - now.getTime();
@@ -333,18 +353,15 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
         <span className="text-xs text-neutral-500">Round {tier.round}</span>
       </div>
       <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
-
       <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${started ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
         <Clock size={13} />
         {started ? "Entries closed — round underway" : `Round ${tier.round} starts in ${countdown} (${tier.startLabel})`}
       </div>
-
       <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
         <Scoreboard value={`$${tier.pool.toLocaleString()}`} label="Prize Pool" accent="gold" />
         <div className="h-10 w-px bg-white/10" />
         <Scoreboard value={tier.entries} label="Entries" accent={isHigh ? "text-violet-300" : theme.text} />
       </div>
-
       <button onClick={() => onJoin(tier)} disabled={joined || started}
         className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition ${joined || started ? "bg-neutral-700 text-neutral-500 cursor-default" : isHigh ? "bg-violet-500 text-white hover:bg-violet-400" : `${theme.bg} text-neutral-950 ${theme.bgHover}`}`}>
         {joined ? "You're in — good luck" : started ? "Entries closed" : `Enter for $${tier.buyIn}`}
@@ -353,7 +370,7 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
   );
 }
 
-function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, theme }) {
+function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, theme, error }) {
   const insufficient = balance < tier.buyIn;
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
@@ -370,6 +387,7 @@ function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, th
           <span className="text-neutral-300 text-sm">Wallet balance</span>
           <span className={`font-scoreboard text-2xl ${insufficient ? "text-rose-400" : theme.text}`}>${balance.toFixed(2)}</span>
         </div>
+        {error && <p className="text-xs text-rose-400 mb-3">{error}</p>}
         {insufficient ? (
           <>
             <p className="text-sm text-neutral-400 mb-3">Your balance is a bit short. Top up your wallet to enter.</p>
@@ -383,13 +401,12 @@ function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, th
   );
 }
 
+/* ---------------- WALLET ---------------- */
 function DepositModal({ onClose, onConfirm, theme }) {
   const [amount, setAmount] = useState(50);
-  const [method, setMethod] = useState("applepay");
   const [processing, setProcessing] = useState(false);
   const presets = [20, 50, 100, 250];
-  const pay = () => { setProcessing(true); setTimeout(() => { setProcessing(false); onConfirm(amount); }, 900); };
-
+  const pay = async () => { setProcessing(true); await onConfirm(amount); setProcessing(false); onClose(); };
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
       <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
@@ -402,19 +419,11 @@ function DepositModal({ onClose, onConfirm, theme }) {
             <button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "border-white/10 text-neutral-300"}`}>${p}</button>
           ))}
         </div>
-        <div className="space-y-2 mb-4">
-          <button onClick={() => setMethod("applepay")} className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold border ${method === "applepay" ? theme.border : "border-white/10"} bg-black text-white`}>
-             Pay
-          </button>
-          <button onClick={() => setMethod("card")} className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold border ${method === "card" ? theme.border : "border-white/10"} bg-neutral-700 text-neutral-200`}>
-            <CreditCard size={16} /> Debit or credit card
-          </button>
-        </div>
         <button onClick={pay} disabled={processing} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm disabled:opacity-60`}>
-          {processing ? "Processing…" : `Add $${amount} to balance`}
+          {processing ? "Adding…" : `Add $${amount} to balance`}
         </button>
         <p className="text-[11px] text-neutral-500 mt-3 text-center">
-          This is a tracked balance for the friends test — no card is actually charged. Settle up buy-ins the way your group already does (bank transfer, cash, etc).
+          Tracked balance for the friends test — no card is charged. Settle buy-ins the way your group already does.
         </p>
       </div>
     </div>
@@ -423,8 +432,10 @@ function DepositModal({ onClose, onConfirm, theme }) {
 
 function WithdrawModal({ balance, onClose, onConfirm, theme }) {
   const [amount, setAmount] = useState("");
+  const [processing, setProcessing] = useState(false);
   const num = parseFloat(amount) || 0;
   const valid = num > 0 && num <= balance;
+  const go = async () => { setProcessing(true); await onConfirm(num); setProcessing(false); onClose(); };
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
       <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
@@ -435,10 +446,9 @@ function WithdrawModal({ balance, onClose, onConfirm, theme }) {
         <p className="text-xs text-neutral-500 mb-3">Available balance: ${balance.toFixed(2)}</p>
         <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" inputMode="decimal"
           className={`w-full rounded-xl bg-black/30 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400 mb-4`} />
-        <button disabled={!valid} onClick={() => onConfirm(num)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>
-          Withdraw ${num > 0 ? num.toFixed(2) : "0.00"}
+        <button disabled={!valid || processing} onClick={go} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>
+          {processing ? "Processing…" : `Withdraw $${num > 0 ? num.toFixed(2) : "0.00"}`}
         </button>
-        <p className="text-[11px] text-neutral-500 mt-3 text-center">No real money moves here yet — this just adjusts the tracked balance.</p>
       </div>
     </div>
   );
@@ -463,8 +473,8 @@ function WalletTab({ balance, transactions, onDeposit, onWithdraw, theme }) {
         <h4 className="text-sm font-semibold text-neutral-300 mb-2">Recent activity</h4>
         <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
           {transactions.length === 0 && <div className="px-4 py-6 text-center text-sm text-neutral-500">No activity yet — add funds to get started.</div>}
-          {transactions.map((t, i) => (
-            <div key={i} className={`flex items-center justify-between px-4 py-3 text-sm ${i !== 0 ? "border-t border-white/5" : ""}`}>
+          {transactions.map((t) => (
+            <div key={t.id} className={`flex items-center justify-between px-4 py-3 text-sm border-t border-white/5 first:border-t-0`}>
               <div className="flex items-center gap-2">
                 {t.amount > 0 ? <ArrowDownCircle size={14} className={theme.text} /> : <ArrowUpCircle size={14} className="text-rose-400" />}
                 <span className="text-neutral-300">{t.label}</span>
@@ -478,18 +488,16 @@ function WalletTab({ balance, transactions, onDeposit, onWithdraw, theme }) {
   );
 }
 
+/* ---------------- PICK ---------------- */
 function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme }) {
   const renderSide = (team, align) => {
     const selected = myPick === team;
     const disabled = team === lockedTeam || locked;
     return (
-      <button
-        onClick={() => !disabled && onSelect(team)}
-        disabled={disabled}
+      <button onClick={() => !disabled && onSelect(team)} disabled={disabled}
         className={`flex-1 flex items-center gap-2 rounded-xl px-3 py-3 border transition ${align === "right" ? "flex-row-reverse text-right" : "text-left"} ${
           selected ? `${theme.border} ${theme.bgSoft}` : disabled ? "border-white/5 opacity-40 cursor-not-allowed" : `border-white/10 hover:${theme.borderHalf}`
-        }`}
-      >
+        }`}>
         <TeamBadge team={team} size={32} />
         <div className="min-w-0">
           <div className="text-sm font-medium text-slate-100 truncate">{team}</div>
@@ -499,7 +507,6 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
       </button>
     );
   };
-
   return (
     <div className="flex items-center gap-2">
       {renderSide(home, "left")}
@@ -509,7 +516,7 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
   );
 }
 
-function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, onPick, onSubmit, onEdit, theme }) {
+function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, onPick, onSubmit, onEdit, theme, saving }) {
   if (eliminated) {
     return (
       <div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-5 text-center">
@@ -519,22 +526,18 @@ function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdow
       </div>
     );
   }
-
   return (
     <div className="space-y-4 pb-24">
       <div className={`rounded-xl px-4 py-3 flex items-center gap-2 text-xs font-medium ${locked ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
         <Clock size={13} />
         {locked ? "Tips are locked for this round" : `Tips lock in ${lockCountdown} — 1 day before kickoff`}
       </div>
-
       <p className="text-xs text-neutral-500">Tap a team on any match to make it your pick for the round. You can't reuse a team you've already won with.</p>
-
       <div className="space-y-2">
         {fixtures.map(([home, away], i) => (
           <FixtureRow key={i} home={home} away={away} myPick={myPick} lockedTeam={lockedTeam} locked={locked} onSelect={onPick} theme={theme} />
         ))}
       </div>
-
       <div className="fixed bottom-16 inset-x-0 px-5">
         <div className="max-w-md mx-auto">
           {locked ? (
@@ -550,9 +553,9 @@ function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdow
               <button onClick={onEdit} className="text-xs text-neutral-300 flex items-center gap-1 hover:text-white"><Pencil size={12} /> Edit</button>
             </div>
           ) : (
-            <button onClick={onSubmit} disabled={!myPick}
+            <button onClick={onSubmit} disabled={!myPick || saving}
               className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm`}>
-              {myPick ? `Submit pick — ${myPick}` : "Select a team to submit"}
+              {saving ? "Submitting…" : myPick ? `Submit pick — ${myPick}` : "Select a team to submit"}
             </button>
           )}
         </div>
@@ -561,78 +564,74 @@ function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdow
   );
 }
 
-function StandingsTab({ tier, myName, myHistory, myPick, submitted, locked, theme }) {
-  const field = useMemo(() => {
-    const you = { name: myName, history: myHistory, isYou: true, pick: submitted ? myPick : null };
-    return [you, ...MOCK_FIELD].sort((a, b) => {
-      const aOut = a.history.includes("L") ? 1 : 0;
-      const bOut = b.history.includes("L") ? 1 : 0;
-      return aOut - bOut;
-    });
-  }, [myHistory, myName, myPick, submitted]);
-
+/* ---------------- STANDINGS ---------------- */
+function StandingsTab({ tier, players, locked, poolAmount }) {
   return (
     <div className="space-y-4">
       <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 flex items-center justify-around`}>
-        <Scoreboard value={tier.alive} label="Still Alive" accent={theme.text} />
+        <Scoreboard value={players.filter((p) => p.status !== "L").length} label="Still Alive" accent="text-teal-300" />
         <div className="h-10 w-px bg-white/10" />
-        <Scoreboard value={`$${tier.pool.toLocaleString()}`} label="Prize Pool" accent="gold" />
+        <Scoreboard value={`$${poolAmount.toLocaleString()}`} label="Prize Pool" accent="gold" />
       </div>
-
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2">
-          {locked ? <Eye size={14} className={theme.text} /> : <EyeOff size={14} className="text-neutral-500" />}
+          {locked ? <Eye size={14} className="text-teal-300" /> : <EyeOff size={14} className="text-neutral-500" />}
           This round's tips
         </h4>
         {!locked ? (
           <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>
             Everyone's tips stay hidden until picks lock, 1 day before kickoff. No peeking!
           </div>
+        ) : players.length === 0 ? (
+          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>Nobody has entered yet.</div>
         ) : (
           <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
-            {field.map((p, i) => (
-              <div key={p.name + i} className={`flex items-center justify-between px-4 py-3 ${i !== 0 ? "border-t border-white/5" : ""} ${p.isYou ? theme.bgSoft : ""}`}>
+            {players.map((p) => (
+              <div key={p.uid} className={`flex items-center justify-between px-4 py-3 border-t border-white/5 first:border-t-0 ${p.isYou ? "bg-teal-400/5" : ""}`}>
                 <span className="text-sm text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
                 {p.pick ? (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-neutral-400">{p.pick}</span>
                     <TeamBadge team={p.pick} size={24} />
                   </div>
-                ) : (
-                  <span className="text-xs text-rose-400">No pick</span>
-                )}
+                ) : (<span className="text-xs text-rose-400">No pick</span>)}
               </div>
             ))}
           </div>
         )}
       </div>
-
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2">Overall standings</h4>
         <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
-          {field.map((p, i) => {
-            const out = p.history.includes("L");
-            return (
-              <div key={p.name + i} className={`flex items-center justify-between px-4 py-3 text-sm ${i !== 0 ? "border-t border-white/5" : ""} ${out ? "opacity-40" : ""} ${p.isYou ? theme.bgSoft : ""}`}>
-                <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
-                <div className="flex gap-1">
-                  {p.history.map((h, j) => (
-                    <span key={j} className={`inline-flex h-5 w-5 items-center justify-center rounded ${h === "W" ? `${theme.bgSoft} ${theme.text}` : "bg-rose-500/20 text-rose-400"}`}>
-                      {h === "W" ? <Check size={12} /> : <X size={12} />}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+          {players.length === 0 && <div className="px-4 py-6 text-center text-sm text-neutral-500">No entries yet.</div>}
+          {players.map((p) => (
+            <div key={p.uid} className={`flex items-center justify-between px-4 py-3 text-sm border-t border-white/5 first:border-t-0 ${p.status === "L" ? "opacity-40" : ""} ${p.isYou ? "bg-teal-400/5" : ""}`}>
+              <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
+              {p.status && (
+                <span className={`inline-flex h-5 w-5 items-center justify-center rounded ${p.status === "W" ? "bg-teal-400/20 text-teal-300" : "bg-rose-500/20 text-rose-400"}`}>
+                  {p.status === "W" ? <Check size={12} /> : <X size={12} />}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-function SettingsTab({ profile, onProfileChange, accent, onAccentChange, theme, devTools }) {
+/* ---------------- SETTINGS ---------------- */
+function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, devTools }) {
   const fileRef = useRef(null);
+  const [draftName, setDraftName] = useState(profile.name || "");
+  const [draftEmail, setDraftEmail] = useState(profile.email || "");
+  const [saved, setSaved] = useState(false);
+
+  const save = async () => {
+    await onSaveNameEmail({ name: draftName, email: draftEmail });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
 
   return (
     <div className="space-y-6 pb-6">
@@ -663,18 +662,18 @@ function SettingsTab({ profile, onProfileChange, accent, onAccentChange, theme, 
               <div className="text-slate-100 font-medium">{profile.name || "Player"}</div>
               <div className="text-xs text-neutral-500">{profile.email || "no email set"}</div>
               {profile.ageVerified && (
-                <div className={`inline-flex items-center gap-1 mt-1 text-[10px] ${theme.text}`}>
-                  <Check size={10} /> 18+ verified (practice check)
-                </div>
+                <div className={`inline-flex items-center gap-1 mt-1 text-[10px] ${theme.text}`}><Check size={10} /> 18+ verified (practice check)</div>
               )}
             </div>
           </div>
-
           <div className="space-y-2">
-            <input value={profile.name} onChange={(e) => onProfileChange({ name: e.target.value })} placeholder="Full name"
+            <input value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Full name"
               className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
-            <input value={profile.email} onChange={(e) => onProfileChange({ email: e.target.value })} placeholder="Email address"
+            <input value={draftEmail} onChange={(e) => setDraftEmail(e.target.value)} placeholder="Email address"
               className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+            <button onClick={save} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>
+              {saved ? "Saved ✓" : "Save changes"}
+            </button>
           </div>
         </div>
       </div>
@@ -686,9 +685,7 @@ function SettingsTab({ profile, onProfileChange, accent, onAccentChange, theme, 
             const selected = profile.favouriteTeam === team;
             return (
               <button key={team} onClick={() => onProfileChange({ favouriteTeam: team })} className="flex flex-col items-center gap-1">
-                <div className={`rounded-full p-0.5 border-2 ${selected ? theme.border : "border-transparent"}`}>
-                  <TeamBadge team={team} size={40} />
-                </div>
+                <div className={`rounded-full p-0.5 border-2 ${selected ? theme.border : "border-transparent"}`}><TeamBadge team={team} size={40} /></div>
                 <span className="text-[10px] text-neutral-400 truncate w-full text-center">{team}</span>
               </button>
             );
@@ -704,8 +701,7 @@ function SettingsTab({ profile, onProfileChange, accent, onAccentChange, theme, 
             {ACCENT_OPTIONS.map((opt) => (
               <button key={opt.id} onClick={() => onAccentChange(opt.id)}
                 className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${accent === opt.id ? `border-${opt.id}-400 bg-${opt.id}-400/10 text-${opt.id}-300` : "border-white/10 text-neutral-300"}`}>
-                <span className={`h-3 w-3 rounded-full bg-${opt.id}-400`} />
-                {opt.label}
+                <span className={`h-3 w-3 rounded-full bg-${opt.id}-400`} />{opt.label}
               </button>
             ))}
           </div>
@@ -715,23 +711,38 @@ function SettingsTab({ profile, onProfileChange, accent, onAccentChange, theme, 
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2">Results & scoring</h4>
         <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 text-sm text-neutral-400`}>
-          In the real version, match results will pull automatically from a live sports data feed. For this friends test, use the tool below to simulate results.
+          In the real version, match results will pull automatically from a live sports data feed. For this friends test, use the tool below — it updates live for everyone.
         </div>
       </div>
-
       {devTools}
     </div>
   );
 }
 
-function App() {
-  const [screen, setScreen] = useState("auth");
+/* ---------------- ROOT APP ---------------- */
+function AppShell({ user }) {
+  const [profile, setProfile] = useState(null);
+  const [screen, setScreen] = useState("loading");
   const [sport, setSport] = useState(null);
   const [tab, setTab] = useState("compete");
   const [now, setNow] = useState(new Date());
 
-  const [profile, setProfile] = useState({ name: "", email: "", avatarUrl: null, favouriteTeam: null });
-  const [accent, setAccent] = useState("teal");
+  const [transactions, setTransactions] = useState([]);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+
+  const [entryCounts, setEntryCounts] = useState({ classic: 0, highroller: 0 });
+  const [myEntries, setMyEntries] = useState({});
+  const [entryTarget, setEntryTarget] = useState(null);
+  const [entryError, setEntryError] = useState("");
+
+  const [allPicks, setAllPicks] = useState([]);
+  const [myPick, setMyPick] = useState(null);
+  const [pickSubmitted, setPickSubmitted] = useState(false);
+  const [pickSaving, setPickSaving] = useState(false);
+  const [results, setResults] = useState({});
+
+  const accent = profile?.accent || "teal";
   const theme = useAccentTheme(accent);
 
   useEffect(() => {
@@ -739,63 +750,130 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
-  const [balance, setBalance] = useState(0);
-  const [transactions, setTransactions] = useState([]);
-  const [showDeposit, setShowDeposit] = useState(false);
-  const [showWithdraw, setShowWithdraw] = useState(false);
+  // profile listener
+  useEffect(() => {
+    const unsub = db.collection("users").doc(user.uid).onSnapshot((doc) => {
+      if (doc.exists) {
+        const data = doc.data();
+        setProfile(data);
+        if (screen === "loading") setScreen(!data.ageVerified ? "idcheck" : "sport");
+      }
+    });
+    return unsub;
+  }, [user.uid]);
 
-  const [tiers, setTiers] = useState(() => {
-    const base = Date.now();
-    return [
-      { id: "classic", name: "Classic", buyIn: 5, entries: 94, pool: 470, alive: 61, round: 1, startTime: new Date(base + 1000 * 60 * 60 * 30), startLabel: "Thu 7:50pm" },
-      { id: "highroller", name: "High Rollers", buyIn: 100, entries: 22, pool: 2200, alive: 15, round: 1, startTime: new Date(base + 1000 * 60 * 60 * 30), startLabel: "Thu 7:50pm" },
-    ];
-  });
-  const [joinedTier, setJoinedTier] = useState(null);
-  const [entryTarget, setEntryTarget] = useState(null);
-  const [myPick, setMyPick] = useState(null);
-  const [pickSubmitted, setPickSubmitted] = useState(false);
-  const [lockedTeam, setLockedTeam] = useState(null);
-  const [myHistory, setMyHistory] = useState([]);
-  const [results, setResults] = useState({});
-  const [eliminated, setEliminated] = useState(false);
+  // transactions listener
+  useEffect(() => {
+    const unsub = db.collection("users").doc(user.uid).collection("transactions")
+      .orderBy("createdAt", "desc").limit(20)
+      .onSnapshot((snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return unsub;
+  }, [user.uid]);
 
-  const currentTier = tiers.find((t) => t.id === joinedTier);
+  // entries listeners (per tier count + my joined tiers)
+  useEffect(() => {
+    const unsubs = TIERS_CONFIG.map((tier) =>
+      db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => {
+        setEntryCounts((prev) => ({ ...prev, [tier.id]: snap.size }));
+      })
+    );
+    const unsubMine = db.collection("entries").where("uid", "==", user.uid).onSnapshot((snap) => {
+      const mine = {};
+      snap.docs.forEach((d) => { mine[d.data().tierId] = true; });
+      setMyEntries(mine);
+    });
+    return () => { unsubs.forEach((u) => u()); unsubMine(); };
+  }, [user.uid]);
+
+  const joinedTierId = Object.keys(myEntries)[0] || null;
+  const currentTier = TIERS_CONFIG.find((t) => t.id === joinedTierId);
+
+  // picks + results listeners, scoped to the joined tier
+  useEffect(() => {
+    if (!joinedTierId) { setAllPicks([]); setMyPick(null); setPickSubmitted(false); return; }
+    const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("round", "==", ROUND)
+      .onSnapshot((snap) => {
+        const list = snap.docs.map((d) => d.data());
+        setAllPicks(list);
+        const mine = list.find((p) => p.uid === user.uid);
+        if (mine) { setMyPick(mine.team); setPickSubmitted(true); }
+      });
+    const unsubResults = db.collection("results").doc(`${joinedTierId}_r${ROUND}`).onSnapshot((doc) => {
+      setResults(doc.exists ? doc.data().fixtureResults || {} : {});
+    });
+    return () => { unsubPicks(); unsubResults(); };
+  }, [joinedTierId, user.uid]);
+
   const lockTime = currentTier ? new Date(currentTier.startTime.getTime() - 1000 * 60 * 60 * 24) : null;
   const tipsLocked = lockTime ? now.getTime() >= lockTime.getTime() : false;
   const lockCountdown = lockTime ? formatCountdown(lockTime.getTime() - now.getTime()) : "";
 
-  const confirmEntry = () => {
-    const tier = entryTarget;
-    setBalance((b) => b - tier.buyIn);
-    setTransactions((t) => [{ label: `${tier.name} entry`, amount: -tier.buyIn }, ...t]);
-    setTiers((prev) => prev.map((t) => (t.id === tier.id ? { ...t, entries: t.entries + 1, pool: t.pool + t.buyIn, alive: t.alive + 1 } : t)));
-    setJoinedTier(tier.id);
-    setEntryTarget(null);
-    setTab("pick");
-  };
+  // derive per-player status (W/L/pending) from results
+  const players = useMemo(() => {
+    return allPicks.map((p) => {
+      const fixtureIndex = FIXTURES_R1.findIndex((f) => f.includes(p.team));
+      const winner = results[fixtureIndex];
+      const status = winner ? (winner === p.team ? "W" : "L") : null;
+      return { uid: p.uid, name: p.name, pick: p.team, isYou: p.uid === user.uid, status };
+    });
+  }, [allPicks, results, user.uid]);
 
-  const handleSetResult = (fixtureIndex, winner) => {
-    const next = { ...results, [fixtureIndex]: winner };
-    setResults(next);
-    if (myPick) {
-      const myFixtureIndex = FIXTURES_R1.findIndex((f) => f.includes(myPick));
-      if (myFixtureIndex === fixtureIndex) {
-        const won = winner === myPick;
-        setMyHistory((h) => [...h, won ? "W" : "L"]);
-        if (won) setLockedTeam(myPick);
-        else setEliminated(true);
-      }
+  const myStatus = players.find((p) => p.isYou)?.status || null;
+  const eliminated = myStatus === "L";
+  const lockedTeam = myStatus === "W" ? myPick : null;
+
+  const tiersForUI = TIERS_CONFIG.map((t) => ({ ...t, entries: entryCounts[t.id] || 0, pool: (entryCounts[t.id] || 0) * t.buyIn }));
+  const currentTierUI = tiersForUI.find((t) => t.id === joinedTierId);
+
+  const updateProfile = (patch) => db.collection("users").doc(user.uid).set(patch, { merge: true });
+
+  const confirmEntry = async () => {
+    const tier = entryTarget;
+    setEntryError("");
+    try {
+      await db.runTransaction(async (tx) => {
+        const userRef = db.collection("users").doc(user.uid);
+        const userDoc = await tx.get(userRef);
+        const bal = userDoc.data().walletBalance || 0;
+        if (bal < tier.buyIn) throw new Error("Insufficient balance");
+        tx.update(userRef, { walletBalance: FieldValue.increment(-tier.buyIn) });
+        tx.set(db.collection("users").doc(user.uid).collection("transactions").doc(), { label: `${tier.name} entry`, amount: -tier.buyIn, createdAt: FieldValue.serverTimestamp() });
+        tx.set(db.collection("entries").doc(`${tier.id}_${user.uid}`), { tierId: tier.id, uid: user.uid, name: profile.name, joinedAt: FieldValue.serverTimestamp() });
+      });
+      setEntryTarget(null);
+      setTab("pick");
+    } catch (e) {
+      setEntryError(e.message);
     }
   };
 
-  if (screen === "auth") return <AuthScreen onAuthed={(name) => { setProfile((p) => ({ ...p, name })); setScreen("idcheck"); }} />;
-  if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { setProfile((p) => ({ ...p, ...idInfo, ageVerified: true })); setScreen("sport"); }} />;
-  if (screen === "sport") return <SportScreen userName={profile.name} showBack={!!sport} onBack={() => setScreen("app")} onPick={(s) => { setSport(s); setScreen("app"); }} />;
+  const submitPick = async () => {
+    if (!myPick || !joinedTierId) return;
+    setPickSaving(true);
+    await db.collection("picks").doc(`${joinedTierId}_r${ROUND}_${user.uid}`).set({
+      tierId: joinedTierId, round: ROUND, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp(),
+    });
+    setPickSaving(false);
+    setPickSubmitted(true);
+  };
 
-  const devTools = (
+  const setFixtureResult = (fixtureIndex, winner) => {
+    db.collection("results").doc(`${joinedTierId}_r${ROUND}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
+  };
+
+  if (screen === "loading" || !profile) {
+    return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
+  }
+  if (screen === "idcheck") {
+    return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { updateProfile({ ...idInfo, ageVerified: true }); setScreen("sport"); }} />;
+  }
+  if (screen === "sport") {
+    return <SportScreen userName={profile.name} showBack={!!sport} onBack={() => setScreen("app")} onPick={(s) => { setSport(s); setScreen("app"); }} />;
+  }
+
+  const devTools = joinedTierId ? (
     <details className="rounded-xl border border-dashed border-white/10 p-4">
-      <summary className="text-xs text-neutral-500 cursor-pointer">Friends-test tools — simulate a round's results</summary>
+      <summary className="text-xs text-neutral-500 cursor-pointer">Friends-test tools — simulate this round's results (syncs live for everyone)</summary>
       <p className="text-[11px] text-neutral-500 mt-2 mb-2">Stand-in for the live scores feed while we're just testing with the group.</p>
       <div className="space-y-2">
         {FIXTURES_R1.map(([home, away], i) => (
@@ -803,72 +881,55 @@ function App() {
             <span className="text-xs text-neutral-400">{home} vs {away}</span>
             <div className="flex gap-1">
               {[home, away].map((team) => (
-                <button key={team} onClick={() => handleSetResult(i, team)}
-                  className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>
-                  {team} won
-                </button>
+                <button key={team} onClick={() => setFixtureResult(i, team)}
+                  className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>{team} won</button>
               ))}
             </div>
           </div>
         ))}
       </div>
     </details>
+  ) : (
+    <p className="text-xs text-neutral-500">Join a competition to unlock testing tools for it.</p>
   );
 
   return (
     <div className="min-h-screen text-slate-100 pb-20" style={{ backgroundColor: BG }}>
       <header className="px-5 pt-6 pb-4 border-b border-white/5 flex items-center justify-between">
-        <button onClick={() => setScreen("sport")} className="flex items-center gap-1 text-neutral-400 text-xs hover:text-neutral-200">
-          <ChevronLeft size={16} /> Sport
-        </button>
-        <div className="flex items-center gap-2">
-          <Flame className="text-rose-500" size={20} />
-          <h1 className="font-scoreboard text-2xl tracking-wide">LAST MAN STANDING</h1>
-        </div>
+        <button onClick={() => setScreen("sport")} className="flex items-center gap-1 text-neutral-400 text-xs hover:text-neutral-200"><ChevronLeft size={16} /> Sport</button>
+        <div className="flex items-center gap-2"><Flame className="text-rose-500" size={20} /><h1 className="font-scoreboard text-2xl tracking-wide">LAST MAN STANDING</h1></div>
         <span className="text-[11px] uppercase tracking-widest text-neutral-500 border border-white/10 rounded-full px-2 py-1">{sport}</span>
       </header>
 
       <main className="px-5 py-5 max-w-md mx-auto">
         {tab === "compete" && (
           <div className="space-y-4">
-            <p className="text-sm text-neutral-500">Pick a tier, and survive the rounds. This test build tracks buy-ins as points only — settle up with your group the normal way.</p>
-            {tiers.map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} joined={joinedTier === tier.id} theme={theme} />)}
+            <p className="text-sm text-neutral-500">Pick a tier, and survive the rounds. Buy-ins are tracked balance only for this test.</p>
+            {tiersForUI.map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} joined={!!myEntries[tier.id]} theme={theme} />)}
           </div>
         )}
 
-        {tab === "pick" && currentTier && (
-          <PickTab
-            fixtures={FIXTURES_R1}
-            myPick={myPick}
-            lockedTeam={lockedTeam}
-            submitted={pickSubmitted}
-            locked={tipsLocked}
-            lockCountdown={lockCountdown}
-            eliminated={eliminated}
-            onPick={(team) => setMyPick(team)}
-            onSubmit={() => setPickSubmitted(true)}
-            onEdit={() => setPickSubmitted(false)}
-            theme={theme}
-          />
+        {tab === "pick" && currentTierUI && (
+          <PickTab fixtures={FIXTURES_R1} myPick={myPick} lockedTeam={lockedTeam} submitted={pickSubmitted} locked={tipsLocked}
+            lockCountdown={lockCountdown} eliminated={eliminated} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
+            onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
-        {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
+        {tab === "pick" && !currentTierUI && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
 
-        {tab === "standings" && currentTier && (
-          <StandingsTab tier={currentTier} myName={profile.name || "You"} myHistory={myHistory} myPick={myPick} submitted={pickSubmitted} locked={tipsLocked} theme={theme} />
-        )}
-        {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
+        {tab === "standings" && currentTierUI && <StandingsTab tier={currentTierUI} players={players} locked={tipsLocked} poolAmount={currentTierUI.pool} />}
+        {tab === "standings" && !currentTierUI && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
 
         {tab === "wallet" && (
-          <WalletTab balance={balance} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />
+          <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />
         )}
 
         {tab === "settings" && (
-          <SettingsTab profile={profile} onProfileChange={(patch) => setProfile((p) => ({ ...p, ...patch }))} accent={accent} onAccentChange={setAccent} theme={theme} devTools={devTools} />
+          <SettingsTab profile={profile} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} devTools={devTools} />
         )}
       </main>
 
       <nav className="fixed bottom-0 inset-x-0 border-t border-white/10 px-2 py-2" style={{ backgroundColor: BG, opacity: 0.98 }}>
-        <div className="max-w-md mx-auto grid grid-cols-5 gap-1">
+        <div className="max-w-md mx-auto grid grid-cols-6 gap-1">
           {[
             { id: "compete", label: "Compete", icon: Trophy },
             { id: "pick", label: "My Pick", icon: Check },
@@ -877,25 +938,41 @@ function App() {
             { id: "settings", label: "Settings", icon: SettingsIcon },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)} className={`flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] ${tab === id ? theme.text : "text-neutral-500"}`}>
-              <Icon size={17} />
-              {label}
+              <Icon size={17} />{label}
             </button>
           ))}
+          <button onClick={() => auth.signOut()} className="flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] text-neutral-500">
+            <LogIn size={17} />Sign out
+          </button>
         </div>
       </nav>
 
       {entryTarget && (
-        <EntryConfirmModal tier={entryTarget} balance={balance} onClose={() => setEntryTarget(null)} onConfirm={confirmEntry}
-          onGoToWallet={() => { setEntryTarget(null); setTab("wallet"); setShowDeposit(true); }} theme={theme} />
+        <EntryConfirmModal tier={entryTarget} balance={profile.walletBalance || 0} onClose={() => { setEntryTarget(null); setEntryError(""); }}
+          onConfirm={confirmEntry} onGoToWallet={() => { setEntryTarget(null); setTab("wallet"); setShowDeposit(true); }} theme={theme} error={entryError} />
       )}
       {showDeposit && (
-        <DepositModal onClose={() => setShowDeposit(false)} onConfirm={(amount) => { setBalance((b) => b + amount); setTransactions((t) => [{ label: "Balance added", amount }, ...t]); setShowDeposit(false); }} theme={theme} />
+        <DepositModal onClose={() => setShowDeposit(false)} theme={theme} onConfirm={async (amount) => {
+          await db.collection("users").doc(user.uid).update({ walletBalance: FieldValue.increment(amount) });
+          await db.collection("users").doc(user.uid).collection("transactions").add({ label: "Balance added", amount, createdAt: FieldValue.serverTimestamp() });
+        }} />
       )}
       {showWithdraw && (
-        <WithdrawModal balance={balance} onClose={() => setShowWithdraw(false)} onConfirm={(amount) => { setBalance((b) => b - amount); setTransactions((t) => [{ label: "Withdrawal", amount: -amount }, ...t]); setShowWithdraw(false); }} theme={theme} />
+        <WithdrawModal balance={profile.walletBalance || 0} onClose={() => setShowWithdraw(false)} theme={theme} onConfirm={async (amount) => {
+          await db.collection("users").doc(user.uid).update({ walletBalance: FieldValue.increment(-amount) });
+          await db.collection("users").doc(user.uid).collection("transactions").add({ label: "Withdrawal", amount: -amount, createdAt: FieldValue.serverTimestamp() });
+        }} />
       )}
     </div>
   );
+}
+
+function App() {
+  const [user, setUser] = useState(undefined);
+  useEffect(() => auth.onAuthStateChanged((u) => setUser(u)), []);
+  if (user === undefined) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
+  if (!user) return <AuthScreen />;
+  return <AppShell key={user.uid} user={user} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
