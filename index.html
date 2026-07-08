@@ -25,13 +25,11 @@
 
   @keyframes smokeDrift1 { 0% { transform: translate(-6%, -4%) scale(1); } 50% { transform: translate(4%, 3%) scale(1.15); } 100% { transform: translate(-6%, -4%) scale(1); } }
   @keyframes smokeDrift2 { 0% { transform: translate(5%, 4%) scale(1.1); } 50% { transform: translate(-4%, -3%) scale(0.95); } 100% { transform: translate(5%, 4%) scale(1.1); } }
-  @keyframes emberFloat { 0% { transform: translateY(0) translateX(0); opacity: 0; } 10% { opacity: 0.9; } 90% { opacity: 0.4; } 100% { transform: translateY(-140px) translateX(12px); opacity: 0; } }
   @keyframes glowPulse { 0%, 100% { text-shadow: 0 0 18px rgba(255,90,60,0.55), 0 0 40px rgba(255,60,40,0.3); } 50% { text-shadow: 0 0 28px rgba(255,110,70,0.8), 0 0 60px rgba(255,70,50,0.45); } }
 
   .smoke-layer-a { position:absolute; inset:-15%; background: radial-gradient(ellipse 40% 30% at 25% 35%, rgba(200,200,205,0.28), transparent 60%), radial-gradient(ellipse 35% 45% at 75% 65%, rgba(180,180,185,0.22), transparent 65%), radial-gradient(ellipse 50% 30% at 50% 80%, rgba(160,160,165,0.18), transparent 60%); filter: blur(24px); animation: smokeDrift1 16s ease-in-out infinite; mix-blend-mode: screen; }
-  .smoke-layer-b { position:absolute; inset:-15%; background: radial-gradient(ellipse 45% 35% at 65% 20%, rgba(210,210,215,0.22), transparent 55%), radial-gradient(ellipse 30% 40% at 15% 70%, rgba(255,90,60,0.14), transparent 60%), radial-gradient(ellipse 40% 30% at 85% 85%, rgba(190,190,195,0.20), transparent 55%); filter: blur(30px); animation: smokeDrift2 20s ease-in-out infinite; mix-blend-mode: screen; }
+  .smoke-layer-b { position:absolute; inset:-15%; background: radial-gradient(ellipse 45% 35% at 65% 20%, rgba(210,210,215,0.22), transparent 55%), radial-gradient(ellipse 30% 40% at 15% 70%, rgba(170,170,175,0.16), transparent 60%), radial-gradient(ellipse 40% 30% at 85% 85%, rgba(190,190,195,0.20), transparent 55%); filter: blur(30px); animation: smokeDrift2 20s ease-in-out infinite; mix-blend-mode: screen; }
   .smoke-noise { position:absolute; inset:-10%; mix-blend-mode: screen; opacity: 0.5; }
-  .ember { position:absolute; bottom:8%; width:3px; height:3px; border-radius:50%; background:#ff6a45; box-shadow: 0 0 6px 2px rgba(255,106,69,0.8); animation: emberFloat linear infinite; }
   .neon-title { animation: glowPulse 3.5s ease-in-out infinite; }
 </style>
 </head>
@@ -101,27 +99,68 @@ const NavWallet = ({ active }) => (<NavSvg active={active}><rect x="3" y="6.5" w
 const NavGear = ({ active }) => (<NavSvg active={active}><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></NavSvg>);
 const NavClipboard = ({ active }) => (<NavSvg active={active}><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9.5 4V3.2A1.2 1.2 0 0110.7 2h2.6a1.2 1.2 0 011.2 1.2V4"/><path d="M9 12l2 2 4-4"/></NavSvg>);
 
-// Real NRL Round 19, 2026 draw (source: nrl.com / official draw, pulled 8 July 2026).
-// Update this block each round to keep dates, times and matchups accurate —
-// see the chat notes on what it'd take to make this pull automatically.
-const CURRENT_ROUND_LABEL = "NRL Round 19";
-const FIXTURES_R1 = [
-  ["Tigers","Warriors"], ["Dolphins","Sharks"], ["Bulldogs","Raiders"],
-  ["Roosters","Eels"], ["Rabbitohs","Knights"], ["Manly","Cowboys"],
-  ["Storm","Titans"]
+// Real NRL 2026 draw data (source: official NRL draw / match centres, pulled 8 July 2026).
+// Add a new round object here each fortnight to keep this current — see the chat
+// notes on what it'd take to make this pull automatically via a backend job.
+const NRL_ROUNDS = [
+  {
+    id: "r19", label: "NRL Round 19", firstKickoff: new Date("2026-07-10T20:00:00+10:00"),
+    byes: ["Broncos", "Dragons", "Panthers"],
+    fixtures: [
+      { home: "Tigers", away: "Warriors", kickoff: "Fri 10 Jul, 8:00pm AEST — Campbelltown Stadium" },
+      { home: "Dolphins", away: "Sharks", kickoff: "Sat 11 Jul, 3:00pm AEST — Kayo Stadium" },
+      { home: "Bulldogs", away: "Raiders", kickoff: "Sat 11 Jul, 5:30pm AEST — Accor Stadium" },
+      { home: "Roosters", away: "Eels", kickoff: "Sat 11 Jul, 7:30pm AEST — Allianz Stadium" },
+      { home: "Rabbitohs", away: "Knights", kickoff: "Sun 12 Jul, 2:00pm AEST — Accor Stadium" },
+      { home: "Manly", away: "Cowboys", kickoff: "Sun 12 Jul, 4:05pm AEST — 4 Pines Park" },
+      { home: "Storm", away: "Titans", kickoff: "Sun 12 Jul, 6:15pm AEST — AAMI Park" },
+    ],
+  },
+  {
+    id: "r20", label: "NRL Round 20", firstKickoff: new Date("2026-07-16T19:50:00+10:00"),
+    byes: ["Eels"],
+    fixtures: [
+      { home: "Panthers", away: "Broncos", kickoff: "Thu 16 Jul, 7:50pm AEST — CommBank Stadium" },
+      { home: "Sharks", away: "Knights", kickoff: "Fri 17 Jul, 6:00pm AEST — Ocean Protect Stadium" },
+      { home: "Roosters", away: "Storm", kickoff: "Fri 17 Jul, 8:00pm AEST — Allianz Stadium" },
+      { home: "Raiders", away: "Rabbitohs", kickoff: "Sat 18 Jul, 3:00pm AEST — GIO Stadium" },
+      { home: "Warriors", away: "Dragons", kickoff: "Sat 18 Jul, 5:30pm AEST — Go Media Stadium" },
+      { home: "Bulldogs", away: "Tigers", kickoff: "Sat 18 Jul, 7:30pm AEST — Accor Stadium" },
+      { home: "Titans", away: "Manly", kickoff: "Sun 19 Jul, 2:00pm AEST — Cbus Super Stadium" },
+      { home: "Dolphins", away: "Cowboys", kickoff: "Sun 19 Jul, 4:05pm AEST — Suncorp Stadium" },
+    ],
+  },
+  {
+    id: "r21", label: "NRL Round 21", firstKickoff: new Date("2026-07-23T19:50:00+10:00"),
+    byes: ["Dolphins"],
+    fixtures: [
+      { home: "Eels", away: "Panthers", kickoff: "Thu 23 Jul, 7:50pm AEST — CommBank Stadium" },
+      { home: "Knights", away: "Roosters", kickoff: "Fri 24 Jul, 6:00pm AEST — McDonald Jones Stadium" },
+      { home: "Rabbitohs", away: "Storm", kickoff: "Fri 24 Jul, 8:00pm AEST — Accor Stadium" },
+      { home: "Raiders", away: "Tigers", kickoff: "Sat 25 Jul, 3:00pm AEST — GIO Stadium" },
+      { home: "Bulldogs", away: "Warriors", kickoff: "Sat 25 Jul, 5:30pm AEST — Accor Stadium" },
+      { home: "Cowboys", away: "Broncos", kickoff: "Sat 25 Jul, 7:30pm AEST — QLD Country Bank Stadium" },
+      { home: "Dragons", away: "Titans", kickoff: "Sun 26 Jul, 2:00pm AEST — St George Venues Stadium" },
+      { home: "Manly", away: "Sharks", kickoff: "Sun 26 Jul, 4:05pm AEST — 4 Pines Park" },
+    ],
+  },
+  {
+    id: "r22", label: "NRL Round 22", firstKickoff: new Date("2026-07-30T19:50:00+10:00"),
+    byes: ["Manly"],
+    fixtures: [
+      { home: "Cowboys", away: "Roosters", kickoff: "Thu 30 Jul, 7:50pm AEST — QLD Country Bank Stadium" },
+      { home: "Dragons", away: "Dolphins", kickoff: "Fri 31 Jul, 6:00pm AEST — WIN Stadium" },
+      { home: "Storm", away: "Bulldogs", kickoff: "Fri 31 Jul, 8:00pm AEST — AAMI Park" },
+      { home: "Titans", away: "Warriors", kickoff: "Sat 1 Aug, 3:00pm AEST — Cbus Super Stadium" },
+      { home: "Panthers", away: "Raiders", kickoff: "Sat 1 Aug, 5:30pm AEST — Glen Willow Oval" },
+      { home: "Broncos", away: "Knights", kickoff: "Sat 1 Aug, 7:30pm AEST — Suncorp Stadium" },
+      { home: "Sharks", away: "Rabbitohs", kickoff: "Sun 2 Aug, 2:00pm AEST — Ocean Protect Stadium" },
+      { home: "Tigers", away: "Eels", kickoff: "Sun 2 Aug, 4:05pm AEST — CommBank Stadium" },
+    ],
+  },
 ];
-const FIXTURE_KICKOFFS = [
-  "Fri 10 Jul, 8:00pm AEST — Campbelltown Stadium",
-  "Sat 11 Jul, 3:00pm AEST — Kayo Stadium",
-  "Sat 11 Jul, 5:30pm AEST — Accor Stadium",
-  "Sat 11 Jul, 7:30pm AEST — Allianz Stadium",
-  "Sun 12 Jul, 2:00pm AEST — Accor Stadium",
-  "Sun 12 Jul, 4:05pm AEST — 4 Pines Park",
-  "Sun 12 Jul, 6:15pm AEST — AAMI Park",
-];
-const ROUND_BYES = ["Broncos", "Dragons", "Panthers"];
-const ALL_TEAMS = FIXTURES_R1.flat();
-const ROUND = 1;
+function getRound(roundId) { return NRL_ROUNDS.find((r) => r.id === roundId) || NRL_ROUNDS[0]; }
+const ALL_TEAMS = [...new Set(NRL_ROUNDS.flatMap((r) => r.fixtures.flatMap((f) => [f.home, f.away])))];
 
 const DEFAULT_RULES = `HOW TO PLAY
 
@@ -292,29 +331,44 @@ function AuthScreen() {
     setBusy(false);
   };
 
-  const embers = useMemo(() => Array.from({ length: 16 }, (_, i) => ({
-    left: `${(i * 137.5) % 100}%`,
-    delay: `${(i * 1.9) % 14}s`,
-    duration: `${8 + (i % 5) * 2}s`,
-    size: 2 + (i % 3),
-  })), []);
+  const smokeRef = useRef(null);
+  const pointerTarget = useRef({ x: 0, y: 0 });
+  const pointerCurrent = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    let raf;
+    const animate = () => {
+      pointerCurrent.current.x += (pointerTarget.current.x - pointerCurrent.current.x) * 0.08;
+      pointerCurrent.current.y += (pointerTarget.current.y - pointerCurrent.current.y) * 0.08;
+      if (smokeRef.current) smokeRef.current.style.transform = `translate(${pointerCurrent.current.x}px, ${pointerCurrent.current.y}px)`;
+      raf = requestAnimationFrame(animate);
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  const handlePointerMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+    const y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+    pointerTarget.current = { x: x * 26, y: y * 26 };
+  };
 
   return (
-    <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6 relative overflow-hidden" style={{ backgroundColor: "#050506" }}>
+    <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6 relative overflow-hidden" style={{ backgroundColor: "#050506" }} onPointerMove={handlePointerMove}>
       <svg width="0" height="0" style={{ position: "absolute" }}>
         <filter id="smokeTurb" colorInterpolationFilters="sRGB">
           <feTurbulence type="fractalNoise" baseFrequency="0.010 0.018" numOctaves="4" seed="11" result="turb">
-            <animate attributeName="baseFrequency" values="0.010 0.018;0.014 0.024;0.010 0.018" dur="30s" repeatCount="indefinite" />
+            <animate attributeName="baseFrequency" values="0.010 0.018;0.014 0.024;0.010 0.018" dur="18s" repeatCount="indefinite" />
           </feTurbulence>
           <feColorMatrix in="turb" type="matrix" values="0 0 0 0 0.85  0 0 0 0 0.85  0 0 0 0 0.9  0 0 0 0.5 0" />
         </filter>
       </svg>
-      <div className="smoke-noise" style={{ filter: "url(#smokeTurb)" }} />
-      <div className="smoke-layer-a" />
-      <div className="smoke-layer-b" />
-      {embers.map((e, i) => (
-        <span key={i} className="ember" style={{ left: e.left, width: e.size, height: e.size, animationDelay: e.delay, animationDuration: e.duration }} />
-      ))}
+      <div ref={smokeRef} style={{ position: "absolute", inset: 0 }}>
+        <div className="smoke-noise" style={{ filter: "url(#smokeTurb)" }} />
+        <div className="smoke-layer-a" />
+        <div className="smoke-layer-b" />
+      </div>
 
       <div className="max-w-sm mx-auto w-full relative z-10">
         <div className="flex flex-col items-center gap-3 mb-8">
@@ -446,13 +500,14 @@ function TierCard({ tier, now, onJoin, joined, theme }) {
   const started = msToStart <= 0;
   const countdown = formatCountdown(msToStart);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const roundLabel = getRound(tier.roundId).label;
   return (
     <div className={`relative rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
       {isHigh && (<div className="absolute -top-3 left-5 flex items-center gap-1 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"><Crown size={12} /> High Stakes</div>)}
-      <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">Round {tier.round}</span></div>
+      <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
       <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
       <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${started ? "bg-rose-500/10 text-rose-400" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{started ? "Entries closed — round underway" : `Round ${tier.round} starts in ${countdown} (${tier.startLabel})`}
+        <Clock size={13} />{started ? "Entries closed — round underway" : `${roundLabel} starts in ${countdown} (${tier.startLabel})`}
       </div>
       <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
         <Scoreboard value={`$${tier.pool.toLocaleString()}`} label="Prize Pool" accent="gold" />
@@ -571,7 +626,7 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
   return (<div className="flex items-center gap-2">{renderSide(home, "left")}<span className="text-[11px] text-neutral-500 shrink-0">vs</span>{renderSide(away, "right")}</div>);
 }
 
-function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, onPick, onSubmit, onEdit, theme, saving }) {
+function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, eliminated, onPick, onSubmit, onEdit, theme, saving }) {
   if (eliminated) {
     return (<div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-5 text-center"><ShieldAlert className="mx-auto mb-2 text-rose-400" size={28} /><p className="text-slate-200 font-semibold">You're out this round</p><p className="text-neutral-500 text-sm mt-1">Your team came up short.</p></div>);
   }
@@ -582,18 +637,18 @@ function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdow
       </div>
       <div className="flex items-center justify-between">
         <p className="text-xs text-neutral-500">Tap a team to make it your pick. You can't reuse a team you've already won with.</p>
-        <span className="text-[10px] uppercase tracking-widest text-neutral-500 shrink-0 ml-2">{CURRENT_ROUND_LABEL}</span>
+        <span className="text-[10px] uppercase tracking-widest text-neutral-500 shrink-0 ml-2">{round.label}</span>
       </div>
       <div className="space-y-3">
-        {fixtures.map(([home, away], i) => (
+        {round.fixtures.map((f, i) => (
           <div key={i}>
-            {FIXTURE_KICKOFFS[i] && <div className="text-[10px] text-neutral-500 mb-1 px-1">{FIXTURE_KICKOFFS[i]}</div>}
-            <FixtureRow home={home} away={away} myPick={myPick} lockedTeam={lockedTeam} locked={locked} onSelect={onPick} theme={theme} />
+            {f.kickoff && <div className="text-[10px] text-neutral-500 mb-1 px-1">{f.kickoff}</div>}
+            <FixtureRow home={f.home} away={f.away} myPick={myPick} lockedTeam={lockedTeam} locked={locked} onSelect={onPick} theme={theme} />
           </div>
         ))}
       </div>
-      {ROUND_BYES.length > 0 && (
-        <p className="text-[11px] text-neutral-600 px-1">Bye this round: {ROUND_BYES.join(", ")}</p>
+      {round.byes.length > 0 && (
+        <p className="text-[11px] text-neutral-600 px-1">Bye this round: {round.byes.join(", ")}</p>
       )}
       <div className="fixed bottom-16 inset-x-0 px-5">
         <div className="max-w-md mx-auto">
@@ -610,7 +665,7 @@ function PickTab({ fixtures, myPick, lockedTeam, submitted, locked, lockCountdow
   );
 }
 
-function StandingsTab({ players, locked, poolAmount }) {
+function StandingsTab({ players, locked, poolAmount, lockCountdown }) {
   return (
     <div className="space-y-4">
       <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 flex items-center justify-around`}>
@@ -619,7 +674,12 @@ function StandingsTab({ players, locked, poolAmount }) {
       </div>
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2">{locked ? <Eye size={14} className="text-teal-300" /> : <EyeOff size={14} className="text-neutral-500" />}This round's tips</h4>
-        {!locked ? (<div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>Everyone's tips stay hidden until picks lock.</div>) :
+        {!locked ? (
+          <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>
+            Everyone's tips stay hidden until picks lock.
+            {lockCountdown && <div className="mt-1 text-xs text-amber-300">Locking in {lockCountdown} — 24 hours before kickoff</div>}
+          </div>
+        ) :
           players.length === 0 ? (<div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 px-4 py-5 text-center text-sm text-neutral-500`}>Nobody has entered yet.</div>) : (
           <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
             {players.map((p) => (
@@ -647,17 +707,12 @@ function StandingsTab({ players, locked, poolAmount }) {
   );
 }
 
-function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, onSignOut, isHost, rulesText, onSaveRules }) {
+function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAccentChange, theme, onSignOut, isHost }) {
   const [draftName, setDraftName] = useState(profile.name || "");
   const [draftEmail, setDraftEmail] = useState(profile.email || "");
   const [saved, setSaved] = useState(false);
-  const [draftRules, setDraftRules] = useState(rulesText || DEFAULT_RULES);
-  const [rulesSaved, setRulesSaved] = useState(false);
-
-  useEffect(() => { setDraftRules(rulesText || DEFAULT_RULES); }, [rulesText]);
 
   const save = async () => { await onSaveNameEmail({ name: draftName, email: draftEmail }); setSaved(true); setTimeout(() => setSaved(false), 1500); };
-  const saveRules = async () => { await onSaveRules(draftRules); setRulesSaved(true); setTimeout(() => setRulesSaved(false), 1500); };
 
   return (
     <div className="space-y-6 pb-6">
@@ -703,22 +758,6 @@ function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAcce
       </div>
 
       <div>
-        <h4 className="text-sm font-semibold text-neutral-300 mb-2">Rules</h4>
-        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
-          {isHost ? (
-            <>
-              <p className="text-xs text-neutral-500 mb-2">Only hosts can edit this — it's visible to everyone in the group.</p>
-              <textarea value={draftRules} onChange={(e) => setDraftRules(e.target.value)} rows={6} placeholder="How to play, eligibility, payout rules, etc."
-                className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none`} />
-              <button onClick={saveRules} className={`mt-2 w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>{rulesSaved ? "Saved ✓" : "Save rules"}</button>
-            </>
-          ) : (
-            <p className="text-sm text-neutral-300 whitespace-pre-wrap">{rulesText || DEFAULT_RULES}</p>
-          )}
-        </div>
-      </div>
-
-      <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2"><Palette size={14} /> Display settings</h4>
         <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
           <p className="text-xs text-neutral-500 mb-3">Choose the accent colour used across your tabs and buttons.</p>
@@ -740,18 +779,40 @@ function SettingsTab({ profile, onSaveNameEmail, onProfileChange, accent, onAcce
 function HostTierForm({ initial, onSave, onCancel, theme }) {
   const [name, setName] = useState(initial?.name || "");
   const [buyIn, setBuyIn] = useState(initial?.buyIn ?? 5);
-  const [start, setStart] = useState(toDatetimeLocalValue(initial?.startTime || new Date(Date.now() + 1000 * 60 * 60 * 30)));
-  const [rules, setRules] = useState(initial?.rules || "");
-  const canSave = name && buyIn > 0 && start;
+  const [roundId, setRoundId] = useState(initial?.roundId || NRL_ROUNDS[0].id);
+  const [lockAt, setLockAt] = useState(() => {
+    if (initial?.lockTime) return toDatetimeLocalValue(initial.lockTime);
+    const round = getRound(initial?.roundId || NRL_ROUNDS[0].id);
+    return toDatetimeLocalValue(new Date(round.firstKickoff.getTime() - 1000 * 60 * 60 * 24));
+  });
+  const [rules, setRules] = useState(initial ? (initial.rules || "") : DEFAULT_RULES);
+  const canSave = name && buyIn > 0 && roundId && lockAt;
+
+  const onRoundChange = (id) => {
+    setRoundId(id);
+    const round = getRound(id);
+    setLockAt(toDatetimeLocalValue(new Date(round.firstKickoff.getTime() - 1000 * 60 * 60 * 24)));
+  };
+
   return (
     <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 space-y-3`}>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Competition name" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
       <div><label className="text-[11px] text-neutral-500 mb-1 block">Buy-in ($)</label><input value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} type="number" min="1" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} /></div>
-      <div><label className="text-[11px] text-neutral-500 mb-1 block">Round 1 start date & time</label><input value={start} onChange={(e) => setStart(e.target.value)} type="datetime-local" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} /></div>
+      <div>
+        <label className="text-[11px] text-neutral-500 mb-1 block">Select round to start</label>
+        <select value={roundId} onChange={(e) => onRoundChange(e.target.value)} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`}>
+          {NRL_ROUNDS.map((r) => <option key={r.id} value={r.id}>{r.label} — kicks off {formatStartLabel(r.firstKickoff)}</option>)}
+        </select>
+      </div>
+      <div>
+        <label className="text-[11px] text-neutral-500 mb-1 block">Select time and date for lockout of picks</label>
+        <input value={lockAt} onChange={(e) => setLockAt(e.target.value)} type="datetime-local" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} />
+        <p className="text-[10px] text-neutral-500 mt-1">Defaults to 24 hours before kickoff of the first game — adjust if you want it earlier or later.</p>
+      </div>
       <div><label className="text-[11px] text-neutral-500 mb-1 block">Rules / description</label><textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={4} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none`} /></div>
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel} className="flex-1 rounded-lg border border-white/10 text-neutral-300 py-2 text-sm">Cancel</button>
-        <button disabled={!canSave} onClick={() => onSave({ name, buyIn, startTime: new Date(start), rules })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
+        <button disabled={!canSave} onClick={() => onSave({ name, buyIn, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
       </div>
     </div>
   );
@@ -809,7 +870,6 @@ function AppShell({ user }) {
   const [pickSubmitted, setPickSubmitted] = useState(false);
   const [pickSaving, setPickSaving] = useState(false);
   const [results, setResults] = useState({});
-  const [rulesText, setRulesText] = useState("");
 
   const accent = profile?.accent || "teal";
   const theme = useAccentTheme(accent);
@@ -841,13 +901,8 @@ function AppShell({ user }) {
 
   useEffect(() => {
     const unsub = db.collection("tiers").onSnapshot((snap) => {
-      setRawTiers(snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, startTime: data.startTime.toDate() }; }));
+      setRawTiers(snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, startTime: data.startTime.toDate(), lockTime: data.lockTime ? data.lockTime.toDate() : null }; }));
     });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    const unsub = db.collection("config").doc("rules").onSnapshot((doc) => setRulesText(doc.exists ? doc.data().text || "" : ""));
     return unsub;
   }, []);
 
@@ -858,30 +913,34 @@ function AppShell({ user }) {
   }, [rawTiers.map((t) => t.id).join(","), user.uid]);
 
   const joinedTierId = Object.keys(myEntries)[0] || null;
+  const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0, pool: (entryCounts[t.id] || 0) * t.buyIn })), [rawTiers, entryCounts]);
+  const currentTier = tiers.find((t) => t.id === joinedTierId);
+  const currentRound = currentTier ? getRound(currentTier.roundId) : null;
 
   useEffect(() => {
-    if (!joinedTierId) { setAllPicks([]); setMyPick(null); setPickSubmitted(false); return; }
-    const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("round", "==", ROUND).onSnapshot((snap) => {
+    if (!joinedTierId || !currentTier) { setAllPicks([]); setMyPick(null); setPickSubmitted(false); return; }
+    const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("roundId", "==", currentTier.roundId).onSnapshot((snap) => {
       const list = snap.docs.map((d) => d.data()); setAllPicks(list);
       const mine = list.find((p) => p.uid === user.uid);
       if (mine) { setMyPick(mine.team); setPickSubmitted(true); }
     });
-    const unsubResults = db.collection("results").doc(`${joinedTierId}_r${ROUND}`).onSnapshot((doc) => setResults(doc.exists ? doc.data().fixtureResults || {} : {}));
+    const unsubResults = db.collection("results").doc(`${joinedTierId}_${currentTier.roundId}`).onSnapshot((doc) => setResults(doc.exists ? doc.data().fixtureResults || {} : {}));
     return () => { unsubPicks(); unsubResults(); };
-  }, [joinedTierId, user.uid]);
+  }, [joinedTierId, currentTier?.roundId, user.uid]);
 
-  const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, round: ROUND, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0, pool: (entryCounts[t.id] || 0) * t.buyIn })), [rawTiers, entryCounts]);
-  const currentTier = tiers.find((t) => t.id === joinedTierId);
-  const lockTime = currentTier ? new Date(currentTier.startTime.getTime() - 1000 * 60 * 60 * 24) : null;
+  const lockTime = currentTier?.lockTime || null;
   const tipsLocked = lockTime ? now.getTime() >= lockTime.getTime() : false;
   const lockCountdown = lockTime ? formatCountdown(lockTime.getTime() - now.getTime()) : "";
 
-  const players = useMemo(() => allPicks.map((p) => {
-    const fixtureIndex = FIXTURES_R1.findIndex((f) => f.includes(p.team));
-    const winner = results[fixtureIndex];
-    const status = winner ? (winner === p.team ? "W" : "L") : null;
-    return { uid: p.uid, name: p.name, pick: p.team, isYou: p.uid === user.uid, status };
-  }), [allPicks, results, user.uid]);
+  const players = useMemo(() => {
+    if (!currentRound) return [];
+    return allPicks.map((p) => {
+      const fixtureIndex = currentRound.fixtures.findIndex((f) => f.home === p.team || f.away === p.team);
+      const winner = results[fixtureIndex];
+      const status = winner ? (winner === p.team ? "W" : "L") : null;
+      return { uid: p.uid, name: p.name, pick: p.team, isYou: p.uid === user.uid, status };
+    });
+  }, [allPicks, results, user.uid, currentRound]);
 
   const myStatus = players.find((p) => p.isYou)?.status || null;
   const eliminated = myStatus === "L";
@@ -906,17 +965,16 @@ function AppShell({ user }) {
   };
 
   const submitPick = async () => {
-    if (!myPick || !joinedTierId) return;
+    if (!myPick || !joinedTierId || !currentTier) return;
     setPickSaving(true);
-    await db.collection("picks").doc(`${joinedTierId}_r${ROUND}_${user.uid}`).set({ tierId: joinedTierId, round: ROUND, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
+    await db.collection("picks").doc(`${joinedTierId}_${currentTier.roundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: currentTier.roundId, uid: user.uid, name: profile.name, team: myPick, submittedAt: FieldValue.serverTimestamp() });
     setPickSaving(false); setPickSubmitted(true);
   };
 
-  const setFixtureResult = (fixtureIndex, winner) => db.collection("results").doc(`${joinedTierId}_r${ROUND}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, buyIn: data.buyIn, startTime: Timestamp.fromDate(data.startTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
-  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, buyIn: data.buyIn, startTime: Timestamp.fromDate(data.startTime), rules: data.rules }, { merge: true });
+  const setFixtureResult = (fixtureIndex, winner) => db.collection("results").doc(`${joinedTierId}_${currentTier.roundId}`).set({ fixtureResults: { ...results, [fixtureIndex]: winner } }, { merge: true });
+  const createTier = (data) => db.collection("tiers").add({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
-  const saveRules = (text) => db.collection("config").doc("rules").set({ text, updatedBy: user.uid, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
   if (screen === "loading" || !profile) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG }}>Loading…</div>;
   if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { updateProfile({ ...idInfo, ageVerified: true }); setScreen("sport"); }} />;
@@ -948,27 +1006,27 @@ function AppShell({ user }) {
             {tiers.map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} joined={!!myEntries[tier.id]} theme={theme} />)}
           </div>
         )}
-        {tab === "pick" && currentTier && (
-          <PickTab fixtures={FIXTURES_R1} myPick={myPick} lockedTeam={lockedTeam} submitted={pickSubmitted} locked={tipsLocked}
+        {tab === "pick" && currentTier && currentRound && (
+          <PickTab round={currentRound} myPick={myPick} lockedTeam={lockedTeam} submitted={pickSubmitted} locked={tipsLocked}
             lockCountdown={lockCountdown} eliminated={eliminated} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
             onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
-        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool} />}
+        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool} lockCountdown={lockCountdown} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
         {tab === "wallet" && <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />}
         {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} theme={theme} />}
         {tab === "settings" && (
-          <SettingsTab profile={profile} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost} rulesText={rulesText} onSaveRules={saveRules} />
+          <SettingsTab profile={profile} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost} />
         )}
-        {currentTier && (
+        {currentTier && currentRound && (
           <details className="mt-6 rounded-xl border border-dashed border-white/10 p-4">
             <summary className="text-xs text-neutral-500 cursor-pointer">Friends-test tools — simulate this round's results</summary>
             <div className="space-y-2 mt-2">
-              {FIXTURES_R1.map(([home, away], i) => (
+              {currentRound.fixtures.map((f, i) => (
                 <div key={i} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
-                  <span className="text-xs text-neutral-400">{home} vs {away}</span>
-                  <div className="flex gap-1">{[home, away].map((team) => (<button key={team} onClick={() => setFixtureResult(i, team)} className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>{team} won</button>))}</div>
+                  <span className="text-xs text-neutral-400">{f.home} vs {f.away}</span>
+                  <div className="flex gap-1">{[f.home, f.away].map((team) => (<button key={team} onClick={() => setFixtureResult(i, team)} className={`rounded px-2 py-1 text-[11px] font-medium ${results[i] === team ? `${theme.bg} text-neutral-950` : "bg-neutral-700 text-neutral-300"}`}>{team} won</button>))}</div>
                 </div>
               ))}
             </div>
