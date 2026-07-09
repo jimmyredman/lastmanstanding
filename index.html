@@ -1139,17 +1139,17 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
 
       {(submitted || locked) && myPick && !stamping ? (
         <div className="flex flex-col items-center py-10">
-          <div className="stamp-pop mb-4">
-            <div className={`border-4 ${theme.borderSoft} ${theme.text} font-scoreboard text-5xl tracking-widest px-8 py-3 -rotate-[8deg] uppercase bg-neutral-900`}
+          <div className="stamp-pop mb-6">
+            <div className={`border-4 ${theme.borderSoft} ${theme.text} font-scoreboard text-5xl tracking-widest px-8 py-3 uppercase bg-neutral-900`}
               style={{ textShadow: "0 0 18px currentColor", boxShadow: "0 0 16px currentColor" }}>
               {myPick}
             </div>
           </div>
           {locked ? (
-            <p className="text-xs text-neutral-500 mt-4 flex items-center gap-1"><Check size={13} className="text-neutral-500" /> Locked in — no more changes this round.</p>
+            <p className="text-xs text-neutral-500 mt-2 flex items-center gap-1"><Check size={13} className="text-neutral-500" /> Locked in — no more changes this round.</p>
           ) : (
             <>
-              <p className="text-xs text-neutral-500 mt-4">You can change your pick any time before tips lock.</p>
+              <p className="text-xs text-neutral-500 mt-2">You can change your pick any time before tips lock.</p>
               <button onClick={onEdit} className="mt-4 text-sm text-neutral-300 flex items-center gap-1 hover:text-white border adapt-border-10 rounded-lg px-4 py-2"><Pencil size={13} /> Edit your pick</button>
             </>
           )}
@@ -1700,8 +1700,8 @@ function HostResultsPanel({ tier, now, theme }) {
 
   return (
     <div className="mt-3">
-      <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
-        <ChevronDown size={12} className={`transition-transform ${open ? "rotate-180" : ""}`} /> {open ? "Hide round results" : "Enter round results"}
+      <button onClick={() => setOpen((o) => !o)} className={`w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-semibold py-2.5 text-sm`}>
+        <Check size={15} /> {open ? "Hide round results" : "Enter round results"} <ChevronDown size={14} className={`transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
         <div className="mt-2 space-y-2">
@@ -2218,7 +2218,7 @@ function AppShell({ user }) {
               if (!t) return null;
               const active = id === joinedTierId;
               return (
-                <button key={id} onClick={() => { setViewingTierId(id); setMyPick(null); setPickSubmitted(false); }}
+                <button key={id} onClick={() => setViewingTierId(id)}
                   className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium border ${active ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-400"}`}>
                   {t.name}
                 </button>
@@ -2264,7 +2264,7 @@ function AppShell({ user }) {
       {pickStamp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
           <div className="stamp-pop text-center">
-            <div className={`border-4 ${theme.borderSoft} ${theme.text} font-scoreboard text-5xl tracking-widest px-8 py-3 -rotate-[8deg] uppercase bg-neutral-900`}
+            <div className={`border-4 ${theme.borderSoft} ${theme.text} font-scoreboard text-5xl tracking-widest px-8 py-3 uppercase bg-neutral-900`}
               style={{ textShadow: "0 0 22px currentColor", boxShadow: "0 0 34px currentColor" }}>
               {pickStamp}
             </div>
