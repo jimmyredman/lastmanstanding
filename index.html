@@ -99,6 +99,12 @@
   .crown-glow { filter: drop-shadow(0 0 10px #ffd24a); }
 
   @keyframes stampPop { 0% { transform: scale(2.2) rotate(-18deg); opacity: 0; } 60% { transform: scale(0.92) rotate(-18deg); opacity: 1; } 80% { transform: scale(1.05) rotate(-18deg); } 100% { transform: scale(1) rotate(-18deg); opacity: 1; } }
+
+  @keyframes confettiFall {
+    0%   { transform: translateY(-20px) translateX(0) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(220px) translateX(var(--drift)) rotate(var(--rot)); opacity: 0; }
+  }
+  .confetti-piece { position: absolute; top: 0; border-radius: 1px; animation: confettiFall ease-in both; }
   .stamp-pop > div { animation: stampPop 0.45s cubic-bezier(.2,1.6,.3,1) both; }
 
   @keyframes tapPulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
@@ -126,7 +132,35 @@ const { useState, useMemo, useEffect, useRef, useLayoutEffect } = React;
 const auth = window.__auth;
 const db = window.__db;
 const FieldValue = firebase.firestore.FieldValue;
+const FieldPath = firebase.firestore.FieldPath;
 const Timestamp = firebase.firestore.Timestamp;
+
+// Names and avatars get copied into pick/entry documents at submit/join time (so historical
+// records freeze correctly), but that means those copies go stale the moment someone changes
+// their name or avatar in Settings. This hook does a live lookup against the real `users`
+// profiles for a given set of uids, so any screen that shows a name/avatar can prefer the
+// live version and always reflect the latest Settings changes. Firestore's "in" queries cap
+// at 30 values, so a larger uid set is split into chunks and merged.
+function useLiveProfiles(uids) {
+  const [profiles, setProfiles] = useState({});
+  const key = uids.slice().sort().join(",");
+  useEffect(() => {
+    const unique = key ? key.split(",") : [];
+    if (unique.length === 0) { setProfiles({}); return; }
+    const chunks = [];
+    for (let i = 0; i < unique.length; i += 30) chunks.push(unique.slice(i, i + 30));
+    const merged = {};
+    let pending = chunks.length;
+    const unsubs = chunks.map((chunk) =>
+      db.collection("users").where(FieldPath.documentId(), "in", chunk).onSnapshot((snap) => {
+        snap.docs.forEach((d) => { merged[d.id] = d.data(); });
+        setProfiles({ ...merged });
+      })
+    );
+    return () => unsubs.forEach((u) => u());
+  }, [key]);
+  return profiles;
+}
 
 function svgIcon(children, viewBox = "0 0 24 24") {
   return function IconCmp({ size = 16, className = "" }) {
@@ -917,11 +951,17 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
         </div>
       )}
       {joined ? (
-        <button onClick={() => onInvite(tier)}
-          className="mt-5 w-full rounded-xl py-3 text-sm font-semibold border-2 border-teal-400 text-teal-300 transition hover:bg-teal-400/10"
-          style={{ boxShadow: "0 0 16px rgba(45,212,191,0.4)", textShadow: "0 0 8px rgba(45,212,191,0.6)" }}>
-          Invite your friends
-        </button>
+        entriesClosed ? (
+          <div className={`mt-5 w-full rounded-xl py-3 text-sm font-medium text-center border ${PANEL_BORDER} text-neutral-500`}>
+            Entries have closed — invites aren't available for this competition anymore
+          </div>
+        ) : (
+          <button onClick={() => onInvite(tier)}
+            className="mt-5 w-full rounded-xl py-3 text-sm font-semibold border-2 border-teal-400 text-teal-300 transition hover:bg-teal-400/10"
+            style={{ boxShadow: "0 0 16px rgba(45,212,191,0.4)", textShadow: "0 0 8px rgba(45,212,191,0.6)" }}>
+            Invite your friends
+          </button>
+        )
       ) : (
         <button onClick={() => onJoin(tier)} disabled={entriesClosed}
           className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition ${entriesClosed ? "bg-neutral-700 text-neutral-500 cursor-default" : isHigh ? "bg-violet-500 text-white hover:bg-violet-400" : `${theme.bg} text-neutral-950 ${theme.bgHover}`}`}>
@@ -1147,7 +1187,31 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
   );
 }
 
-function StandingsTab({ players, locked, poolAmount, lockCountdown, lockUrgent, entryCount }) {
+function ConfettiBurst() {
+  const colors = ["#facc15", "#2dd4bf", "#a78bfa", "#fb7185", "#60a5fa", "#f5f5f5"];
+  const pieces = useMemo(() => Array.from({ length: 30 }, (_, i) => ({
+    left: Math.random() * 100,
+    delay: Math.random() * 0.35,
+    duration: 1.7 + Math.random() * 1.3,
+    color: colors[i % colors.length],
+    rot: Math.round(Math.random() * 360 - 180),
+    drift: Math.round(Math.random() * 70 - 35),
+    size: 6 + Math.round(Math.random() * 5),
+  })), []);
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
+      {pieces.map((p, i) => (
+        <span key={i} className="confetti-piece" style={{
+          left: `${p.left}%`, backgroundColor: p.color, width: p.size, height: Math.round(p.size * 0.6),
+          animationDelay: `${p.delay}s`, animationDuration: `${p.duration}s`,
+          "--drift": `${p.drift}px`, "--rot": `${p.rot}deg`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function StandingsTab({ players, locked, poolAmount, lockCountdown, lockUrgent, entryCount, winnerUid, winnerName, winnerPayout, myUid }) {
   const grouped = useMemo(() => {
     const withPick = players.filter((p) => p.pick);
     const noPick = players.filter((p) => !p.pick);
@@ -1158,9 +1222,31 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown, lockUrgent, 
   }, [players]);
 
   const placeholderCount = Math.max(entryCount || 0, players.length);
+  const isYouWinner = winnerUid && winnerUid === myUid;
 
   return (
     <div className="space-y-4">
+      {winnerUid && (
+        <div className={`relative overflow-hidden rounded-xl border p-5 text-center ${isYouWinner ? "border-amber-400/50 bg-amber-400/10" : `${PANEL_BORDER} bg-neutral-800`}`}>
+          {isYouWinner && <ConfettiBurst />}
+          {isYouWinner ? (
+            <>
+              <div className="stamp-pop relative">
+                <div className="inline-block border-4 border-amber-400 text-amber-300 font-scoreboard text-2xl sm:text-3xl tracking-wide px-5 py-2 -rotate-[6deg] uppercase"
+                  style={{ textShadow: "0 0 18px rgba(251,191,36,0.7)", boxShadow: "0 0 24px rgba(251,191,36,0.35)" }}>
+                  Congratulations — you won!
+                </div>
+              </div>
+              <p className="text-sm text-amber-200 mt-4 relative">${(winnerPayout || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} has been added to your wallet.</p>
+            </>
+          ) : (
+            <p className="text-sm text-slate-200 flex items-center justify-center gap-2">
+              <Crown size={16} className="text-amber-400 crown-glow" />
+              <span><span className="font-semibold">{winnerName || "A player"}</span> won the pool — ${(winnerPayout || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}!</span>
+            </p>
+          )}
+        </div>
+      )}
       <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 flex items-center justify-around`}>
         <Scoreboard value={players.filter((p) => p.status !== "L").length} label="Still Alive" accent="text-teal-300" />
         <div className="h-10 w-px bg-white/10" /><Scoreboard value={`$${poolAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
@@ -1643,7 +1729,7 @@ function HostResultsPanel({ tier, now, theme }) {
   );
 }
 
-function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onClose }) {
+function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onMarkWinner, onClose }) {
   const [entrants, setEntrants] = useState([]);
   useEffect(() => {
     const unsub = db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => {
@@ -1651,6 +1737,7 @@ function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onClo
     });
     return unsub;
   }, [tier.id]);
+  const liveProfiles = useLiveProfiles(useMemo(() => entrants.map((e) => e.uid), [entrants]));
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
@@ -1662,24 +1749,39 @@ function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onClo
         <p className="text-xs text-neutral-500 mb-4">{tier.name}</p>
         <div className="space-y-2">
           {entrants.length === 0 && <p className="text-sm text-neutral-500">No entrants yet.</p>}
-          {entrants.map((e) => (
-            <div key={e.id} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2.5">
-              <div>
-                <span className="text-sm text-slate-200">{e.name}</span>
-                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full ${e.status === "active" ? `${theme.bgSoft} ${theme.text}` : "bg-neutral-700 text-neutral-400"}`}>{e.status}</span>
-              </div>
-              <div className="flex gap-1.5">
-                {e.status === "active" ? (
-                  <>
-                    <button onClick={() => onMarkEliminated(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-rose-500/10 text-rose-400">Mark lost</button>
-                    <button onClick={() => onKick(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300">Kick</button>
-                  </>
-                ) : (
-                  <button onClick={() => onRestore(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300">Restore</button>
+          {entrants.map((e) => {
+            const live = liveProfiles[e.uid];
+            const name = live?.name || e.name;
+            const avatarPreset = live ? (live.avatarPreset || null) : (e.avatarPreset || null);
+            const isWinner = tier.winnerUid === e.uid;
+            return (
+              <div key={e.id} className={`rounded-lg bg-black/30 px-3 py-2.5 ${isWinner ? "border border-amber-400/40" : ""}`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserAvatar preset={avatarPreset} name={name} size={22} />
+                    <span className="text-sm text-slate-200">{name}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${e.status === "active" ? `${theme.bgSoft} ${theme.text}` : "bg-neutral-700 text-neutral-400"}`}>{e.status}</span>
+                    {isWinner && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/15 text-amber-300"><Crown size={10} /> Winner</span>}
+                  </div>
+                  <div className="flex gap-1.5">
+                    {e.status === "active" ? (
+                      <>
+                        <button onClick={() => onMarkEliminated(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-rose-500/10 text-rose-400">Mark lost</button>
+                        <button onClick={() => onKick(tier.id, e.uid, name)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300">Kick</button>
+                      </>
+                    ) : (
+                      <button onClick={() => onRestore(tier.id, e.uid)} className="rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300">Restore</button>
+                    )}
+                  </div>
+                </div>
+                {e.status === "active" && !isWinner && (
+                  <button onClick={() => onMarkWinner(tier.id, e.uid, name)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold bg-amber-400/10 text-amber-300 hover:bg-amber-400/20">
+                    <Crown size={12} /> Mark winner of competition
+                  </button>
                 )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -1719,7 +1821,7 @@ function InviteModal({ tier, onClose, theme }) {
   );
 }
 
-function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onCancelRefund, rollingEarnings, now, theme }) {
+function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancelRefund, rollingEarnings, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [cancelling, setCancelling] = useState(null);
@@ -1735,7 +1837,10 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
       {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ Create new competition</button>)}
       {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={async (data) => { await onCreate(data); setCreating(false); }} />)}
       <div className="space-y-3">
-        {tiers.map((tier) => (
+        {tiers.map((tier) => {
+          const closeTime = tier.lockTime || tier.startTime;
+          const entriesClosed = now.getTime() >= closeTime.getTime();
+          return (
           <div key={tier.id} className={`rounded-xl border ${tier.cancelled ? "border-rose-500/20" : PANEL_BORDER} bg-neutral-800 p-4`}>
             {editingId === tier.id ? (
               <HostTierForm initial={tier} theme={theme} onCancel={() => setEditingId(null)} onSave={async (data) => { await onUpdate(tier.id, data); setEditingId(null); }} />
@@ -1758,9 +1863,11 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                       <button onClick={() => setManagingTierId(tier.id)} className={`w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-semibold py-2.5 text-sm`}>
                         <Users size={15} /> Manage entrants
                       </button>
-                      <button onClick={() => setInvitingTierId(tier.id)} className="w-full flex items-center justify-center gap-2 rounded-lg border adapt-border-10 bg-neutral-800 text-slate-100 hover:bg-neutral-700 font-semibold py-2.5 text-sm">
-                        <UserPlus size={15} /> Invite players by email
-                      </button>
+                      {!entriesClosed && (
+                        <button onClick={() => setInvitingTierId(tier.id)} className="w-full flex items-center justify-center gap-2 rounded-lg border adapt-border-10 bg-neutral-800 text-slate-100 hover:bg-neutral-700 font-semibold py-2.5 text-sm">
+                          <UserPlus size={15} /> Invite players by email
+                        </button>
+                      )}
                     </div>
                     <HostResultsPanel tier={tier} now={now} theme={theme} />
                     {cancelling === tier.id ? (
@@ -1781,11 +1888,12 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
               </>
             )}
           </div>
-        ))}
+          );
+        })}
         {tiers.length === 0 && <p className="text-center text-sm text-neutral-500 py-6">No competitions yet — create the first one above.</p>}
       </div>
       {managingTierId && (
-        <EntrantsModal tier={tiers.find((t) => t.id === managingTierId)} theme={theme} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} onClose={() => setManagingTierId(null)} />
+        <EntrantsModal tier={tiers.find((t) => t.id === managingTierId)} theme={theme} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} onMarkWinner={onMarkWinner} onClose={() => setManagingTierId(null)} />
       )}
       {invitingTierId && (
         <InviteModal tier={tiers.find((t) => t.id === invitingTierId)} theme={theme} onClose={() => setInvitingTierId(null)} />
@@ -1931,15 +2039,18 @@ function AppShell({ user }) {
   const lockCountdown = lockTime ? formatCountdown(msToLock) : "";
   const lockUrgent = !tipsLocked && msToLock !== null && msToLock <= 1000 * 60 * 60 * 6;
 
+  const standingsProfiles = useLiveProfiles(useMemo(() => allPicks.map((p) => p.uid), [allPicks]));
+
   const players = useMemo(() => {
     if (!currentRound) return [];
     return allPicks.map((p) => {
       const fixtureIndex = currentRound.fixtures.findIndex((f) => f.home === p.team || f.away === p.team);
       const winner = results[fixtureIndex];
       const status = winner ? (winner === p.team ? "W" : "L") : null;
-      return { uid: p.uid, name: p.name, avatarPreset: p.avatarPreset || null, pick: p.team, isYou: p.uid === user.uid, status };
+      const live = standingsProfiles[p.uid];
+      return { uid: p.uid, name: live?.name || p.name, avatarPreset: live ? (live.avatarPreset || null) : (p.avatarPreset || null), pick: p.team, isYou: p.uid === user.uid, status };
     });
-  }, [allPicks, results, user.uid, currentRound]);
+  }, [allPicks, results, user.uid, currentRound, standingsProfiles]);
 
   const myStatus = players.find((p) => p.isYou)?.status || null;
   const myEntryStatus = myEntries[joinedTierId]?.status;
@@ -2030,9 +2141,33 @@ function AppShell({ user }) {
   const createTier = (data) => db.collection("tiers").add({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
-  const kickEntrant = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "kicked" });
+  const kickEntrant = (tierId, uid, name) => {
+    if (!confirm(`Kick ${name || "this entrant"} from the competition? They'll be marked as kicked and won't be able to submit further picks. You can restore them afterward if needed.`)) return;
+    return db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "kicked" });
+  };
   const restoreEntrant = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "active" });
   const markEliminated = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "eliminated" });
+
+  const markWinner = async (tierId, uid, name) => {
+    const tier = tiers.find((t) => t.id === tierId);
+    if (!tier) return;
+    const netPool = tier.pool * (1 - PLATFORM_FEE_RATE);
+    const already = !!tier.winnerUid;
+    const confirmMsg = already
+      ? `"${tier.name}" already has a winner (${tier.winnerName || "someone"}). Mark ${name} as the winner instead? The $${netPool.toLocaleString(undefined, { maximumFractionDigits: 2 })} pool was already paid out once — this only relabels the winner and won't pay out again. Fix wallets manually if you're correcting a mistake.`
+      : `Mark ${name} as the winner of "${tier.name}"? This pays out the $${netPool.toLocaleString(undefined, { maximumFractionDigits: 2 })} prize pool to their wallet right away and can't be undone automatically.`;
+    if (!confirm(confirmMsg)) return;
+    await db.runTransaction(async (tx) => {
+      const tierRef = db.collection("tiers").doc(tierId);
+      const tierDoc = await tx.get(tierRef);
+      const existingWinner = tierDoc.exists ? tierDoc.data().winnerUid : null;
+      tx.update(tierRef, { winnerUid: uid, winnerName: name, winnerAt: FieldValue.serverTimestamp(), winnerPayout: netPool });
+      if (existingWinner) return; // pool already paid out for this competition — never pay twice
+      const userRef = db.collection("users").doc(uid);
+      tx.update(userRef, { walletBalance: FieldValue.increment(netPool) });
+      tx.set(userRef.collection("transactions").doc(), { label: `Won "${tier.name}"`, amount: netPool, createdAt: FieldValue.serverTimestamp() });
+    });
+  };
 
   const cancelAndRefund = async (tier) => {
     const snap = await db.collection("entries").where("tierId", "==", tier.id).get();
@@ -2104,10 +2239,10 @@ function AppShell({ user }) {
             onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
-        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool * (1 - PLATFORM_FEE_RATE)} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} />}
+        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool * (1 - PLATFORM_FEE_RATE)} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} winnerPayout={currentTier.winnerPayout} myUid={user.uid} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
         {tab === "wallet" && <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />}
-        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onCancelRefund={cancelAndRefund} rollingEarnings={rollingEarnings} now={now} theme={theme} />}
+        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancelRefund={cancelAndRefund} rollingEarnings={rollingEarnings} now={now} theme={theme} />}
         {tab === "settings" && (
           <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
