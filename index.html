@@ -1959,17 +1959,37 @@ function AppShell({ user }) {
 
   // If tips have locked and this user never submitted a pick, auto-assign a random
   // team on their behalf (excluding whichever team they can't reuse), per the rules.
+  //
+  // This runs off the reactive picks listener (picksLoaded/myPick/pickSubmitted), and
+  // that listener can momentarily report "no pick yet" right after switching between
+  // competitions — Firestore's onSnapshot can deliver an early, not-yet-server-confirmed
+  // result for a tierId+roundId query it hasn't run before in this session, before
+  // correcting itself a moment later. If this effect wrote blindly on that first signal,
+  // it could stomp a real, already-locked-in pick with a fresh random one. So the write
+  // itself is wrapped in a transaction that re-checks the actual server state at write
+  // time and only assigns a pick if one truly doesn't exist yet — the reactive state above
+  // only decides *whether to try*, never *whether it's safe to overwrite*.
   useEffect(() => {
     if (!picksLoaded || !tipsLocked || !joinedTierId || !currentRound || eliminated || myPick || pickSubmitted) return;
     const available = currentRound.fixtures.flatMap((f) => [f.home, f.away]).filter((t) => t !== lockedTeam);
     if (available.length === 0) return;
-    const randomTeam = available[Math.floor(Math.random() * available.length)];
-    setMyPick(randomTeam);
-    setPickSubmitted(true);
-    db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({
-      tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: randomTeam,
-      submittedAt: FieldValue.serverTimestamp(), autoAssigned: true,
-    }).catch(() => { setMyPick(null); setPickSubmitted(false); });
+    const pickRef = db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`);
+    let cancelled = false;
+    db.runTransaction(async (tx) => {
+      const existing = await tx.get(pickRef);
+      if (existing.exists) return existing.data().team; // a real pick is already there server-side — never touch it
+      const randomTeam = available[Math.floor(Math.random() * available.length)];
+      tx.set(pickRef, {
+        tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: randomTeam,
+        submittedAt: FieldValue.serverTimestamp(), autoAssigned: true,
+      });
+      return randomTeam;
+    }).then((team) => {
+      if (cancelled || !team) return;
+      setMyPick(team);
+      setPickSubmitted(true);
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [picksLoaded, tipsLocked, joinedTierId, currentRound, eliminated, myPick, pickSubmitted, lockedTeam]);
 
   const updateProfile = (patch) => db.collection("users").doc(user.uid).set(patch, { merge: true });
