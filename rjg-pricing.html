@@ -753,19 +753,27 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
 
       {measured.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="font-semibold text-sm brand-text">Measurements → link to price items</div>
-          {measured.map(a => (
-            <div key={a.id} className="flex items-center gap-2 text-sm">
-              <span className="chip">{TOOL_LABELS[a.tool]}</span>
-              <span className="font-semibold w-24">{valLabel(a)}</span>
-              <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
-                <option value="">— link item —</option>
-                {items.map(i => <option key={i.id} value={i.id}>{i.description} ({i.unit})</option>)}
-              </select>
-              <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
-            </div>
-          ))}
-          <button className="btn btn-primary w-full" onClick={addToQuote}><IcPlus size={16} /> Add measured items to quote</button>
+          <div className="font-semibold text-sm brand-text">Attach each measurement to a rate → quote</div>
+          {measured.map(a => {
+            const it = items.find(i => i.id === a.priceItemId);
+            const qty = mpp ? measureVal(a) : 0;
+            return (
+              <div key={a.id} className="space-y-1">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="chip">{TOOL_LABELS[a.tool]}</span>
+                  <span className="font-semibold w-20">{valLabel(a)}</span>
+                  <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
+                    <option value="">— attach a rate from the database —</option>
+                    {items.map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}
+                  </select>
+                  <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
+                </div>
+                {it && <div className="text-xs pl-1" style={{ color: "var(--muted)" }}>{round2(qty)} {it.unit} × {money(it.rate)} = <b style={{ color: "var(--ink)" }}>{money(qty * it.rate)}</b> ex GST</div>}
+              </div>
+            );
+          })}
+          {items.length === 0 && <div className="text-xs" style={{ color: "var(--muted)" }}>No rates in the database yet — add items under the Prices tab first.</div>}
+          <button className="btn btn-primary w-full" onClick={addToQuote}><IcPlus size={16} /> Send priced measurements to quote</button>
         </div>
       )}
       {anns.filter(a => !MEASURE_TOOLS.includes(a.tool)).length > 0 &&
@@ -778,27 +786,67 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
 /* =========================================================================
    FLOOR PLAN EDITOR (scaled drawing)
    ========================================================================= */
+function smoothPath(ctx, pts){
+  if (pts.length < 3){ ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke(); return; }
+  ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++){ const xc = (pts[i].x + pts[i+1].x) / 2, yc = (pts[i].y + pts[i+1].y) / 2; ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
+  ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
+}
+const STAMP_DEFAULT_M = { door: 0.9, window: 1.2, opening: 1.0 };
+function drawStamp(ctx, s, brand){
+  const w = s.size, half = w / 2;
+  ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((s.angle || 0) * Math.PI / 180);
+  ctx.strokeStyle = brand; ctx.fillStyle = brand; ctx.lineWidth = 3; ctx.lineJoin = "round";
+  if (s.type === "door"){
+    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -6); ctx.moveTo(half, 0); ctx.lineTo(half, -6); ctx.stroke();      // jambs
+    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -w); ctx.stroke();                                                  // leaf
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(-half, 0, w, -Math.PI/2, 0); ctx.stroke();                                     // swing
+  } else if (s.type === "window"){
+    ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.moveTo(-half, -3); ctx.lineTo(half, -3); ctx.moveTo(-half, 3); ctx.lineTo(half, 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-half, -6); ctx.lineTo(-half, 6); ctx.moveTo(half, -6); ctx.lineTo(half, 6); ctx.stroke();
+  } else { // opening
+    ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(-half, -7); ctx.lineTo(-half, 7); ctx.moveTo(half, -7); ctx.lineTo(half, 7); ctx.stroke();
+    ctx.strokeStyle = "#9aa3b2"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
 function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const { items } = useStore();
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [wrapW, setWrapW] = useState(360);
-  const [tool, setTool] = useState("room");
+  const [tool, setTool] = useState("wall");
   const [draft, setDraft] = useState(null);
   const [snap, setSnap] = useState(true);
+  const [ortho, setOrtho] = useState(true);
 
   const gridM = plan.gridMetres || 0.5;   // metres per grid cell
   const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
   const rooms = plan.rooms || [];
+  const stamps = plan.stamps || [];
   const cols = 40, rowsN = 30;
   const worldW = cols * gridPx, worldH = rowsN * gridPx;
+  const pxPerM = gridPx / gridM;
 
   useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
   const S = Math.min(1, wrapW / worldW);
   const cssW = worldW * S, cssH = worldH * S;
   const mPerPx = gridM / gridPx; // metres per world px
 
-  const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(); let x = (e.clientX - r.left) / S, y = (e.clientY - r.top) / S; if (snap) { x = Math.round(x / gridPx) * gridPx; y = Math.round(y / gridPx) * gridPx; } return { x, y }; };
+  const gridSnap = (v) => Math.round(v / gridPx) * gridPx;
+  const toWorld = (e, applySnap) => { const r = canvasRef.current.getBoundingClientRect(); let x = (e.clientX - r.left) / S, y = (e.clientY - r.top) / S; if (applySnap && snap){ x = gridSnap(x); y = gridSnap(y); } return { x: clamp(x,0,worldW), y: clamp(y,0,worldH) }; };
+  // straight wall endpoint: optional ortho (0/45/90) lock, then grid snap
+  const straightEnd = (a, e) => {
+    let p = toWorld(e, false);
+    if (ortho){
+      const dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy);
+      if (d > 0){ let ang = Math.atan2(dy, dx); const step = Math.PI/4; ang = Math.round(ang/step)*step; p = { x: a.x + d*Math.cos(ang), y: a.y + d*Math.sin(ang) }; }
+    }
+    if (snap){ p = { x: gridSnap(p.x), y: gridSnap(p.y) }; }
+    return { x: clamp(p.x,0,worldW), y: clamp(p.y,0,worldH) };
+  };
 
   useEffect(() => {
     const cv = canvasRef.current; if (!cv) return;
@@ -807,85 +855,124 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     const ctx = cv.getContext("2d"); ctx.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
     ctx.clearRect(0, 0, worldW, worldH);
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, worldW, worldH);
-    // grid
     ctx.strokeStyle = "#e6eaf0"; ctx.lineWidth = 1;
     for (let c = 0; c <= cols; c++){ ctx.beginPath(); ctx.moveTo(c*gridPx, 0); ctx.lineTo(c*gridPx, worldH); ctx.stroke(); }
     for (let rN = 0; rN <= rowsN; rN++){ ctx.beginPath(); ctx.moveTo(0, rN*gridPx); ctx.lineTo(worldW, rN*gridPx); ctx.stroke(); }
     const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#02224B";
-    const drawPoly = (pts, closed, name, filled) => {
-      if (!pts.length) return;
+    const lenLabel = (a, b, len) => { const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; const t=round2(len).toFixed(2)+"m"; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,.88)"; const w=ctx.measureText(t).width+6; ctx.fillRect(mx-w/2,my-8,w,15); ctx.fillStyle="#111"; ctx.fillText(t,mx,my+4); };
+    const drawRoom = (pts, name) => {
       ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round";
-      ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (closed) ctx.closePath();
-      if (filled) { ctx.fillStyle = "rgba(19,41,75,.06)"; ctx.fill(); }
-      ctx.stroke();
-      // vertices
-      ctx.fillStyle = brand; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill(); });
-      // edge dims
-      ctx.fillStyle = "#111"; ctx.font = "600 12px system-ui"; ctx.textAlign = "center";
-      const edges = closed ? pts.length : pts.length - 1;
-      for (let i = 0; i < edges; i++){ const a = pts[i], b = pts[(i+1) % pts.length]; const len = dist(a, b) * mPerPx; if (len < 0.01) continue; const mx = (a.x+b.x)/2, my = (a.y+b.y)/2; const t = round2(len).toFixed(2) + "m"; ctx.fillStyle = "rgba(255,255,255,.85)"; const w = ctx.measureText(t).width + 6; ctx.fillRect(mx - w/2, my - 8, w, 15); ctx.fillStyle = "#111"; ctx.fillText(t, mx, my + 4); }
-      // name + area
-      if (closed && pts.length >= 3) { const c = centroid(pts); const area = shoelace(pts) * mPerPx * mPerPx; ctx.fillStyle = brand; ctx.font = "700 14px system-ui"; ctx.fillText(name || "Room", c.x, c.y - 6); ctx.font = "600 12px system-ui"; ctx.fillText(round2(area).toFixed(2) + " m²", c.x, c.y + 12); }
+      ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
+      ctx.fillStyle = "rgba(2,34,75,.06)"; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
+      if (pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=brand; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(name||"Room",c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
     };
-    rooms.forEach(r => drawPoly(r.points, true, r.name, true));
-    if (draft) drawPoly(draft.points, false, "", false);
-  }, [rooms, draft, cssW, cssH, S, gridPx, mPerPx, worldW, worldH]);
+    const drawWall = (pts, curved) => {
+      ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      if (curved) smoothPath(ctx, pts); else { ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); }
+      ctx.fillStyle = brand; [pts[0], pts[pts.length-1]].forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); }
+    };
+    rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r.points, r.name));
+    stamps.forEach(s => drawStamp(ctx, s, brand));
+    if (draft){
+      if (draft.tool === "room"){ ctx.strokeStyle=brand; ctx.lineWidth=4; ctx.beginPath(); draft.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.fillStyle=brand; draft.points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
+      else drawWall(draft.points, draft.tool === "curve");
+    }
+  }, [rooms, stamps, draft, cssW, cssH, S, gridPx, mPerPx, worldW, worldH]);
+
+  const commitStamp = (p, type) => onChange({ ...plan, stamps: [...stamps, { id: uid(), type, x: p.x, y: p.y, size: STAMP_DEFAULT_M[type] * pxPerM, angle: 0 }] });
 
   const onDown = (e) => {
-    e.preventDefault(); const p = toWorld(e);
-    if (tool === "room" || tool === "wall") setDraft(d => d && d.tool === tool ? { ...d, points: [...d.points, p] } : { tool, points: [p] });
+    e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
+    if (tool === "room"){ const p = toWorld(e, true); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
+    if (tool === "door" || tool === "window" || tool === "opening"){ commitStamp(toWorld(e, true), tool); return; }
+    // wall (straight drag) or curve (freehand drag)
+    const p = toWorld(e, true);
+    setDraft({ tool, points: [p, p], dragging: true, start: p });
   };
-  const finish = () => {
-    if (!draft) return;
-    if (draft.tool === "room" && draft.points.length >= 3) {
-      const name = prompt("Room name:", "Room " + (rooms.length + 1)) || ("Room " + (rooms.length + 1));
-      const area = shoelace(draft.points) * mPerPx * mPerPx;
-      onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points, area: round2(area), perim: round2(perimeter(draft.points, true) * mPerPx) }] });
-    } else if (draft.tool === "wall" && draft.points.length >= 2) {
-      onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Wall", points: draft.points, wall: true, area: 0, perim: round2(perimeter(draft.points, false) * mPerPx) }] });
-    }
+  const onMove = (e) => {
+    if (!draft || !draft.dragging) return;
+    if (draft.tool === "curve"){ const p = toWorld(e, false); const last = draft.points[draft.points.length-1]; if (!last || dist(last,p) > 3) setDraft({ ...draft, points: [...draft.points, p] }); }
+    else { const end = straightEnd(draft.start, e); setDraft({ ...draft, points: [draft.start, end] }); }
+  };
+  const onUp = () => {
+    if (!draft || !draft.dragging) return;
+    const pts = draft.points, curved = draft.tool === "curve";
     setDraft(null);
+    if (perimeter(pts, false) * mPerPx < 0.05) return; // ignore taps
+    onChange({ ...plan, rooms: [...rooms, { id: uid(), name: curved ? "Curve" : "Wall", points: pts, wall: true, curved, perim: round2(perimeter(pts, false) * mPerPx) }] });
   };
-  const undo = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0, -1) }); else setDraft(null); };
-  const delRoom = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
+
+  const finishRoom = () => { if (draft && draft.tool === "room" && draft.points.length >= 3){ const name = prompt("Room name:", "Room " + (rooms.filter(r=>!r.wall).length + 1)) || "Room"; onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points }] }); } setDraft(null); };
+  const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
+  const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
+  const delStamp = (id) => onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) });
+  const rotStamp = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((s.angle||0)+45)%360 } : s) });
+  const sizeStamp = (id, m) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, size: Math.max(0.1, num(m)) * pxPerM } : s) });
+  const setLink = (id, itemId) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, priceItemId: itemId } : r) });
 
   const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.85) }); };
-  const setLink = (id, itemId) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, priceItemId: itemId } : r) });
+  const shapeQty = (r) => r.wall ? perimeter(r.points, false)*mPerPx : shoelace(r.points)*mPerPx*mPerPx;
   const addToQuote = () => {
-    const lines = rooms.filter(r => !r.wall && r.priceItemId).map(r => { const it = items.find(i => i.id === r.priceItemId); if (!it) return null; return { id: uid(), desc: it.description + " — " + r.name, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(shoelace(r.points) * mPerPx * mPerPx), source: "Floor plan: " + plan.name }; }).filter(Boolean);
-    if (!lines.length) { alert("Link a price item to a room first."); return; }
+    const lines = rooms.filter(r => r.priceItemId).map(r => { const it = items.find(i => i.id === r.priceItemId); if (!it) return null; return { id: uid(), desc: it.description + " — " + r.name, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name }; }).filter(Boolean);
+    if (!lines.length) { alert("Link a price item to a room or wall first."); return; }
     saveSnapshot(); onAddToQuote(lines);
   };
   const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
 
+  const TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["door","Door"],["window","Window"],["opening","Opening"]];
+  const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room."
+    : tool === "wall" ? "Drag your finger / pencil to draw a straight wall — it locks to the line (and 90°/45° with Straighten on)."
+    : tool === "curve" ? "Drag to draw a freehand curved wall."
+    : "Tap the plan to drop a " + tool + " symbol. Rotate/resize it in the list below.";
+
   return (
     <div className="space-y-3">
-      <div className="flex gap-2 items-end flex-wrap">
+      <div className="flex gap-2 items-center flex-wrap">
         <Field label="Grid = metres"><input type="number" step="0.1" className="inp w-24" value={gridM} onChange={e => onChange({ ...plan, gridMetres: num(e.target.value) || 0.5 })} /></Field>
-        <label className="flex items-center gap-1 text-sm mb-2"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap to grid</label>
-        <div className="flex gap-1.5 ml-auto">
-          {["room", "wall"].map(t => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{t === "room" ? "Room" : "Wall"}</button>)}
-        </div>
+        <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap grid</label>
+        <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
       </div>
-      {draft && <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={finish}><IcCheck size={14} /> Finish {draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undo}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pts — tap to add corners</span></div>}
-      {!draft && <div className="text-sm" style={{ color: "var(--muted)" }}>Tap the grid to drop corners. Each cell = {gridM} m. Finish to close the room.</div>}
+      <div className="scroll-x flex gap-1.5">
+        {TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
+      </div>
+      {draft && draft.tool === "room"
+        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={finishRoom}><IcCheck size={14} /> Finish room</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pts</span></div>
+        : <div className="text-sm" style={{ color: "var(--muted)" }}>{hint} · 1 cell = {gridM} m</div>}
 
       <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
-        <canvas ref={canvasRef} className="editor" onPointerDown={onDown} />
+        <canvas ref={canvasRef} className="editor" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
 
       {rooms.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms</div><div className="text-sm font-semibold">Total: {round2(totalArea).toFixed(2)} m²</div></div>
+          <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms & walls</div><div className="text-sm font-semibold">Total floor: {round2(totalArea).toFixed(2)} m²</div></div>
           {rooms.map(r => (
             <div key={r.id} className="flex items-center gap-2 text-sm">
-              <span className="chip">{r.wall ? "Wall" : "Room"}</span>
-              <span className="flex-1 truncate">{r.name} · <b>{r.wall ? round2(r.perim).toFixed(2) + " m" : round2(shoelace(r.points) * mPerPx * mPerPx).toFixed(2) + " m²"}</b></span>
-              {!r.wall && <select className="inp !py-1 w-40" value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>}
-              <button className="btn btn-ghost !p-1.5" onClick={() => delRoom(r.id)}><IcTrash size={15} /></button>
+              <span className="chip">{r.wall ? (r.curved ? "Curve" : "Wall") : "Room"}</span>
+              <span className="flex-1 truncate">{r.name} · <b>{r.wall ? round2(shapeQty(r)).toFixed(2) + " m" : round2(shapeQty(r)).toFixed(2) + " m²"}</b></span>
+              <select className="inp !py-1 w-40" value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
             </div>
           ))}
-          <div className="flex gap-2"><button className="btn btn-primary flex-1" onClick={addToQuote}><IcPlus size={16} /> Add rooms to quote</button><button className="btn btn-ghost" onClick={saveSnapshot}>Save for report</button></div>
+          <div className="flex gap-2"><button className="btn btn-primary flex-1" onClick={addToQuote}><IcPlus size={16} /> Add to quote</button><button className="btn btn-ghost" onClick={saveSnapshot}>Save for report</button></div>
+        </div>
+      )}
+
+      {stamps.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <div className="font-semibold text-sm brand-text">Symbols</div>
+          {stamps.map(s => (
+            <div key={s.id} className="flex items-center gap-2 text-sm">
+              <span className="chip capitalize">{s.type}</span>
+              <label className="flex items-center gap-1">width <input type="number" step="0.1" className="inp !py-1 w-20" value={round2(s.size / pxPerM)} onChange={e => sizeStamp(s.id, e.target.value)} />m</label>
+              <button className="btn btn-ghost !py-1 ml-auto" onClick={() => rotStamp(s.id)}>Rotate ↻ {s.angle||0}°</button>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
+            </div>
+          ))}
+          <button className="btn btn-ghost w-full" onClick={saveSnapshot}>Save for report</button>
         </div>
       )}
     </div>
@@ -1029,6 +1116,7 @@ function ReportView({ project }){
 
           {/* scope / notes */}
           {project.notes && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Scope of works</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.notes}</div></div>}
+          {project.exclusions && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Exclusions</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.exclusions}</div></div>}
 
           {/* line items */}
           <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
@@ -1169,6 +1257,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
           <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
           <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
           <Field label="Scope / notes (shown on quote)"><textarea className="inp" rows="4" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
+          <Field label="Exclusions (shown on quote after scope)"><textarea className="inp" rows="4" placeholder="e.g. Services disconnection excluded. Replacement cladding not included. Full-time air monitoring excluded." value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
           <button className="btn btn-danger w-full" onClick={onDelete}><IcTrash size={16} /> Delete job</button>
         </div>
       )}
