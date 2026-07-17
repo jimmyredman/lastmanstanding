@@ -63,8 +63,9 @@
   .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--bg);border:1px solid var(--line);}
   .tab{padding:9px 12px;font-size:13px;font-weight:600;border-radius:10px;white-space:nowrap;cursor:pointer;color:var(--muted);}
   .tab-active{background:var(--brand);color:#fff;}
-  .navbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .navbtn{position:relative;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:11px 0 9px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;transition:.12s;}
   .navbtn-active{color:var(--brand);}
+  .navbtn:active{background:var(--bg);}
   ::-webkit-scrollbar{height:8px;width:8px;}
   ::-webkit-scrollbar-thumb{background:#cbd2dc;border-radius:8px;}
   .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -629,6 +630,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     if (imgRef.current) ctx.drawImage(imgRef.current, 0, 0, cssW, cssH);
     else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, cssW, cssH); }
     const S = displayScale;
+    const measIds = anns.filter(x => MEASURE_TOOLS.includes(x.tool)).map(x => x.id);
     const drawAnn = (a, isDraft) => {
       ctx.save();
       ctx.lineWidth = 2.2; ctx.strokeStyle = a.color || color; ctx.fillStyle = a.color || color;
@@ -652,10 +654,19 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
           ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12 * Math.cos(ang - .4), p2.y - 12 * Math.sin(ang - .4)); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12 * Math.cos(ang + .4), p2.y - 12 * Math.sin(ang + .4)); ctx.stroke();
         }
       }
-      // measurement label
+      // measurement number badge + label
       if (!isDraft && MEASURE_TOOLS.includes(a.tool) && mpp) {
         const c = a.tool === "count" ? P[0] : centroid(P);
-        if (c) { const t = valLabel(a) + (a.qLabel ? " · " + a.qLabel : ""); ctx.font = "700 12px system-ui"; ctx.textAlign = "center"; const w = ctx.measureText(t).width + 10; ctx.fillStyle = "rgba(17,24,39,.85)"; ctx.fillRect(c.x - w/2, c.y - 22, w, 18); ctx.fillStyle = "#fff"; ctx.fillText(t, c.x, c.y - 9); }
+        const no = measIds.indexOf(a.id) + 1;
+        if (c) {
+          const t = (a.name ? a.name + " · " : "") + valLabel(a);
+          ctx.font = "700 12px system-ui"; ctx.textAlign = "left";
+          const tw = ctx.measureText(t).width, badge = 20, pad = 6, w = badge + pad + tw + 8, bx = c.x - w/2, by = c.y - 24;
+          ctx.fillStyle = "rgba(17,24,39,.85)"; ctx.fillRect(bx, by, w, 20);
+          ctx.fillStyle = a.color || color; ctx.beginPath(); ctx.arc(bx + 10, by + 10, 8, 0, 7); ctx.fill();
+          ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.fillText(no, bx + 10, by + 14);
+          ctx.textAlign = "left"; ctx.fillText(t, bx + badge + pad, by + 14);
+        }
       }
       ctx.restore();
     };
@@ -717,6 +728,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   const undoPoint = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0, -1) }); else setDraft(null); };
   const delAnn = (id) => onChange({ ...drawing, annotations: anns.filter(a => a.id !== id) });
   const linkItem = (id, itemId) => onChange({ ...drawing, annotations: anns.map(a => a.id === id ? { ...a, priceItemId: itemId } : a) });
+  const renameAnn = (id, name) => onChange({ ...drawing, annotations: anns.map(a => a.id === id ? { ...a, name } : a) });
 
   const saveSnapshot = () => {
     const cv = canvasRef.current; if (!cv) return;
@@ -732,7 +744,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     if (!mpp) { alert("Set the scale first (Set scale tool)."); return; }
     const lines = anns.filter(a => MEASURE_TOOLS.includes(a.tool) && a.priceItemId).map(a => {
       const it = items.find(i => i.id === a.priceItemId); if (!it) return null;
-      return { id: uid(), desc: it.description, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(measureVal(a)), source: "Takeoff: " + drawing.name };
+      return { id: uid(), desc: a.name ? a.name + " — " + it.description : it.description, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(measureVal(a)), source: "Takeoff: " + drawing.name };
     }).filter(Boolean);
     if (!lines.length) { alert("Link a price item to at least one measurement first."); return; }
     saveSnapshot();
@@ -769,21 +781,24 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       {measured.length > 0 && (
         <div className="card p-3 space-y-2">
           <div className="font-semibold text-sm brand-text">Attach each measurement to a rate → quote</div>
-          {measured.map(a => {
+          {measured.map((a, mi) => {
             const it = items.find(i => i.id === a.priceItemId);
             const qty = mpp ? measureVal(a) : 0;
             return (
-              <div key={a.id} className="space-y-1">
+              <div key={a.id} className="space-y-1 pb-1" style={{ borderBottom: "1px solid var(--line)" }}>
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="chip">{TOOL_LABELS[a.tool]}</span>
-                  <span className="font-semibold w-20">{valLabel(a)}</span>
+                  <span className="flex items-center justify-center text-white text-xs font-bold" style={{ background: a.color || "#e11d48", width: 22, height: 22, borderRadius: 999, flex: "0 0 auto" }}>{mi + 1}</span>
+                  <input className="inp !py-1 flex-1" placeholder={TOOL_LABELS[a.tool] + " (rename…)"} value={a.name || ""} onChange={e => renameAnn(a.id, e.target.value)} />
+                  <span className="font-semibold whitespace-nowrap">{valLabel(a)}</span>
+                  <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
                   <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
                     <option value="">— attach a rate from the database —</option>
                     {items.map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}
                   </select>
-                  <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
+                  {it && <span className="text-xs whitespace-nowrap" style={{ color: "var(--muted)" }}>= <b style={{ color: "var(--ink)" }}>{money(qty * it.rate)}</b></span>}
                 </div>
-                {it && <div className="text-xs pl-1" style={{ color: "var(--muted)" }}>{round2(qty)} {it.unit} × {money(it.rate)} = <b style={{ color: "var(--ink)" }}>{money(qty * it.rate)}</b> ex GST</div>}
               </div>
             );
           })}
@@ -1620,33 +1635,41 @@ function JobsScreen({ onOpen }){
   };
   const s = q.trim().toLowerCase();
   const filtered = s ? projects.filter(p => ((p.title||"") + " " + (p.client||"") + " " + (p.site||"") + " " + (p.quoteNo||"")).toLowerCase().includes(s)) : projects;
+  const pipeline = projects.reduce((sum, p) => sum + totalsFor(p, settings).totalInc, 0);
   return (
     <div className="max-w-4xl mx-auto p-4 pb-28">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-bold">Jobs <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({filtered.length}{s ? " of " + projects.length : ""})</span></h2>
-        <button className="btn btn-primary" onClick={create}><IcPlus size={16} /> New job</button>
+      {/* hero banner */}
+      <div className="rounded-2xl p-5 mb-4 text-white flex items-center justify-between gap-3" style={{ background: "linear-gradient(135deg, var(--brand) 0%, #123f78 100%)", boxShadow: "0 8px 22px rgba(2,34,75,.20)" }}>
+        <div className="min-w-0">
+          <div className="wordmark" style={{ fontSize: 30, lineHeight: 1 }}>JOBS</div>
+          <div className="text-xs mt-1.5" style={{ opacity: .85 }}>{projects.length} job{projects.length === 1 ? "" : "s"}{pipeline > 0 ? " · " + money(pipeline) + " inc GST" : ""}</div>
+        </div>
+        <button className="btn font-bold" onClick={create} style={{ background: "#fff", color: "var(--brand)", boxShadow: "0 2px 8px rgba(0,0,0,.12)" }}><IcPlus size={16} /> New job</button>
       </div>
       {projects.length > 0 && (
-        <div className="relative mb-3">
+        <div className="relative mb-4">
           <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }}><IcSearch size={16} /></span>
-          <input className="inp pl-9" placeholder="Search jobs — client, site, title, quote #…" value={q} onChange={e => setQ(e.target.value)} />
+          <input className="inp" style={{ paddingLeft: 38 }} placeholder="Search jobs — client, site, title, quote #…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
       )}
-      {projects.length === 0 ? <Empty icon={<IcJobs size={48} />} title="No jobs yet" sub="Create a job to start pricing, take off drawings and produce a quote." /> :
+      {projects.length === 0 ? <Empty icon={<IcJobs size={48} />} title="No jobs yet" sub="Tap ‘New job’ to start pricing, take off drawings and produce a quote." /> :
        filtered.length === 0 ? <Empty icon={<IcSearch size={44} />} title="No matches" sub="No jobs match your search." /> : (
         <div className="grid sm:grid-cols-2 gap-3">
           {filtered.map(p => {
             const t = totalsFor(p, settings);
+            const bits = [(p.drawings||[]).length && ((p.drawings||[]).length + " dwg"), (p.floorplans||[]).length && ((p.floorplans||[]).length + " plan"), (p.photos||[]).length && ((p.photos||[]).length + " photo"), (p.quoteLines||[]).length && ((p.quoteLines||[]).length + " line")].filter(Boolean).join(" · ");
             return (
-              <button key={p.id} className="card p-4 text-left hover:brightness-[.98]" onClick={() => onOpen(p.id)}>
-                <div className="flex justify-between items-start">
+              <button key={p.id} className="text-left transition" onClick={() => onOpen(p.id)}
+                style={{ background: "var(--paper)", border: "1px solid var(--line)", borderLeft: "5px solid var(--brand)", borderRadius: 14, padding: 16, boxShadow: "0 1px 3px rgba(2,34,75,.06)" }}>
+                <div className="flex justify-between items-start gap-2">
                   <div className="min-w-0"><div className="font-bold truncate">{p.title || "Untitled job"}</div><div className="text-sm truncate" style={{ color: "var(--muted)" }}>{p.client || "No client"}</div></div>
-                  <span className="chip">{p.quoteNo}</span>
+                  <span className="chip" style={{ flex: "0 0 auto" }}>{p.quoteNo}</span>
                 </div>
-                <div className="text-xs mt-1 truncate" style={{ color: "var(--muted)" }}><IcPin size={12} className="inline" /> {p.site || "—"}</div>
-                <div className="flex justify-between items-end mt-3">
+                <div className="text-xs mt-2 truncate flex items-center gap-1" style={{ color: "var(--muted)" }}><IcPin size={12} /> {p.site || "—"}</div>
+                {bits && <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{bits}</div>}
+                <div className="flex justify-between items-end mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
                   <span className="text-xs" style={{ color: "var(--muted)" }}>{fmtDate(p.date || p.createdAt)}</span>
-                  <span className="font-bold brand-text">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span>
+                  <span className="font-extrabold brand-text text-lg">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span>
                 </div>
               </button>
             );
@@ -1678,10 +1701,10 @@ function AppShell(){
 
   return (
     <div className="min-h-screen">
-      <header className="brand-bg text-white sticky top-0 z-30 no-print" style={{ paddingTop: "env(safe-area-inset-top)" }}>
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">
-          <img src={settings.logo || DEFAULT_LOGO} className="rounded" alt={settings.company} style={{ height: 36, width: "auto" }} />
-          <div className="text-xs opacity-80 ml-1">Site Pricing &amp; Takeoff</div>
+      <header className="brand-bg text-white sticky top-0 z-30 no-print" style={{ paddingTop: "env(safe-area-inset-top)", boxShadow: "0 2px 12px rgba(2,34,75,.25)" }}>
+        <div className="max-w-4xl mx-auto px-4 flex items-center gap-3" style={{ minHeight: 68 }}>
+          <img src={settings.logo || DEFAULT_LOGO} className="rounded" alt={settings.company} style={{ height: 52, width: "auto" }} />
+          <div className="text-sm font-semibold" style={{ opacity: .85, letterSpacing: ".01em" }}>Site Pricing &amp; Takeoff</div>
         </div>
       </header>
 
@@ -1694,9 +1717,12 @@ function AppShell(){
       </main>
 
       {!job && (
-        <nav className="fixed bottom-0 left-0 right-0 z-30 no-print card !rounded-none !border-x-0 !border-b-0 flex" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        <nav className="fixed bottom-0 left-0 right-0 z-30 no-print flex" style={{ paddingBottom: "env(safe-area-inset-bottom)", background: "var(--paper)", borderTop: "1px solid var(--line)", boxShadow: "0 -2px 14px rgba(2,34,75,.08)" }}>
           {[["jobs", "Jobs", IcJobs], ["prices", "Prices", IcPrice], ["settings", "Settings", IcGear]].map(([k, l, Ic]) => (
-            <button key={k} className={"navbtn " + (nav === k ? "navbtn-active" : "")} onClick={() => setNav(k)}><Ic size={22} />{l}</button>
+            <button key={k} className={"navbtn " + (nav === k ? "navbtn-active" : "")} onClick={() => setNav(k)}>
+              {nav === k && <span style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", width: 34, height: 3, borderRadius: 3, background: "var(--brand)" }} />}
+              <Ic size={27} />{l}
+            </button>
           ))}
         </nav>
       )}
