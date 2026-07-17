@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v16 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v17 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -927,6 +927,7 @@ function Plan3D({ plan, onClose, onSave }){
   const mountRef = useRef(null);
   const capRef = useRef(null);
   const [ok, setOk] = useState(true);
+  const [roof, setRoof] = useState(!!plan.roof);
   useEffect(() => {
     const THREE = window.THREE; const mount = mountRef.current;
     if (!THREE || !mount){ setOk(false); return; }
@@ -953,13 +954,32 @@ function Plan3D({ plan, onClose, onSave }){
 
     const wallMat = new THREE.MeshLambertMaterial({ color: 0xf3f5f9 });
     const floorMat = new THREE.MeshLambertMaterial({ color: 0xdbe3ec, side: THREE.DoubleSide });
-    const wallEdge = (a, b, h) => { const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const len = Math.hypot(dx, dz); if (len < 0.02) return; const m = new THREE.Mesh(new THREE.BoxGeometry(len, h, 0.1), wallMat); m.position.set((A.x+B.x)/2, h/2, (A.z+B.z)/2); m.rotation.y = -Math.atan2(dz, dx); scene.add(m); };
+    // openings (metres) that should be cut into walls
+    const openings = stamps.filter(s => s.type === "door" || s.type === "window" || s.type === "opening").map(s => ({ type: s.type, c: toM({ x: s.x, y: s.y }), w: s.size * mpp }));
+    const piece = (A, ux, uz, s0, s1, y0, y1) => { const len = s1 - s0, hgt = y1 - y0; if (len < 0.06 || hgt < 0.03) return; const mx = A.x + ux*((s0+s1)/2), mz = A.z + uz*((s0+s1)/2); const m = new THREE.Mesh(new THREE.BoxGeometry(len, hgt, 0.1), wallMat); m.position.set(mx, (y0+y1)/2, mz); m.rotation.y = -Math.atan2(uz, ux); scene.add(m); };
+    const wallEdge = (a, b, h) => {
+      const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const L = Math.hypot(dx, dz); if (L < 0.02) return;
+      const ux = dx/L, uz = dz/L, nx = -uz, nz = ux;
+      const ops = [];
+      openings.forEach(o => { const rx = o.c.x-A.x, rz = o.c.z-A.z; const t = rx*ux + rz*uz, perp = Math.abs(rx*nx + rz*nz); if (t > -o.w/2 && t < L + o.w/2 && perp < 0.6) ops.push({ type: o.type, s0: Math.max(0, t-o.w/2), s1: Math.min(L, t+o.w/2) }); });
+      ops.sort((p, q) => p.s0 - q.s0);
+      let cur = 0; ops.forEach(o => { if (o.s0 > cur + 0.01) piece(A, ux, uz, cur, o.s0, 0, h); cur = Math.max(cur, o.s1); }); if (cur < L - 0.01) piece(A, ux, uz, cur, L, 0, h);
+      ops.forEach(o => { if (o.type === "window"){ const sill = Math.min(0.9, h*0.35), hdr = Math.max(h-0.35, sill+0.1); piece(A, ux, uz, o.s0, o.s1, 0, sill); piece(A, ux, uz, o.s0, o.s1, hdr, h); } else if (o.type === "door"){ piece(A, ux, uz, o.s0, o.s1, Math.min(2.04, h*0.85), h); } });
+    };
     rooms.forEach(r => {
       const h = r.height || wallH; const pts = r.points.map(toM);
       if (!r.wall && pts.length >= 3){
         const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
         const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const fm = new THREE.Mesh(g, floorMat); fm.position.y = 0.02; scene.add(fm);
         for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h);
+        if (roof){
+          let ax = 0, az = 0; pts.forEach(p => { ax += p.x; az += p.z; }); ax /= pts.length; az /= pts.length;
+          let ex = 0; pts.forEach(p => ex = Math.max(ex, Math.hypot(p.x-ax, p.z-az))); const apexY = h + Math.min(2.4, ex*0.55);
+          const rg = new THREE.BufferGeometry(), verts = [];
+          for (let i = 0; i < pts.length; i++){ const p1 = pts[i], p2 = pts[(i+1)%pts.length]; verts.push(p1.x, h, p1.z, p2.x, h, p2.z, ax, apexY, az); }
+          rg.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3)); rg.computeVertexNormals();
+          scene.add(new THREE.Mesh(rg, new THREE.MeshLambertMaterial({ color: 0x9199a6, side: THREE.DoubleSide })));
+        }
       } else { for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); }
     });
     stamps.forEach(s => {
@@ -977,12 +997,13 @@ function Plan3D({ plan, onClose, onSave }){
     capRef.current = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.9); };
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onR); try { controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement); } catch(_){} };
     } catch (err) { setOk(false); }
-  }, []);
+  }, [roof]);
   return (
     <div className="fixed inset-0 z-50 flex flex-col no-print" style={{ background: "#eef2f7" }}>
       <div className="brand-bg text-white flex items-center justify-between px-4 py-3">
         <div className="font-bold truncate">3D view — {plan.name}</div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          {ok && <label className="flex items-center gap-1 text-sm mr-1"><input type="checkbox" checked={roof} onChange={e => setRoof(e.target.checked)} /> Roof</label>}
           {ok && <button className="btn btn-accent" onClick={() => { const d = capRef.current && capRef.current(); if (d) onSave(d); }}><IcCheck size={16} /> Save render</button>}
           <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)" }} onClick={onClose}><IcX size={16} /> Close</button>
         </div>
