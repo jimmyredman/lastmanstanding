@@ -572,7 +572,7 @@ const TOOL_LABELS = { calibrate: "Set scale", length: "Length", area: "Area", co
 const MARKUP_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#ea580c", "#eab308", "#111827", "#ffffff"];
 
 function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
-  const { items } = useStore();
+  const { items, notify } = useStore();
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
@@ -722,6 +722,11 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     const cv = canvasRef.current; if (!cv) return;
     onChange({ ...drawing, snapshot: cv.toDataURL("image/jpeg", 0.8) });
   };
+  const addCopyToQuote = () => {
+    const cv = canvasRef.current; if (!cv) return;
+    onChange({ ...drawing, snapshot: cv.toDataURL("image/jpeg", 0.85), include: true });
+    notify("Marked-up copy attached to quote");
+  };
 
   const addToQuote = () => {
     if (!mpp) { alert("Set the scale first (Set scale tool)."); return; }
@@ -786,9 +791,10 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
           <button className="btn btn-primary w-full" onClick={addToQuote}><IcPlus size={16} /> Send priced measurements to quote</button>
         </div>
       )}
+      <button className="btn btn-primary w-full" onClick={addCopyToQuote}><IcPlus size={16} /> Add marked-up copy to quote</button>
+      {drawing.snapshot && <div className="text-xs text-center" style={{ color: "var(--muted)" }}>Attached ✓ — tick/untick it under Report › Attachments.</div>}
       {anns.filter(a => !MEASURE_TOOLS.includes(a.tool)).length > 0 &&
         <button className="btn btn-ghost w-full" onClick={() => onChange({ ...drawing, annotations: anns.filter(a => MEASURE_TOOLS.includes(a.tool)) })}>Clear markups</button>}
-      <button className="btn btn-ghost w-full" onClick={saveSnapshot}><IcCheck size={16} /> Save marked-up view for report</button>
     </div>
   );
 }
@@ -1232,18 +1238,34 @@ function ReportView({ project, onChange }){
     onChange({ ...project, [key]: (project[key] || []).map(x => x.id === id ? { ...x, include: x.include === false } : x) });
   };
 
-  const doPdf = async () => { setBusy("pdf"); try { const pdf = await elementToPdf(sheetRef.current); pdf.save(quoteFilename(project, "pdf")); } catch(e){ alert("PDF export failed: " + e.message); } setBusy(""); };
+  // Pre-build the PDF whenever the report content changes, so the Share button can
+  // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
+  // generate the PDF only after the tap, which is why the email wouldn't attach.
+  const [shareBlob, setShareBlob] = useState(null);
+  const genKey = JSON.stringify({ q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, m: project.margin, g: settings.gst, br: settings.brand, lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
+  useEffect(() => {
+    let cancelled = false; setShareBlob(null);
+    const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [genKey]);
+
+  const subjectBody = () => ({
+    subject: "Quotation " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
+    body: "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find our quotation attached.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company
+  });
+  const doPdf = async () => { setBusy("pdf"); try { let blob = shareBlob; if (!blob){ const pdf = await elementToPdf(sheetRef.current); blob = pdf.output("blob"); } download(quoteFilename(project, "pdf"), blob); } catch(e){ alert("PDF export failed: " + e.message); } setBusy(""); };
   const doShare = async () => {
-    setBusy("share");
-    try {
-      const pdf = await elementToPdf(sheetRef.current);
-      const blob = pdf.output("blob");
-      const subject = "Quotation " + (project.quoteNo || "") + (project.title ? " — " + project.title : "");
-      const body = "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find our quotation attached.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company;
-      const r = await shareOrEmailPdf(blob, quoteFilename(project, "pdf"), subject, body);
-      if (r === "shared") notify("Shared");
-    } catch(e){ alert("Share failed: " + e.message); }
-    setBusy("");
+    let blob = shareBlob;
+    if (!blob){ setBusy("share"); try { const pdf = await elementToPdf(sheetRef.current); blob = pdf.output("blob"); setShareBlob(blob); } catch(e){ alert("Couldn't build the PDF: " + e.message); setBusy(""); return; } setBusy(""); }
+    const { subject, body } = subjectBody();
+    const file = new File([blob], quoteFilename(project, "pdf"), { type: "application/pdf" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      try { await navigator.share({ files: [file], title: subject, text: body }); notify("Shared"); return; }
+      catch(e){ if (e && e.name === "AbortError") return; }
+    }
+    // fallback (desktop / no file-share): download the PDF + open an email draft to attach it
+    download(file.name, blob);
+    window.location.href = "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body + "\n\nThe quote PDF (" + file.name + ") has downloaded to this device — attach it to this email.");
   };
   const doWord = async () => { setBusy("word"); try { const logo = await getLogoDataUrl(settings); const html = buildWordHtml(project, settings, t, logo, attachments); download(quoteFilename(project, "doc"), new Blob([html], { type: "application/msword" })); } catch(e){ alert("Word export failed: " + e.message); } setBusy(""); };
 
