@@ -824,11 +824,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [draft, setDraft] = useState(null);
   const [snap, setSnap] = useState(true);
   const [ortho, setOrtho] = useState(true);
+  const [drag, setDrag] = useState(null);       // {kind:'stamp'|'vertex', id, idx}
+  const [preview, setPreview] = useState(null); // live {rooms, stamps} during a move-drag
 
   const gridM = plan.gridMetres || 0.5;   // metres per grid cell
   const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
-  const rooms = plan.rooms || [];
-  const stamps = plan.stamps || [];
+  const rooms = (preview && preview.rooms) || plan.rooms || [];
+  const stamps = (preview && preview.stamps) || plan.stamps || [];
   const cols = 40, rowsN = 30;
   const worldW = cols * gridPx, worldH = rowsN * gridPx;
   const pxPerM = gridPx / gridM;
@@ -879,16 +881,29 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     };
     rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r.points, r.name));
     stamps.forEach(s => drawStamp(ctx, s, brand));
+    if (tool === "move"){ // draggable handles
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#e8792b"; ctx.lineWidth = 2;
+      rooms.forEach(r => r.points.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill(); ctx.stroke(); }));
+      stamps.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, 7); ctx.fill(); ctx.stroke(); });
+    }
     if (draft){
       if (draft.tool === "room"){ ctx.strokeStyle=brand; ctx.lineWidth=4; ctx.beginPath(); draft.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.fillStyle=brand; draft.points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
       else drawWall(draft.points, draft.tool === "curve");
     }
-  }, [rooms, stamps, draft, cssW, cssH, S, gridPx, mPerPx, worldW, worldH]);
+  }, [rooms, stamps, draft, tool, cssW, cssH, S, gridPx, mPerPx, worldW, worldH]);
 
   const commitStamp = (p, type) => onChange({ ...plan, stamps: [...stamps, { id: uid(), type, x: p.x, y: p.y, size: STAMP_DEFAULT_M[type] * pxPerM, angle: 0 }] });
 
+  const hitTest = (p) => {
+    const thr = 16 / S;
+    for (let i = stamps.length - 1; i >= 0; i--){ if (dist(p, { x: stamps[i].x, y: stamps[i].y }) < Math.max(thr, stamps[i].size / 2)) return { kind: "stamp", id: stamps[i].id }; }
+    for (let i = rooms.length - 1; i >= 0; i--){ const r = rooms[i]; for (let j = 0; j < r.points.length; j++){ if (dist(p, r.points[j]) < thr) return { kind: "vertex", id: r.id, idx: j }; } }
+    return null;
+  };
+
   const onDown = (e) => {
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
+    if (tool === "move"){ const hit = hitTest(toWorld(e, false)); if (hit){ setDrag(hit); setPreview({ rooms: plan.rooms || [], stamps: plan.stamps || [] }); } return; }
     if (tool === "room"){ const p = toWorld(e, true); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
     if (tool === "door" || tool === "window" || tool === "opening"){ commitStamp(toWorld(e, true), tool); return; }
     // wall (straight drag) or curve (freehand drag)
@@ -896,11 +911,21 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     setDraft({ tool, points: [p, p], dragging: true, start: p });
   };
   const onMove = (e) => {
+    if (drag){
+      const p = toWorld(e, true);
+      setPreview(prev => {
+        const base = prev || { rooms: plan.rooms || [], stamps: plan.stamps || [] };
+        if (drag.kind === "stamp") return { rooms: base.rooms, stamps: base.stamps.map(s => s.id === drag.id ? { ...s, x: p.x, y: p.y } : s) };
+        return { stamps: base.stamps, rooms: base.rooms.map(r => r.id === drag.id ? { ...r, points: r.points.map((pt, k) => k === drag.idx ? p : pt) } : r) };
+      });
+      return;
+    }
     if (!draft || !draft.dragging) return;
     if (draft.tool === "curve"){ const p = toWorld(e, false); const last = draft.points[draft.points.length-1]; if (!last || dist(last,p) > 3) setDraft({ ...draft, points: [...draft.points, p] }); }
     else { const end = straightEnd(draft.start, e); setDraft({ ...draft, points: [draft.start, end] }); }
   };
   const onUp = () => {
+    if (drag){ if (preview) onChange({ ...plan, rooms: preview.rooms, stamps: preview.stamps }); setDrag(null); setPreview(null); return; }
     if (!draft || !draft.dragging) return;
     const pts = draft.points, curved = draft.tool === "curve";
     setDraft(null);
@@ -925,10 +950,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   };
   const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
 
-  const TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["door","Door"],["window","Window"],["opening","Opening"]];
+  const TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["door","Door"],["window","Window"],["opening","Opening"],["move","Move"]];
   const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room."
     : tool === "wall" ? "Drag your finger / pencil to draw a straight wall — it locks to the line (and 90°/45° with Straighten on)."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
+    : tool === "move" ? "Drag any corner (orange handle) or symbol to reposition it."
     : "Tap the plan to drop a " + tool + " symbol. Rotate/resize it in the list below.";
 
   return (
@@ -1298,7 +1324,8 @@ function ReportView({ project, onChange }){
 /* =========================================================================
    JOB WORKSPACE
    ========================================================================= */
-function newDrawingFromFile(file){
+// Returns an array of drawing objects (one per PDF page, or one for an image).
+function newDrawingsFromFile(file){
   return new Promise((resolve, reject) => {
     const name = file.name.replace(/\.[^.]+$/, "");
     if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
@@ -1306,17 +1333,22 @@ function newDrawingFromFile(file){
       r.onload = async () => {
         try {
           const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(r.result) }).promise;
-          const page = await pdf.getPage(1);
-          const vp = page.getViewport({ scale: 2 });
-          const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
-          await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-          resolve({ id: uid(), name, type: "pdf", bg: cv.toDataURL("image/jpeg", 0.82), natW: vp.width, natH: vp.height, annotations: [], scaleMpp: null });
+          const n = pdf.numPages;
+          const out = [];
+          for (let i = 1; i <= n; i++){
+            const page = await pdf.getPage(i);
+            const vp = page.getViewport({ scale: 2 });
+            const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+            await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+            out.push({ id: uid(), name: n > 1 ? name + " — p" + i : name, type: "pdf", bg: cv.toDataURL("image/jpeg", 0.82), natW: vp.width, natH: vp.height, annotations: [], scaleMpp: null });
+          }
+          resolve(out);
         } catch (e) { reject(e); }
       };
       r.readAsArrayBuffer(file);
     } else {
       const r = new FileReader();
-      r.onload = () => { const im = new Image(); im.onload = () => resolve({ id: uid(), name, type: "image", bg: r.result, natW: im.naturalWidth, natH: im.naturalHeight, annotations: [], scaleMpp: null }); im.src = r.result; };
+      r.onload = () => { const im = new Image(); im.onload = () => resolve([{ id: uid(), name, type: "image", bg: r.result, natW: im.naturalWidth, natH: im.naturalHeight, annotations: [], scaleMpp: null }]); im.src = r.result; };
       r.readAsDataURL(file);
     }
   });
@@ -1347,7 +1379,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
 
   const onFile = async (e) => {
     const file = e.target.files[0]; if (!file) return; setLoading(true);
-    try { const d = await newDrawingFromFile(file); onChange({ ...project, drawings: [...drawings, d] }); setOpenDrawing(d.id); }
+    try { const ds = await newDrawingsFromFile(file); onChange({ ...project, drawings: [...drawings, ...ds] }); setOpenDrawing(ds[0].id); if (ds.length > 1) notify(ds.length + " pages added"); }
     catch (err) { alert("Could not load that file. For PDFs, make sure you're online the first time so the PDF engine can load."); }
     setLoading(false); e.target.value = "";
   };
