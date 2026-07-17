@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v18 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v19 · 17 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -936,11 +936,14 @@ function drawStamp(ctx, s, brand){
 }
 
 /* ---- 3D view of a floor plan (Three.js) ---- */
-function Plan3D({ plan, onClose, onSave }){
+const ROOF_TYPES = [["none","No roof"],["hip","Hip"],["gable","Gable"],["skillion","Skillion"],["flat","Flat"]];
+function Plan3D({ plan, onClose, onSave, onPersist }){
   const mountRef = useRef(null);
   const capRef = useRef(null);
   const [ok, setOk] = useState(true);
-  const [roof, setRoof] = useState(!!plan.roof);
+  const [roofType, setRoofType] = useState(plan.roofType || (plan.roof ? "hip" : "none"));
+  const [pitch, setPitch] = useState(plan.roofPitch || 22);
+  const [roofColor, setRoofColor] = useState(plan.roofColor || "#6f7683");
   useEffect(() => {
     const THREE = window.THREE; const mount = mountRef.current;
     if (!THREE || !mount){ setOk(false); return; }
@@ -955,21 +958,23 @@ function Plan3D({ plan, onClose, onSave }){
     const toM = (p) => ({ x: (p.x - cx) * mpp, z: (p.y - cy) * mpp });
 
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0xeef2f7);
-    const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 2000);
-    camera.position.set(ext*0.95, ext*1.1, ext*0.95);
+    const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 3000);
+    camera.position.set(ext*1.0, ext*1.15, ext*1.0);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H);
     mount.appendChild(renderer.domElement);
     const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH/2, 0); controls.update();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.0));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.65); dir.position.set(ext, ext*1.6, ext*0.6); scene.add(dir);
-    scene.add(new THREE.GridHelper(Math.ceil(ext*2)+12, Math.ceil(ext*2)+12, 0xc7d0da, 0xdfe5ec));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.05));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(ext, ext*1.6, ext*0.6); scene.add(dir);
+    scene.add(new THREE.GridHelper(Math.ceil(ext*2)+14, Math.ceil(ext*2)+14, 0xc7d0da, 0xdfe5ec));
 
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0xf3f5f9 });
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0xdbe3ec, side: THREE.DoubleSide });
-    // openings (metres) that should be cut into walls
+    const mat = (c, opts) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, opts || {}));
+    const wallMat = mat(0xf3f5f9), floorMat = mat(0xdbe3ec, { side: THREE.DoubleSide }), roofMat = mat(new THREE.Color(roofColor), { side: THREE.DoubleSide }), glassMat = mat(0x9fd0e6, { transparent: true, opacity: 0.5 });
+    const box = (w, h, d, m, x, y, z, ry) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x, y, z); if (ry) me.rotation.y = ry; return me; };
+
+    // ---- walls with door/window openings ----
     const openings = stamps.filter(s => s.type === "door" || s.type === "window" || s.type === "opening").map(s => ({ type: s.type, c: toM({ x: s.x, y: s.y }), w: s.size * mpp }));
-    const piece = (A, ux, uz, s0, s1, y0, y1) => { const len = s1 - s0, hgt = y1 - y0; if (len < 0.06 || hgt < 0.03) return; const mx = A.x + ux*((s0+s1)/2), mz = A.z + uz*((s0+s1)/2); const m = new THREE.Mesh(new THREE.BoxGeometry(len, hgt, 0.1), wallMat); m.position.set(mx, (y0+y1)/2, mz); m.rotation.y = -Math.atan2(uz, ux); scene.add(m); };
+    const piece = (A, ux, uz, s0, s1, y0, y1, m) => { const len = s1 - s0, hgt = y1 - y0; if (len < 0.06 || hgt < 0.03) return; const mx = A.x + ux*((s0+s1)/2), mz = A.z + uz*((s0+s1)/2); scene.add(box(len, hgt, 0.1, m || wallMat, mx, (y0+y1)/2, mz, -Math.atan2(uz, ux))); };
     const wallEdge = (a, b, h) => {
       const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const L = Math.hypot(dx, dz); if (L < 0.02) return;
       const ux = dx/L, uz = dz/L, nx = -uz, nz = ux;
@@ -977,31 +982,53 @@ function Plan3D({ plan, onClose, onSave }){
       openings.forEach(o => { const rx = o.c.x-A.x, rz = o.c.z-A.z; const t = rx*ux + rz*uz, perp = Math.abs(rx*nx + rz*nz); if (t > -o.w/2 && t < L + o.w/2 && perp < 0.6) ops.push({ type: o.type, s0: Math.max(0, t-o.w/2), s1: Math.min(L, t+o.w/2) }); });
       ops.sort((p, q) => p.s0 - q.s0);
       let cur = 0; ops.forEach(o => { if (o.s0 > cur + 0.01) piece(A, ux, uz, cur, o.s0, 0, h); cur = Math.max(cur, o.s1); }); if (cur < L - 0.01) piece(A, ux, uz, cur, L, 0, h);
-      ops.forEach(o => { if (o.type === "window"){ const sill = Math.min(0.9, h*0.35), hdr = Math.max(h-0.35, sill+0.1); piece(A, ux, uz, o.s0, o.s1, 0, sill); piece(A, ux, uz, o.s0, o.s1, hdr, h); } else if (o.type === "door"){ piece(A, ux, uz, o.s0, o.s1, Math.min(2.04, h*0.85), h); } });
+      ops.forEach(o => { if (o.type === "window"){ const sill = Math.min(0.9, h*0.35), hdr = Math.max(h-0.35, sill+0.1); piece(A, ux, uz, o.s0, o.s1, 0, sill); piece(A, ux, uz, o.s0, o.s1, hdr, h); piece(A, ux, uz, o.s0, o.s1, sill, hdr, glassMat); } else if (o.type === "door"){ piece(A, ux, uz, o.s0, o.s1, Math.min(2.04, h*0.85), h); } });
     };
+
+    // ---- footprints (closed rooms + closed wall loops) for floor + roof ----
+    const footprints = [];
     rooms.forEach(r => {
       const h = r.height || wallH; const pts = r.points.map(toM);
-      if (!r.wall && pts.length >= 3){
-        const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
-        const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const fm = new THREE.Mesh(g, floorMat); fm.position.y = 0.02; scene.add(fm);
-        for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h);
-        if (roof){
-          let ax = 0, az = 0; pts.forEach(p => { ax += p.x; az += p.z; }); ax /= pts.length; az /= pts.length;
-          let ex = 0; pts.forEach(p => ex = Math.max(ex, Math.hypot(p.x-ax, p.z-az))); const apexY = h + Math.min(2.4, ex*0.55);
-          const rg = new THREE.BufferGeometry(), verts = [];
-          for (let i = 0; i < pts.length; i++){ const p1 = pts[i], p2 = pts[(i+1)%pts.length]; verts.push(p1.x, h, p1.z, p2.x, h, p2.z, ax, apexY, az); }
-          rg.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3)); rg.computeVertexNormals();
-          scene.add(new THREE.Mesh(rg, new THREE.MeshLambertMaterial({ color: 0x9199a6, side: THREE.DoubleSide })));
-        }
-      } else { for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); }
+      if (!r.wall && pts.length >= 3){ footprints.push({ pts, h }); for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); }
+      else if (r.wall){ for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) footprints.push({ pts, h }); }
     });
+    footprints.forEach(fp => {
+      const pts = fp.pts, h = fp.h;
+      const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
+      const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const fm = new THREE.Mesh(g, floorMat); fm.position.y = 0.02; scene.add(fm);
+      if (roofType === "none") return;
+      const xs = pts.map(p => p.x), zs = pts.map(p => p.z); const minx = Math.min(...xs), maxx = Math.max(...xs), minz = Math.min(...zs), maxz = Math.max(...zs);
+      const wdt = maxx-minx, dpt = maxz-minz, mcx = (minx+maxx)/2, mcz = (minz+maxz)/2, pr = Math.tan(Math.max(1, pitch) * Math.PI/180), ov = 0.3;
+      const V = [], GV = []; const tri = (arr, a, b, c) => arr.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]); const quad = (arr, a, b, c, d) => { tri(arr, a, b, c); tri(arr, a, c, d); };
+      if (roofType === "hip"){ let axx = 0, azz = 0; pts.forEach(p => { axx += p.x; azz += p.z; }); axx /= pts.length; azz /= pts.length; const apexY = h + pr * Math.min(wdt, dpt)/2; for (let i = 0; i < pts.length; i++){ const p1 = pts[i], p2 = pts[(i+1)%pts.length]; tri(V, [p1.x,h,p1.z],[p2.x,h,p2.z],[axx,apexY,azz]); } }
+      else if (roofType === "flat"){ scene.add(box(wdt+ov*2, 0.2, dpt+ov*2, roofMat, mcx, h+0.1, mcz)); }
+      else if (roofType === "skillion"){ const rise = pr * dpt; quad(V, [minx-ov,h,minz-ov],[maxx+ov,h,minz-ov],[maxx+ov,h+rise,maxz+ov],[minx-ov,h+rise,maxz+ov]); tri(GV,[minx,h,minz],[minx,h,maxz],[minx,h+rise,maxz]); tri(GV,[maxx,h,minz],[maxx,h+rise,maxz],[maxx,h,maxz]); GV.push(minx,h,maxz, maxx,h,maxz, maxx,h+rise,maxz, minx,h,maxz, maxx,h+rise,maxz, minx,h+rise,maxz); }
+      else if (roofType === "gable"){
+        if (wdt >= dpt){ const rise = pr * dpt/2, ry = h + rise; quad(V,[minx-ov,h,minz-ov],[maxx+ov,h,minz-ov],[maxx+ov,ry,mcz],[minx-ov,ry,mcz]); quad(V,[minx-ov,h,maxz+ov],[maxx+ov,h,maxz+ov],[maxx+ov,ry,mcz],[minx-ov,ry,mcz]); tri(GV,[minx,h,minz],[minx,h,maxz],[minx,ry,mcz]); tri(GV,[maxx,h,minz],[maxx,ry,mcz],[maxx,h,maxz]); }
+        else { const rise = pr * wdt/2, ry = h + rise; quad(V,[minx-ov,h,minz-ov],[minx-ov,h,maxz+ov],[mcx,ry,maxz+ov],[mcx,ry,minz-ov]); quad(V,[maxx+ov,h,minz-ov],[maxx+ov,h,maxz+ov],[mcx,ry,maxz+ov],[mcx,ry,minz-ov]); tri(GV,[minx,h,minz],[maxx,h,minz],[mcx,ry,minz]); tri(GV,[minx,h,maxz],[mcx,ry,maxz],[maxx,h,maxz]); }
+      }
+      if (V.length){ const rg = new THREE.BufferGeometry(); rg.setAttribute("position", new THREE.Float32BufferAttribute(V, 3)); rg.computeVertexNormals(); scene.add(new THREE.Mesh(rg, roofMat)); }
+      if (GV.length){ const gg = new THREE.BufferGeometry(); gg.setAttribute("position", new THREE.Float32BufferAttribute(GV, 3)); gg.computeVertexNormals(); scene.add(new THREE.Mesh(gg, wallMat)); }
+    });
+
+    // ---- detailed objects ----
     stamps.forEach(s => {
+      if (s.type === "door" || s.type === "window" || s.type === "opening") return;
       const M = toM({ x: s.x, y: s.y }), w = s.size * mpp, ang = -(s.angle||0)*Math.PI/180;
-      const place = (mesh, hy) => { mesh.position.set(M.x, hy, M.z); mesh.rotation.y = ang; scene.add(mesh); };
-      if (s.type === "tree"){ const trunk = new THREE.Mesh(new THREE.CylinderGeometry(w*0.06, w*0.09, w*0.5, 8), new THREE.MeshLambertMaterial({ color: 0x7a5230 })); trunk.position.set(M.x, w*0.25, M.z); scene.add(trunk); const can = new THREE.Mesh(new THREE.ConeGeometry(w*0.5, w*0.95, 12), new THREE.MeshLambertMaterial({ color: 0x3f9d55 })); can.position.set(M.x, w*0.5+w*0.47, M.z); scene.add(can); }
-      else if (s.type === "pool"){ place(new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, w*0.6), new THREE.MeshLambertMaterial({ color: 0x2f8fd0 })), 0.15); }
-      else if (s.type === "door" || s.type === "window" || s.type === "opening"){ /* part of walls */ }
-      else { const hMap = { car: 1.45, table: 0.75, bench: 0.45, bed: 0.55, chair: 0.9, sink: 0.85, toilet: 0.7, fence: 1.5 }; const dMap = { car: w*0.44, fence: 0.08, bench: w*0.34, table: w*0.62, bed: w*1.3 }; const hh = hMap[s.type] || 0.8, depth = dMap[s.type] || w*0.7; const col = s.type === "car" ? 0x9aa7b4 : 0xccd4de; place(new THREE.Mesh(new THREE.BoxGeometry(w, hh, depth), new THREE.MeshLambertMaterial({ color: col })), hh/2); }
+      const grp = new THREE.Group(); grp.position.set(M.x, 0, M.z); grp.rotation.y = ang;
+      const leg = (x, z, hgt, m, r) => { const g = new THREE.Mesh(new THREE.BoxGeometry(r||0.06, hgt, r||0.06), m); g.position.set(x, hgt/2, z); grp.add(g); };
+      if (s.type === "tree"){ const trunk = new THREE.Mesh(new THREE.CylinderGeometry(w*0.05, w*0.08, w*0.55, 8), mat(0x7a5230)); trunk.position.y = w*0.27; grp.add(trunk); [0,1,2].forEach(i => { const c = new THREE.Mesh(new THREE.ConeGeometry(w*(0.55-i*0.13), w*0.55, 12), mat(0x3f9d55)); c.position.y = w*0.55 + i*w*0.32; grp.add(c); }); }
+      else if (s.type === "pool"){ const d = w*0.6; grp.add(box(w, 0.35, d, mat(0x2f8fd0), 0, 0.18, 0)); [[-w/2,0],[w/2,0],[0,-d/2],[0,d/2]].forEach(()=>{}); grp.add(box(w+0.3, 0.15, 0.3, mat(0xcfd6de), 0, 0.32, -d/2-0.05)); grp.add(box(w+0.3, 0.15, 0.3, mat(0xcfd6de), 0, 0.32, d/2+0.05)); grp.add(box(0.3, 0.15, d, mat(0xcfd6de), -w/2-0.05, 0.32, 0)); grp.add(box(0.3, 0.15, d, mat(0xcfd6de), w/2+0.05, 0.32, 0)); }
+      else if (s.type === "car"){ const d = w*0.44, bh = 0.6; grp.add(box(w*0.98, bh, d, mat(0x8894a3), 0, 0.35, 0)); grp.add(box(w*0.5, 0.55, d*0.86, mat(0xaeb8c4), -w*0.02, 0.9, 0)); [[-w*0.3,-d/2],[w*0.28,-d/2],[-w*0.3,d/2],[w*0.28,d/2]].forEach(([wx,wz])=>{ const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.2,14), mat(0x22262c)); wheel.rotation.z = Math.PI/2; wheel.position.set(wx, 0.3, wz); grp.add(wheel); }); }
+      else if (s.type === "table"){ const d = w*0.62; grp.add(box(w, 0.08, d, mat(0xcaa27a), 0, 0.74, 0)); [[-w/2+0.08,-d/2+0.08],[w/2-0.08,-d/2+0.08],[-w/2+0.08,d/2-0.08],[w/2-0.08,d/2-0.08]].forEach(([x,z])=>leg(x,z,0.72,mat(0x9c7b56))); }
+      else if (s.type === "chair"){ const d = w; grp.add(box(w, 0.07, d, mat(0xcbd2db), 0, 0.45, 0)); grp.add(box(w, w*0.9, 0.07, mat(0xcbd2db), 0, 0.45+w*0.45, -d/2+0.04)); [[-w/2+0.05,-d/2+0.05],[w/2-0.05,-d/2+0.05],[-w/2+0.05,d/2-0.05],[w/2-0.05,d/2-0.05]].forEach(([x,z])=>leg(x,z,0.44,mat(0x9aa2ad),0.05)); }
+      else if (s.type === "bench"){ const d = w*0.34; grp.add(box(w, 0.07, d, mat(0xb98d63), 0, 0.45, 0.03)); grp.add(box(w, 0.32, 0.06, mat(0xb98d63), 0, 0.6, -d/2)); leg(-w/2+0.1,0,0.44,mat(0x7c6144)); leg(w/2-0.1,0,0.44,mat(0x7c6144)); }
+      else if (s.type === "bed"){ const d = w*1.3; grp.add(box(w, 0.3, d, mat(0x9aa6b3), 0, 0.15, 0)); grp.add(box(w*0.96, 0.18, d*0.96, mat(0xeef2f6), 0, 0.4, 0.02)); grp.add(box(w*0.42, 0.14, d*0.2, mat(0xffffff), -w*0.22, 0.55, -d/2+d*0.14)); grp.add(box(w*0.42, 0.14, d*0.2, mat(0xffffff), w*0.22, 0.55, -d/2+d*0.14)); grp.add(box(w, 0.5, 0.1, mat(0x8a97a5), 0, 0.5, -d/2)); }
+      else if (s.type === "toilet"){ const bowl = new THREE.Mesh(new THREE.CylinderGeometry(w*0.42, w*0.36, 0.42, 16), mat(0xffffff)); bowl.position.set(0, 0.21, w*0.2); grp.add(bowl); grp.add(box(w*0.9, 0.5, w*0.28, mat(0xf3f5f8), 0, 0.45, -w*0.45)); grp.add(new THREE.Mesh(new THREE.CylinderGeometry(w*0.44, w*0.44, 0.05, 16), mat(0xe8ecf1)).translateY(0.44).translateZ(w*0.2)); }
+      else if (s.type === "sink"){ grp.add(box(w, 0.85, w*0.7, mat(0xe4e8ee), 0, 0.425, 0)); grp.add(box(w*0.8, 0.12, w*0.5, mat(0xf7f9fb), 0, 0.9, 0)); const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.22,8), mat(0x9aa2ad)); tap.position.set(0,1.0,-w*0.2); grp.add(tap); }
+      else if (s.type === "fence"){ const d = 0.06; grp.add(box(w, 0.05, d, mat(0x9c7b56), 0, 1.35, 0)); grp.add(box(w, 0.05, d, mat(0x9c7b56), 0, 0.8, 0)); const n = Math.max(2, Math.round(w/1.0)); for (let i = 0; i <= n; i++){ grp.add(box(0.1, 1.5, d, mat(0x7c6144), -w/2 + w*i/n, 0.75, 0)); } }
+      else { grp.add(box(w, 0.8, w*0.7, mat(0xccd4de), 0, 0.4, 0)); }
+      scene.add(grp);
     });
 
     let raf; const loop = () => { controls.update(); renderer.render(scene, camera); raf = requestAnimationFrame(loop); }; loop();
@@ -1010,20 +1037,27 @@ function Plan3D({ plan, onClose, onSave }){
     capRef.current = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.9); };
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onR); try { controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement); } catch(_){} };
     } catch (err) { setOk(false); }
-  }, [roof]);
+  }, [roofType, pitch, roofColor]);
+  const persist = (patch) => { if (onPersist) onPersist(patch); };
   return (
     <div className="fixed inset-0 z-50 flex flex-col no-print" style={{ background: "#eef2f7" }}>
-      <div className="brand-bg text-white flex items-center justify-between px-4 py-3">
-        <div className="font-bold truncate">3D view — {plan.name}</div>
+      <div className="brand-bg text-white flex items-center justify-between px-4 py-3 gap-2 flex-wrap">
+        <div className="font-bold truncate">3D — {plan.name}</div>
+        {ok && (
+          <div className="flex gap-2 items-center flex-wrap text-sm" style={{ color: "#0b1b30" }}>
+            <select className="inp !py-1" value={roofType} onChange={e => { setRoofType(e.target.value); persist({ roofType: e.target.value }); }}>{ROOF_TYPES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
+            {roofType !== "none" && roofType !== "flat" && <label className="flex items-center gap-1 text-white">Pitch <NumInput value={pitch} onCommit={v => { const n = clamp(v, 1, 60); setPitch(n); persist({ roofPitch: n }); }} className="inp !py-1 w-14" />°</label>}
+            {roofType !== "none" && <input type="color" value={roofColor} onChange={e => { setRoofColor(e.target.value); persist({ roofColor: e.target.value }); }} className="h-8 w-9 rounded border" title="Roof colour" />}
+          </div>
+        )}
         <div className="flex gap-2 items-center">
-          {ok && <label className="flex items-center gap-1 text-sm mr-1"><input type="checkbox" checked={roof} onChange={e => setRoof(e.target.checked)} /> Roof</label>}
           {ok && <button className="btn btn-accent" onClick={() => { const d = capRef.current && capRef.current(); if (d) onSave(d); }}><IcCheck size={16} /> Save render</button>}
           <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)" }} onClick={onClose}><IcX size={16} /> Close</button>
         </div>
       </div>
       {ok ? <div ref={mountRef} className="flex-1" style={{ touchAction: "none", minHeight: 0 }} />
           : <div className="flex-1 flex items-center justify-center text-center p-6" style={{ color: "var(--muted)" }}>3D engine needs to load once online. Reconnect and reopen.</div>}
-      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>Drag to orbit · pinch / scroll to zoom · walls at {plan.wallHeight || 2.7} m</div>
+      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>Drag to orbit · pinch / scroll to zoom · walls {plan.wallHeight || 2.7} m · roofs need a closed room/wall outline</div>
     </div>
   );
 }
@@ -1310,7 +1344,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         </div>
       )}
 
-      {show3d && <Plan3D plan={plan} onClose={() => setShow3d(false)} onSave={save3dRender} />}
+      {show3d && <Plan3D plan={plan} onClose={() => setShow3d(false)} onSave={save3dRender} onPersist={(patch) => onChange({ ...plan, ...patch })} />}
     </div>
   );
 }
@@ -1483,12 +1517,12 @@ function ReportView({ project, onChange }){
   const [busy, setBusy] = useState("");
   const inc = (x) => x.include !== false;
   const photos = (project.photos || []).filter(p => p.data);
-  const drawings = (project.drawings || []).filter(d => d.snapshot);
+  const drawings = (project.drawings || []).filter(d => d.snapshot || d.bg);   // takeoffs: marked-up snapshot, else the raw drawing
   const plans = (project.floorplans || []).filter(p => p.snapshot || p.render3d);
   const incPhotos = photos.filter(inc), incDrawings = drawings.filter(inc), incPlans = plans.filter(inc);
   const attachments = [
     ...incPhotos.map(p => ({ src: p.data, caption: p.caption || "Site photo" })),
-    ...incDrawings.map(d => ({ src: d.snapshot, caption: "Takeoff — " + d.name })),
+    ...incDrawings.map(d => ({ src: d.snapshot || d.bg, caption: "Takeoff — " + d.name })),
     ...incPlans.flatMap(p => [p.snapshot && { src: p.snapshot, caption: "Floor plan — " + p.name }, p.render3d && { src: p.render3d, caption: "3D — " + p.name }].filter(Boolean))
   ];
   const hasAttachChoices = photos.length + drawings.length + plans.length > 0;
@@ -1540,16 +1574,16 @@ function ReportView({ project, onChange }){
           <button className="btn btn-ghost" onClick={doEmailLink}><IcDoc size={16} /> Email (text only)</button>
           <button className="btn btn-ghost" disabled={busy} onClick={() => window.print()}><IcPrint size={16} /> Print</button>
         </div>
-        {hasAttachChoices && (
-          <div className="card p-3">
-            <div className="font-semibold text-sm brand-text mb-2">Attachments to include</div>
-            <div className="space-y-1 text-sm">
-              {photos.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("photo", p.id)} /> <span className="chip">Photo</span> {p.caption || "Site photo"}</label>)}
-              {drawings.map(d => <label key={d.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(d)} onChange={() => toggle("drawing", d.id)} /> <span className="chip">Takeoff</span> {d.name}</label>)}
-              {plans.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("plan", p.id)} /> <span className="chip">Floor plan</span> {p.name}</label>)}
+        <div className="card p-3">
+          <div className="font-semibold text-sm brand-text mb-1">Attach to quote — tick what to include</div>
+          {hasAttachChoices ? (
+            <div className="space-y-1.5 text-sm mt-2">
+              {photos.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("photo", p.id)} /> <img src={p.data} className="w-9 h-9 object-cover rounded border" style={{ borderColor: "var(--line)" }} /> <span className="chip">Photo</span> {p.caption || "Site photo"}</label>)}
+              {drawings.map(d => <label key={d.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(d)} onChange={() => toggle("drawing", d.id)} /> <img src={d.snapshot || d.bg} className="w-9 h-9 object-cover rounded border" style={{ borderColor: "var(--line)" }} /> <span className="chip">Takeoff</span> {d.name}{!d.snapshot && <span className="text-xs" style={{ color: "var(--muted)" }}> (open it & tap “Add marked-up copy” to show your markups)</span>}</label>)}
+              {plans.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("plan", p.id)} /> <img src={p.render3d || p.snapshot} className="w-9 h-9 object-cover rounded border" style={{ borderColor: "var(--line)" }} /> <span className="chip">Plan</span> {p.name}{p.render3d ? " (incl. 3D)" : ""}</label>)}
             </div>
-          </div>
-        )}
+          ) : <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Nothing to attach yet. Add site photos in the <b>Photos</b> tab, drawings/takeoffs in <b>Drawings / Takeoff</b>, or a <b>Floor plan</b> — they'll appear here to tick on.</div>}
+        </div>
       </div>
 
       <div ref={sheetRef} className="report-sheet mx-auto shadow-sm overflow-hidden" style={{ border: "2px solid var(--brand)", borderRadius: 6 }}>
