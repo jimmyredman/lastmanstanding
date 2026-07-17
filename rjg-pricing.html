@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+<title>RJG Builders — Site Pricing & Takeoff</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="RJG Pricing" />
+<meta name="theme-color" content="#13294B" />
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="apple-touch-icon" href="./icon.svg" />
+<link rel="icon" href="./icon.svg" />
+
+<!-- All libraries are vendored locally in ./vendor so the app is fully self-contained and works offline on-site. -->
+<link rel="stylesheet" href="./vendor/tailwind.css" />
+<script src="./vendor/react.min.js"></script>
+<script src="./vendor/react-dom.min.js"></script>
+<script src="./vendor/babel.min.js"></script>
+<script src="./vendor/xlsx.full.min.js"></script>
+<script src="./vendor/pdf.min.js"></script>
+
+<style>
+  :root{
+    /* ---- RJG brand tokens: change --brand / --brand-2 to re-skin everything ---- */
+    --brand:#13294B;      /* primary (headers, buttons) */
+    --brand-2:#E8792B;    /* accent (highlights, active) */
+    --ink:#141922;
+    --muted:#5b6472;
+    --line:#e4e7ec;
+    --bg:#f4f5f7;
+    --paper:#ffffff;
+    --ok:#16a34a;
+    --danger:#dc2626;
+  }
+  html,body{background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent;overscroll-behavior:none;}
+  *{box-sizing:border-box;}
+  .brand-bg{background:var(--brand);}
+  .brand2-bg{background:var(--brand-2);}
+  .brand-text{color:var(--brand);}
+  .brand2-text{color:var(--brand-2);}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:14px;}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-weight:600;border-radius:10px;padding:9px 14px;font-size:14px;transition:.12s;cursor:pointer;user-select:none;}
+  .btn-primary{background:var(--brand);color:#fff;}
+  .btn-primary:active{filter:brightness(1.15);}
+  .btn-accent{background:var(--brand-2);color:#fff;}
+  .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+  .btn-ghost:active{background:var(--bg);}
+  .btn-danger{background:var(--danger);color:#fff;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;}
+  .inp{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-size:14px;background:var(--paper);color:var(--ink);outline:none;}
+  .inp:focus{border-color:var(--brand-2);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand-2) 20%,transparent);}
+  .lbl{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;display:block;}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--bg);border:1px solid var(--line);}
+  .tab{padding:9px 12px;font-size:13px;font-weight:600;border-radius:10px;white-space:nowrap;cursor:pointer;color:var(--muted);}
+  .tab-active{background:var(--brand);color:#fff;}
+  .navbtn{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font-size:11px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .navbtn-active{color:var(--brand);}
+  ::-webkit-scrollbar{height:8px;width:8px;}
+  ::-webkit-scrollbar-thumb{background:#cbd2dc;border-radius:8px;}
+  .scroll-x{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  canvas.editor{touch-action:none;display:block;background:#fff;}
+
+  /* ---------- print / report ---------- */
+  @media print{
+    @page{margin:14mm;}
+    body{background:#fff;}
+    .no-print{display:none !important;}
+    .report-sheet{box-shadow:none !important;border:none !important;margin:0 !important;width:100% !important;max-width:100% !important;}
+  }
+  .report-sheet{width:800px;max-width:100%;background:#fff;color:#141922;}
+</style>
+</head>
+<body class="min-h-screen">
+<div id="root"></div>
+
+<script type="text/plain" id="app-source">
+const { useState, useMemo, useEffect, useRef, useCallback, createContext, useContext } = React;
+
+/* =========================================================================
+   Helpers
+   ========================================================================= */
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const now = () => Date.now();
+const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+const money = (n) => "$" + (round2(n)).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = (ts) => new Date(ts).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function shoelace(pts){ let s = 0; for (let i = 0; i < pts.length; i++){ const j = (i + 1) % pts.length; s += pts[i].x * pts[j].y - pts[j].x * pts[i].y; } return Math.abs(s) / 2; }
+function perimeter(pts, closed){ let s = 0; for (let i = 0; i < pts.length - 1; i++) s += dist(pts[i], pts[i+1]); if (closed && pts.length > 2) s += dist(pts[pts.length-1], pts[0]); return s; }
+function centroid(pts){ let x = 0, y = 0; pts.forEach(p => { x += p.x; y += p.y; }); return { x: x / pts.length, y: y / pts.length }; }
+function download(filename, blob){ const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
+
+/* =========================================================================
+   IndexedDB (offline-first storage)
+   ========================================================================= */
+const DB_NAME = "rjg_pricing", DB_VER = 1;
+function openDb(){
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = () => {
+      const db = r.result;
+      if (!db.objectStoreNames.contains("items")) db.createObjectStore("items", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("projects")) db.createObjectStore("projects", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("kv")) db.createObjectStore("kv");
+    };
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function dbAll(store){ const db = await openDb(); return new Promise((res, rej) => { const r = db.transaction(store).objectStore(store).getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); }); }
+async function dbPut(store, val, key){ const db = await openDb(); return new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); const os = t.objectStore(store); (key !== undefined ? os.put(val, key) : os.put(val)); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+async function dbGet(store, key){ const db = await openDb(); return new Promise((res, rej) => { const r = db.transaction(store).objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function dbDel(store, key){ const db = await openDb(); return new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); t.objectStore(store).delete(key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+
+/* =========================================================================
+   Defaults
+   ========================================================================= */
+const DEFAULT_SETTINGS = {
+  company: "RJG Builders",
+  abn: "",
+  license: "",
+  address: "",
+  phone: "",
+  email: "james@rjgbuilders.com.au",
+  website: "",
+  logo: "",               // dataURL
+  brand: "#13294B",
+  brand2: "#E8792B",
+  gst: 10,                 // %
+  defaultMargin: 20,       // %
+  quoteSeq: 1,
+  terms: "All prices are exclusive of GST unless otherwise stated.\nQuotation valid for 30 days from date of issue.\nProgress claims payable within 7 days of invoice.\nPrices subject to final site measure and inspection.",
+  validity: "30 days"
+};
+
+/* =========================================================================
+   Store (context)
+   ========================================================================= */
+const Store = createContext(null);
+const useStore = () => useContext(Store);
+
+function StoreProvider({ children }){
+  const [items, setItems] = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [ready, setReady] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const [it, pr, kv] = await Promise.all([dbAll("items"), dbAll("projects"), dbGet("kv", "settings")]);
+      setItems(it);
+      setProjects(pr.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
+      if (kv) setSettings({ ...DEFAULT_SETTINGS, ...kv });
+      setReady(true);
+    })();
+  }, []);
+
+  const notify = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
+
+  // ---- settings ----
+  const saveSettings = async (patch) => { const next = { ...settings, ...patch }; setSettings(next); await dbPut("kv", next, "settings"); };
+
+  // ---- price items ----
+  const upsertItem = async (item) => {
+    const rec = { ...item, id: item.id || uid(), updatedAt: now() };
+    await dbPut("items", rec);
+    setItems((prev) => { const i = prev.findIndex(p => p.id === rec.id); if (i === -1) return [...prev, rec]; const c = prev.slice(); c[i] = rec; return c; });
+    return rec;
+  };
+  const bulkUpsertItems = async (arr) => {
+    const stamped = arr.map(a => ({ ...a, id: a.id || uid(), updatedAt: now() }));
+    for (const r of stamped) await dbPut("items", r);
+    setItems((prev) => { const map = new Map(prev.map(p => [p.id, p])); stamped.forEach(r => map.set(r.id, r)); return [...map.values()]; });
+    return stamped.length;
+  };
+  const deleteItem = async (id) => { await dbDel("items", id); setItems(prev => prev.filter(p => p.id !== id)); };
+  const clearItems = async () => { for (const it of items) await dbDel("items", it.id); setItems([]); };
+
+  // ---- projects ----
+  const upsertProject = async (proj) => {
+    const rec = { ...proj, id: proj.id || uid(), updatedAt: now(), createdAt: proj.createdAt || now() };
+    await dbPut("projects", rec);
+    setProjects((prev) => { const i = prev.findIndex(p => p.id === rec.id); let c; if (i === -1) c = [rec, ...prev]; else { c = prev.slice(); c[i] = rec; } return c.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)); });
+    return rec;
+  };
+  const deleteProject = async (id) => { await dbDel("projects", id); setProjects(prev => prev.filter(p => p.id !== id)); };
+
+  const value = { items, projects, settings, ready, notify, saveSettings, upsertItem, bulkUpsertItems, deleteItem, clearItems, upsertProject, deleteProject, setItems, setProjects };
+  return (
+    <Store.Provider value={value}>
+      {children}
+      {toast && <div className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[100] px-4 py-2 rounded-lg text-white text-sm font-semibold shadow-lg" style={{ background: "var(--brand)" }}>{toast}</div>}
+    </Store.Provider>
+  );
+}
+
+/* =========================================================================
+   Icons
+   ========================================================================= */
+const I = (d, vb = "0 0 24 24") => ({ size = 20, className = "", style } = {}) =>
+  <svg width={size} height={size} viewBox={vb} fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}>{d}</svg>;
+const IcJobs = I(<><path d="M3 7h18v13H3z"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/></>);
+const IcPrice = I(<><path d="M20 12l-8 8-9-9V4h7z"/><circle cx="7.5" cy="7.5" r="1.3"/></>);
+const IcGear = I(<><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></>);
+const IcPlus = I(<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>);
+const IcBack = I(<polyline points="15 5 8 12 15 19"/>);
+const IcTrash = I(<><polyline points="4 7 20 7"/><path d="M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/><path d="M9 7V4h6v3"/></>);
+const IcEdit = I(<><path d="M4 20l1-4 11-11 3 3-11 11-4 1z"/><line x1="14" y1="6" x2="18" y2="10"/></>);
+const IcUpload = I(<><path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></>);
+const IcRuler = I(<><rect x="2" y="7" width="20" height="10" rx="1.5"/><path d="M6 7v3M10 7v4M14 7v3M18 7v4"/></>);
+const IcDoc = I(<><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><line x1="9" y1="13" x2="17" y2="13"/><line x1="9" y1="17" x2="17" y2="17"/></>);
+const IcGrid = I(<><rect x="3" y="3" width="18" height="18" rx="1.5"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></>);
+const IcCheck = I(<polyline points="4 12 9 17 20 6"/>);
+const IcX = I(<><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></>);
+const IcSearch = I(<><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></>);
+const IcPrint = I(<><polyline points="6 9 6 2 18 2 18 9"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><rect x="7" y="14" width="10" height="7"/></>);
+const IcPin = I(<><path d="M12 21s-6-5.7-6-10a6 6 0 1112 0c0 4.3-6 10-6 10z"/><circle cx="12" cy="11" r="2"/></>);
+
+/* =========================================================================
+   UI primitives
+   ========================================================================= */
+function Modal({ open, onClose, title, children, wide }){
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ background: "rgba(10,15,25,.5)" }} onClick={onClose}>
+      <div className={"card w-full " + (wide ? "sm:max-w-3xl" : "sm:max-w-md") + " max-h-[92vh] overflow-y-auto rounded-b-none sm:rounded-2xl"} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b sticky top-0 z-10" style={{ borderColor: "var(--line)", background: "var(--paper)" }}>
+          <h3 className="font-bold text-base">{title}</h3>
+          <button className="btn btn-ghost !p-2" onClick={onClose}><IcX size={16} /></button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
+  );
+}
+function Field({ label, children }){ return <div><label className="lbl">{label}</label>{children}</div>; }
+function Empty({ icon, title, sub }){ return (
+  <div className="flex flex-col items-center justify-center text-center py-16 px-6" style={{ color: "var(--muted)" }}>
+    <div className="mb-3 opacity-40">{icon}</div>
+    <div className="font-semibold text-ink" style={{ color: "var(--ink)" }}>{title}</div>
+    {sub && <div className="text-sm mt-1 max-w-xs">{sub}</div>}
+  </div>
+); }
+
+/* =========================================================================
+   SETTINGS
+   ========================================================================= */
+function SettingsScreen(){
+  const { settings, saveSettings, items, projects, notify, bulkUpsertItems, setItems, setProjects } = useStore();
+  const [f, setF] = useState(settings);
+  useEffect(() => setF(settings), [settings]);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+
+  const onLogo = (e) => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = () => set("logo", r.result); r.readAsDataURL(file); };
+  const save = () => { saveSettings(f); notify("Settings saved"); };
+
+  const backup = () => download("rjg-backup-" + new Date().toISOString().slice(0,10) + ".json", new Blob([JSON.stringify({ settings, items, projects }, null, 2)], { type: "application/json" }));
+  const restore = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = async () => {
+      try {
+        const data = JSON.parse(r.result);
+        if (data.settings) await saveSettings(data.settings);
+        if (Array.isArray(data.items)) { for (const it of data.items) await dbPut("items", it); setItems(data.items); }
+        if (Array.isArray(data.projects)) { for (const p of data.projects) await dbPut("projects", p); setProjects(data.projects.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0))); }
+        notify("Backup restored");
+      } catch (err) { alert("Could not read backup file."); }
+    };
+    r.readAsText(file);
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto p-4 space-y-4 pb-28">
+      <h2 className="text-lg font-bold">Settings</h2>
+
+      <div className="card p-4 space-y-3">
+        <div className="font-semibold text-sm brand-text">Company & letterhead</div>
+        <Field label="Company name"><input className="inp" value={f.company} onChange={e => set("company", e.target.value)} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="ABN"><input className="inp" value={f.abn} onChange={e => set("abn", e.target.value)} /></Field>
+          <Field label="Builder licence #"><input className="inp" value={f.license} onChange={e => set("license", e.target.value)} /></Field>
+        </div>
+        <Field label="Address"><input className="inp" value={f.address} onChange={e => set("address", e.target.value)} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Phone"><input className="inp" value={f.phone} onChange={e => set("phone", e.target.value)} /></Field>
+          <Field label="Email"><input className="inp" value={f.email} onChange={e => set("email", e.target.value)} /></Field>
+        </div>
+        <Field label="Website"><input className="inp" value={f.website} onChange={e => set("website", e.target.value)} /></Field>
+        <Field label="Logo (shown on quotes)">
+          <div className="flex items-center gap-3">
+            {f.logo ? <img src={f.logo} alt="logo" className="h-12 rounded border" style={{ borderColor: "var(--line)" }} /> : <div className="h-12 w-12 rounded flex items-center justify-center text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>none</div>}
+            <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} /> Upload<input type="file" accept="image/*" className="hidden" onChange={onLogo} /></label>
+            {f.logo && <button className="btn btn-ghost" onClick={() => set("logo", "")}>Remove</button>}
+          </div>
+        </Field>
+      </div>
+
+      <div className="card p-4 space-y-3">
+        <div className="font-semibold text-sm brand-text">Brand colours</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Primary"><div className="flex gap-2 items-center"><input type="color" value={f.brand} onChange={e => set("brand", e.target.value)} className="h-10 w-12 rounded border" /><input className="inp" value={f.brand} onChange={e => set("brand", e.target.value)} /></div></Field>
+          <Field label="Accent"><div className="flex gap-2 items-center"><input type="color" value={f.brand2} onChange={e => set("brand2", e.target.value)} className="h-10 w-12 rounded border" /><input className="inp" value={f.brand2} onChange={e => set("brand2", e.target.value)} /></div></Field>
+        </div>
+        <p className="text-xs" style={{ color: "var(--muted)" }}>Tip: paste your exact RJG hex values here to re-skin the whole app and quote letterhead.</p>
+      </div>
+
+      <div className="card p-4 space-y-3">
+        <div className="font-semibold text-sm brand-text">Pricing & quote defaults</div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="GST rate (%)"><input type="number" className="inp" value={f.gst} onChange={e => set("gst", num(e.target.value))} /></Field>
+          <Field label="Default margin (%)"><input type="number" className="inp" value={f.defaultMargin} onChange={e => set("defaultMargin", num(e.target.value))} /></Field>
+        </div>
+        <Field label="Quote validity"><input className="inp" value={f.validity} onChange={e => set("validity", e.target.value)} /></Field>
+        <Field label="Default terms & conditions"><textarea className="inp" rows="4" value={f.terms} onChange={e => set("terms", e.target.value)} /></Field>
+      </div>
+
+      <button className="btn btn-primary w-full" onClick={save}><IcCheck size={16} /> Save settings</button>
+
+      <div className="card p-4 space-y-3">
+        <div className="font-semibold text-sm brand-text">Backup & transfer (offline)</div>
+        <p className="text-xs" style={{ color: "var(--muted)" }}>Everything is stored on this device. Export a backup to move it to another phone/tablet or keep a copy.</p>
+        <div className="flex gap-2 flex-wrap">
+          <button className="btn btn-ghost" onClick={backup}><IcUpload size={16} /> Export backup</button>
+          <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} style={{ transform: "rotate(180deg)" }} /> Restore backup<input type="file" accept="application/json" className="hidden" onChange={restore} /></label>
+        </div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>{items.length} price items · {projects.length} jobs stored.</div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   PRICING DATABASE
+   ========================================================================= */
+function ItemModal({ open, onClose, item }){
+  const { upsertItem, notify } = useStore();
+  const blank = { code: "", description: "", category: "", unit: "ea", rate: 0, supplier: "", notes: "" };
+  const [f, setF] = useState(blank);
+  useEffect(() => { setF(item ? { ...blank, ...item } : blank); }, [item, open]);
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const save = async () => { if (!f.description.trim()) { alert("Description required"); return; } await upsertItem({ ...f, rate: num(f.rate) }); notify(item ? "Item updated" : "Item added"); onClose(); };
+  return (
+    <Modal open={open} onClose={onClose} title={item ? "Edit price item" : "New price item"}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Code"><input className="inp" value={f.code} onChange={e => set("code", e.target.value)} /></Field>
+          <div className="col-span-2"><Field label="Category"><input className="inp" list="cats" value={f.category} onChange={e => set("category", e.target.value)} /></Field></div>
+        </div>
+        <Field label="Description *"><input className="inp" value={f.description} onChange={e => set("description", e.target.value)} /></Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Unit"><input className="inp" list="units" value={f.unit} onChange={e => set("unit", e.target.value)} /></Field>
+          <Field label="Rate (ex GST)"><input type="number" step="0.01" className="inp" value={f.rate} onChange={e => set("rate", e.target.value)} /></Field>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Supplier"><input className="inp" value={f.supplier} onChange={e => set("supplier", e.target.value)} /></Field>
+        </div>
+        <Field label="Notes"><input className="inp" value={f.notes} onChange={e => set("notes", e.target.value)} /></Field>
+        <datalist id="units"><option value="ea"/><option value="m"/><option value="m2"/><option value="m3"/><option value="lm"/><option value="hr"/><option value="day"/><option value="item"/><option value="kg"/><option value="t"/></datalist>
+        <button className="btn btn-primary w-full" onClick={save}><IcCheck size={16} /> Save</button>
+      </div>
+    </Modal>
+  );
+}
+
+function ImportModal({ open, onClose }){
+  const { bulkUpsertItems, notify } = useStore();
+  const [rows, setRows] = useState(null);     // array of arrays
+  const [headers, setHeaders] = useState([]);
+  const [map, setMap] = useState({ code: "", description: "", category: "", unit: "", rate: "", supplier: "" });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { if (!open) { setRows(null); setHeaders([]); } }, [open]);
+
+  const guess = (hs) => {
+    const find = (...keys) => { const i = hs.findIndex(h => keys.some(k => String(h).toLowerCase().replace(/[^a-z0-9]/g, "").includes(k))); return i === -1 ? "" : String(i); };
+    return { code: find("code", "sku", "itemno", "ref"), description: find("desc", "item", "name", "product"), category: find("categ", "group", "trade", "type"), unit: find("unit", "uom", "measure"), rate: find("rate", "cost", "price", "unitcost", "sell", "amount"), supplier: find("supplier", "vendor", "brand") };
+  };
+
+  const onFile = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const wb = XLSX.read(new Uint8Array(r.result), { type: "array" });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).filter(row => row.some(c => String(c).trim() !== ""));
+        if (aoa.length < 2) { alert("No data rows found."); return; }
+        const hs = aoa[0].map(h => String(h).trim());
+        setHeaders(hs); setRows(aoa.slice(1)); setMap(guess(hs));
+      } catch (err) { alert("Could not read file. Use .xlsx or .csv."); }
+    };
+    r.readAsArrayBuffer(file);
+  };
+
+  const doImport = async () => {
+    if (map.description === "") { alert("Map at least the Description column."); return; }
+    setBusy(true);
+    const g = (row, key) => map[key] === "" ? "" : row[parseInt(map[key])];
+    const items = rows.map(row => ({
+      code: String(g(row, "code") || "").trim(),
+      description: String(g(row, "description") || "").trim(),
+      category: String(g(row, "category") || "").trim(),
+      unit: String(g(row, "unit") || "ea").trim() || "ea",
+      rate: num(g(row, "rate")),
+      supplier: String(g(row, "supplier") || "").trim()
+    })).filter(it => it.description);
+    const n = await bulkUpsertItems(items);
+    setBusy(false);
+    notify(n + " items imported");
+    onClose();
+  };
+
+  const template = () => {
+    const ws = XLSX.utils.aoa_to_sheet([["Code", "Description", "Category", "Unit", "Rate (ex GST)", "Supplier"], ["DEMO-01", "Example item — 90x45 MGP10 pine", "Framing", "lm", 4.85, "Local Supplier"]]);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-cost-register-template.xlsx");
+  };
+
+  const fields = [["code", "Code"], ["description", "Description *"], ["category", "Category"], ["unit", "Unit"], ["rate", "Rate (ex GST)"], ["supplier", "Supplier"]];
+
+  return (
+    <Modal open={open} onClose={onClose} title="Import cost register" wide>
+      {!rows ? (
+        <div className="space-y-4">
+          <p className="text-sm" style={{ color: "var(--muted)" }}>Upload your cost register as <b>.xlsx</b> or <b>.csv</b>. The first row must be column headers. You'll map columns on the next step.</p>
+          <label className="btn btn-primary cursor-pointer w-full"><IcUpload size={16} /> Choose file<input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFile} /></label>
+          <button className="btn btn-ghost w-full" onClick={template}><IcDoc size={16} /> Download blank template</button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="text-sm font-semibold">{rows.length} rows found — map your columns:</div>
+          <div className="grid grid-cols-2 gap-3">
+            {fields.map(([key, label]) => (
+              <Field key={key} label={label}>
+                <select className="inp" value={map[key]} onChange={e => setMap(m => ({ ...m, [key]: e.target.value }))}>
+                  <option value="">— none —</option>
+                  {headers.map((h, i) => <option key={i} value={String(i)}>{h || ("Column " + (i+1))}</option>)}
+                </select>
+              </Field>
+            ))}
+          </div>
+          <div className="card p-3 text-xs overflow-x-auto" style={{ background: "var(--bg)" }}>
+            <div className="font-semibold mb-1">Preview (first 3 rows)</div>
+            {rows.slice(0, 3).map((row, ri) => (
+              <div key={ri} className="whitespace-nowrap">
+                {(map.code !== "" ? row[map.code] + " · " : "")}{map.description !== "" ? row[map.description] : "(no description mapped)"}{map.rate !== "" ? " — " + money(num(row[map.rate])) : ""}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost flex-1" onClick={() => setRows(null)}>Back</button>
+            <button className="btn btn-primary flex-1" disabled={busy} onClick={doImport}><IcCheck size={16} /> Import {rows.length} items</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function PricingScreen(){
+  const { items, deleteItem, clearItems, notify } = useStore();
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("");
+  const [editing, setEditing] = useState(undefined); // undefined=closed, null=new, obj=edit
+  const [importing, setImporting] = useState(false);
+
+  const cats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))].sort(), [items]);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return items.filter(i => (!cat || i.category === cat) && (!s || (i.description + " " + i.code + " " + i.supplier).toLowerCase().includes(s)))
+      .sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.description || "").localeCompare(b.description || ""));
+  }, [items, q, cat]);
+
+  const exportXlsx = () => {
+    const ws = XLSX.utils.json_to_sheet(items.map(i => ({ Code: i.code, Description: i.description, Category: i.category, Unit: i.unit, "Rate (ex GST)": i.rate, Supplier: i.supplier })));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-cost-register.xlsx");
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-4 pb-28">
+      <datalist id="cats">{cats.map(c => <option key={c} value={c} />)}</datalist>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-bold">Pricing database <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({items.length})</span></h2>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost !px-3" onClick={() => setImporting(true)}><IcUpload size={16} /> Import</button>
+          <button className="btn btn-primary !px-3" onClick={() => setEditing(null)}><IcPlus size={16} /> Item</button>
+        </div>
+      </div>
+
+      <div className="flex gap-2 mb-3">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }}><IcSearch size={16} /></span>
+          <input className="inp pl-9" placeholder="Search code, description, supplier…" value={q} onChange={e => setQ(e.target.value)} />
+        </div>
+        <select className="inp w-40" value={cat} onChange={e => setCat(e.target.value)}>
+          <option value="">All categories</option>
+          {cats.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      {items.length === 0 ? (
+        <Empty icon={<IcPrice size={48} />} title="No price items yet" sub="Add items one by one, or import your cost register from Excel to set up the database." />
+      ) : (
+        <div className="card overflow-hidden">
+          <div className="scroll-x">
+            <table className="w-full text-sm min-w-[560px]">
+              <thead><tr style={{ background: "var(--bg)", color: "var(--muted)" }} className="text-xs uppercase tracking-wide">
+                <th className="text-left px-3 py-2">Code</th><th className="text-left px-3 py-2">Description</th><th className="text-left px-3 py-2">Cat</th><th className="text-center px-2 py-2">Unit</th><th className="text-right px-3 py-2">Rate (ex)</th><th className="px-2"></th>
+              </tr></thead>
+              <tbody>
+                {filtered.map(i => (
+                  <tr key={i.id} className="border-t" style={{ borderColor: "var(--line)" }}>
+                    <td className="px-3 py-2 font-mono text-xs" style={{ color: "var(--muted)" }}>{i.code}</td>
+                    <td className="px-3 py-2">{i.description}{i.supplier && <div className="text-xs" style={{ color: "var(--muted)" }}>{i.supplier}</div>}</td>
+                    <td className="px-3 py-2 text-xs">{i.category}</td>
+                    <td className="px-2 py-2 text-center text-xs">{i.unit}</td>
+                    <td className="px-3 py-2 text-right font-semibold whitespace-nowrap">{money(i.rate)}</td>
+                    <td className="px-2 py-2"><div className="flex gap-1 justify-end">
+                      <button className="btn btn-ghost !p-1.5" onClick={() => setEditing(i)}><IcEdit size={15} /></button>
+                      <button className="btn btn-ghost !p-1.5" onClick={() => { if (confirm("Delete this item?")) deleteItem(i.id); }}><IcTrash size={15} /></button>
+                    </div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div className="flex gap-2 mt-3 flex-wrap">
+          <button className="btn btn-ghost" onClick={exportXlsx}><IcUpload size={16} /> Export to Excel</button>
+          <button className="btn btn-ghost" onClick={() => { if (confirm("Delete ALL price items? This cannot be undone.")) { clearItems(); notify("Database cleared"); } }}><IcTrash size={16} /> Clear database</button>
+        </div>
+      )}
+
+      <ItemModal open={editing !== undefined} onClose={() => setEditing(undefined)} item={editing || null} />
+      <ImportModal open={importing} onClose={() => setImporting(false)} />
+    </div>
+  );
+}
+
+/* =========================================================================
+   TAKEOFF CANVAS (PDF / photo measure + markup)
+   ========================================================================= */
+const MEASURE_TOOLS = ["length", "area", "count"];
+const TOOL_LABELS = { calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
+
+function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
+  const { items } = useStore();
+  const wrapRef = useRef(null);
+  const canvasRef = useRef(null);
+  const imgRef = useRef(null);
+  const [tool, setTool] = useState("length");
+  const [zoom, setZoom] = useState(1);
+  const [color, setColor] = useState("#e11d48");
+  const [draft, setDraft] = useState(null); // {tool, points:[]}
+  const [wrapW, setWrapW] = useState(360);
+  const [, force] = useState(0);
+
+  const anns = drawing.annotations || [];
+  const mpp = drawing.scaleMpp || null; // metres per (image-space) pixel
+
+  // load bg image
+  useEffect(() => {
+    if (!drawing.bg) return;
+    const im = new Image();
+    im.onload = () => { imgRef.current = im; force(x => x + 1); };
+    im.src = drawing.bg;
+  }, [drawing.bg]);
+
+  useEffect(() => {
+    const measure = () => { if (wrapRef.current) setWrapW(wrapRef.current.clientWidth); };
+    measure(); window.addEventListener("resize", measure); return () => window.removeEventListener("resize", measure);
+  }, []);
+
+  const natW = drawing.natW || 1000, natH = drawing.natH || 700;
+  const baseScale = wrapW / natW;              // fit width
+  const displayScale = baseScale * zoom;       // image-space px -> screen px
+  const cssW = natW * displayScale, cssH = natH * displayScale;
+
+  const measureVal = (a) => {
+    if (!mpp) return null;
+    if (a.tool === "length" || a.tool === "arrow") return perimeter(a.points, false) * mpp;
+    if (a.tool === "area") return shoelace(a.points) * mpp * mpp;
+    if (a.tool === "count") return a.points.length;
+    return null;
+  };
+  const valLabel = (a) => {
+    const v = measureVal(a); if (v === null) return "";
+    if (a.tool === "area") return round2(v).toFixed(2) + " m²";
+    if (a.tool === "count") return v + " no.";
+    return round2(v).toFixed(2) + " m";
+  };
+
+  // draw
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = Math.max(1, cssW * dpr); cv.height = Math.max(1, cssH * dpr);
+    cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    if (imgRef.current) ctx.drawImage(imgRef.current, 0, 0, cssW, cssH);
+    else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, cssW, cssH); }
+    const S = displayScale;
+    const drawAnn = (a, isDraft) => {
+      ctx.save();
+      ctx.lineWidth = 2.2; ctx.strokeStyle = a.color || color; ctx.fillStyle = a.color || color;
+      ctx.font = "600 13px system-ui"; ctx.textAlign = "center";
+      const P = a.points.map(p => ({ x: p.x * S, y: p.y * S }));
+      if (a.tool === "count") {
+        P.forEach((p, i) => { ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.fillText(i + 1, p.x, p.y + 4); ctx.fillStyle = a.color || color; });
+      } else if (a.tool === "text") {
+        ctx.textAlign = "left"; ctx.font = "700 15px system-ui"; if (P[0]) ctx.fillText(a.text || "Text", P[0].x, P[0].y);
+      } else if (a.tool === "rect" && P.length >= 2) {
+        ctx.strokeRect(P[0].x, P[0].y, P[1].x - P[0].x, P[1].y - P[0].y);
+      } else if (a.tool === "area") {
+        ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (!isDraft) ctx.closePath();
+        ctx.globalAlpha = 0.16; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+        P.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 7); ctx.fill(); });
+      } else { // length, arrow, pen
+        ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+        P.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 7); ctx.fill(); });
+        if (a.tool === "arrow" && P.length >= 2) {
+          const p2 = P[P.length - 1], p1 = P[P.length - 2], ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12 * Math.cos(ang - .4), p2.y - 12 * Math.sin(ang - .4)); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12 * Math.cos(ang + .4), p2.y - 12 * Math.sin(ang + .4)); ctx.stroke();
+        }
+      }
+      // measurement label
+      if (!isDraft && MEASURE_TOOLS.includes(a.tool) && mpp) {
+        const c = a.tool === "count" ? P[0] : centroid(P);
+        if (c) { const t = valLabel(a) + (a.qLabel ? " · " + a.qLabel : ""); ctx.font = "700 12px system-ui"; ctx.textAlign = "center"; const w = ctx.measureText(t).width + 10; ctx.fillStyle = "rgba(17,24,39,.85)"; ctx.fillRect(c.x - w/2, c.y - 22, w, 18); ctx.fillStyle = "#fff"; ctx.fillText(t, c.x, c.y - 9); }
+      }
+      ctx.restore();
+    };
+    anns.forEach(a => drawAnn(a, false));
+    if (draft) drawAnn(draft, true);
+  }, [anns, draft, cssW, cssH, displayScale, mpp, color]);
+
+  const toImg = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / displayScale, y: (e.clientY - r.top) / displayScale }; };
+
+  const commit = (d) => {
+    if (d.tool === "calibrate") {
+      const px = dist(d.points[0], d.points[1]);
+      const real = parseFloat(prompt("Real length of the line you drew, in metres:", "1"));
+      if (real && px > 0) { onChange({ ...drawing, scaleMpp: real / px }); }
+      setDraft(null); return;
+    }
+    const ann = { id: uid(), tool: d.tool, points: d.points, color: MEASURE_TOOLS.includes(d.tool) ? "#e11d48" : color };
+    if (d.tool === "text") { const t = prompt("Text:", ""); if (!t) { setDraft(null); return; } ann.text = t; }
+    onChange({ ...drawing, annotations: [...anns, ann] });
+    setDraft(null);
+  };
+
+  const onDown = (e) => {
+    e.preventDefault();
+    const p = toImg(e);
+    const twoPt = ["calibrate", "length", "arrow", "rect"].includes(tool);
+    const multi = ["area", "pen"].includes(tool);
+    if (tool === "count") {
+      // append to existing draft count or start
+      setDraft(d => d && d.tool === "count" ? { ...d, points: [...d.points, p] } : { tool: "count", points: [p] });
+      return;
+    }
+    if (tool === "text") { commit({ tool: "text", points: [p] }); return; }
+    if (twoPt) {
+      setDraft(d => {
+        if (!d || d.tool !== tool) return { tool, points: [p] };
+        const done = { tool, points: [d.points[0], p] };
+        setTimeout(() => commit(done), 0);
+        return null;
+      });
+      return;
+    }
+    if (multi) { setDraft(d => d && d.tool === tool ? { ...d, points: [...d.points, p] } : { tool, points: [p] }); return; }
+  };
+  const onMove = (e) => {
+    if (!draft) return;
+    if (["length", "arrow", "rect", "calibrate"].includes(draft.tool) && draft.points.length >= 1) {
+      const p = toImg(e); setDraft({ ...draft, points: [draft.points[0], p], _preview: true });
+    } else if (draft.tool === "pen") { const p = toImg(e); setDraft({ ...draft, points: [...draft.points, p] }); }
+  };
+  const onUp = (e) => {
+    if (!draft) return;
+    if (["length", "arrow", "rect", "calibrate"].includes(draft.tool) && draft._preview && draft.points.length === 2 && dist(draft.points[0], draft.points[1]) * displayScale > 6) {
+      const done = { tool: draft.tool, points: draft.points }; setDraft(null); commit(done);
+    } else if (draft.tool === "pen") { const done = { tool: "pen", points: draft.points }; setDraft(null); if (done.points.length > 1) commit(done); }
+  };
+
+  const finishShape = () => { if (draft && (draft.tool === "area" || draft.tool === "count") && draft.points.length >= (draft.tool === "area" ? 3 : 1)) commit({ tool: draft.tool, points: draft.points }); else setDraft(null); };
+  const undoPoint = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0, -1) }); else setDraft(null); };
+  const delAnn = (id) => onChange({ ...drawing, annotations: anns.filter(a => a.id !== id) });
+  const linkItem = (id, itemId) => onChange({ ...drawing, annotations: anns.map(a => a.id === id ? { ...a, priceItemId: itemId } : a) });
+
+  const saveSnapshot = () => {
+    const cv = canvasRef.current; if (!cv) return;
+    onChange({ ...drawing, snapshot: cv.toDataURL("image/jpeg", 0.8) });
+  };
+
+  const addToQuote = () => {
+    if (!mpp) { alert("Set the scale first (Set scale tool)."); return; }
+    const lines = anns.filter(a => MEASURE_TOOLS.includes(a.tool) && a.priceItemId).map(a => {
+      const it = items.find(i => i.id === a.priceItemId); if (!it) return null;
+      return { id: uid(), desc: it.description, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(measureVal(a)), source: "Takeoff: " + drawing.name };
+    }).filter(Boolean);
+    if (!lines.length) { alert("Link a price item to at least one measurement first."); return; }
+    saveSnapshot();
+    onAddToQuote(lines);
+  };
+
+  const measured = anns.filter(a => MEASURE_TOOLS.includes(a.tool));
+  const tools = ["calibrate", "length", "area", "count", "arrow", "rect", "pen", "text"];
+
+  return (
+    <div className="space-y-3">
+      {!mpp && <div className="card p-3 text-sm flex items-center gap-2" style={{ background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" }}><IcRuler size={18} /> Set the scale first: pick <b>Set scale</b>, draw a line over a known dimension, then enter its real length.</div>}
+      {mpp && <div className="chip"><IcCheck size={14} /> Scale set · 1 px = {round2(mpp * 1000)} mm</div>}
+
+      <div className="scroll-x flex gap-1.5 pb-1">
+        {tools.map(t => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{TOOL_LABELS[t]}</button>)}
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap text-sm">
+        <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="4" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /></label>
+        {!MEASURE_TOOLS.includes(tool) && tool !== "calibrate" && <label className="flex items-center gap-1">Colour <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-7 w-8 rounded border" /></label>}
+        {draft && (draft.tool === "area" || draft.tool === "count") && <><button className="btn btn-accent !py-1" onClick={finishShape}><IcCheck size={14} /> Finish</button><button className="btn btn-ghost !py-1" onClick={undoPoint}>Undo pt</button></>}
+      </div>
+
+      <div ref={wrapRef} className="card overflow-hidden" style={{ maxHeight: "62vh", overflowY: "auto" }}>
+        <canvas ref={canvasRef} className="editor" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />
+      </div>
+
+      {measured.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <div className="font-semibold text-sm brand-text">Measurements → link to price items</div>
+          {measured.map(a => (
+            <div key={a.id} className="flex items-center gap-2 text-sm">
+              <span className="chip">{TOOL_LABELS[a.tool]}</span>
+              <span className="font-semibold w-24">{valLabel(a)}</span>
+              <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
+                <option value="">— link item —</option>
+                {items.map(i => <option key={i.id} value={i.id}>{i.description} ({i.unit})</option>)}
+              </select>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
+            </div>
+          ))}
+          <button className="btn btn-primary w-full" onClick={addToQuote}><IcPlus size={16} /> Add measured items to quote</button>
+        </div>
+      )}
+      {anns.filter(a => !MEASURE_TOOLS.includes(a.tool)).length > 0 &&
+        <button className="btn btn-ghost w-full" onClick={() => onChange({ ...drawing, annotations: anns.filter(a => MEASURE_TOOLS.includes(a.tool)) })}>Clear markups</button>}
+      <button className="btn btn-ghost w-full" onClick={saveSnapshot}><IcCheck size={16} /> Save marked-up view for report</button>
+    </div>
+  );
+}
+
+/* =========================================================================
+   FLOOR PLAN EDITOR (scaled drawing)
+   ========================================================================= */
+function FloorPlanEditor({ plan, onChange, onAddToQuote }){
+  const { items } = useStore();
+  const canvasRef = useRef(null);
+  const wrapRef = useRef(null);
+  const [wrapW, setWrapW] = useState(360);
+  const [tool, setTool] = useState("room");
+  const [draft, setDraft] = useState(null);
+  const [snap, setSnap] = useState(true);
+
+  const gridM = plan.gridMetres || 0.5;   // metres per grid cell
+  const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
+  const rooms = plan.rooms || [];
+  const cols = 40, rowsN = 30;
+  const worldW = cols * gridPx, worldH = rowsN * gridPx;
+
+  useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
+  const S = Math.min(1, wrapW / worldW);
+  const cssW = worldW * S, cssH = worldH * S;
+  const mPerPx = gridM / gridPx; // metres per world px
+
+  const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(); let x = (e.clientX - r.left) / S, y = (e.clientY - r.top) / S; if (snap) { x = Math.round(x / gridPx) * gridPx; y = Math.round(y / gridPx) * gridPx; } return { x, y }; };
+
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
+    ctx.clearRect(0, 0, worldW, worldH);
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, worldW, worldH);
+    // grid
+    ctx.strokeStyle = "#e6eaf0"; ctx.lineWidth = 1;
+    for (let c = 0; c <= cols; c++){ ctx.beginPath(); ctx.moveTo(c*gridPx, 0); ctx.lineTo(c*gridPx, worldH); ctx.stroke(); }
+    for (let rN = 0; rN <= rowsN; rN++){ ctx.beginPath(); ctx.moveTo(0, rN*gridPx); ctx.lineTo(worldW, rN*gridPx); ctx.stroke(); }
+    const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#13294B";
+    const drawPoly = (pts, closed, name, filled) => {
+      if (!pts.length) return;
+      ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round";
+      ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (closed) ctx.closePath();
+      if (filled) { ctx.fillStyle = "rgba(19,41,75,.06)"; ctx.fill(); }
+      ctx.stroke();
+      // vertices
+      ctx.fillStyle = brand; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill(); });
+      // edge dims
+      ctx.fillStyle = "#111"; ctx.font = "600 12px system-ui"; ctx.textAlign = "center";
+      const edges = closed ? pts.length : pts.length - 1;
+      for (let i = 0; i < edges; i++){ const a = pts[i], b = pts[(i+1) % pts.length]; const len = dist(a, b) * mPerPx; if (len < 0.01) continue; const mx = (a.x+b.x)/2, my = (a.y+b.y)/2; const t = round2(len).toFixed(2) + "m"; ctx.fillStyle = "rgba(255,255,255,.85)"; const w = ctx.measureText(t).width + 6; ctx.fillRect(mx - w/2, my - 8, w, 15); ctx.fillStyle = "#111"; ctx.fillText(t, mx, my + 4); }
+      // name + area
+      if (closed && pts.length >= 3) { const c = centroid(pts); const area = shoelace(pts) * mPerPx * mPerPx; ctx.fillStyle = brand; ctx.font = "700 14px system-ui"; ctx.fillText(name || "Room", c.x, c.y - 6); ctx.font = "600 12px system-ui"; ctx.fillText(round2(area).toFixed(2) + " m²", c.x, c.y + 12); }
+    };
+    rooms.forEach(r => drawPoly(r.points, true, r.name, true));
+    if (draft) drawPoly(draft.points, false, "", false);
+  }, [rooms, draft, cssW, cssH, S, gridPx, mPerPx, worldW, worldH]);
+
+  const onDown = (e) => {
+    e.preventDefault(); const p = toWorld(e);
+    if (tool === "room" || tool === "wall") setDraft(d => d && d.tool === tool ? { ...d, points: [...d.points, p] } : { tool, points: [p] });
+  };
+  const finish = () => {
+    if (!draft) return;
+    if (draft.tool === "room" && draft.points.length >= 3) {
+      const name = prompt("Room name:", "Room " + (rooms.length + 1)) || ("Room " + (rooms.length + 1));
+      const area = shoelace(draft.points) * mPerPx * mPerPx;
+      onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points, area: round2(area), perim: round2(perimeter(draft.points, true) * mPerPx) }] });
+    } else if (draft.tool === "wall" && draft.points.length >= 2) {
+      onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Wall", points: draft.points, wall: true, area: 0, perim: round2(perimeter(draft.points, false) * mPerPx) }] });
+    }
+    setDraft(null);
+  };
+  const undo = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0, -1) }); else setDraft(null); };
+  const delRoom = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
+
+  const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.85) }); };
+  const setLink = (id, itemId) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, priceItemId: itemId } : r) });
+  const addToQuote = () => {
+    const lines = rooms.filter(r => !r.wall && r.priceItemId).map(r => { const it = items.find(i => i.id === r.priceItemId); if (!it) return null; return { id: uid(), desc: it.description + " — " + r.name, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(shoelace(r.points) * mPerPx * mPerPx), source: "Floor plan: " + plan.name }; }).filter(Boolean);
+    if (!lines.length) { alert("Link a price item to a room first."); return; }
+    saveSnapshot(); onAddToQuote(lines);
+  };
+  const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 items-end flex-wrap">
+        <Field label="Grid = metres"><input type="number" step="0.1" className="inp w-24" value={gridM} onChange={e => onChange({ ...plan, gridMetres: num(e.target.value) || 0.5 })} /></Field>
+        <label className="flex items-center gap-1 text-sm mb-2"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap to grid</label>
+        <div className="flex gap-1.5 ml-auto">
+          {["room", "wall"].map(t => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{t === "room" ? "Room" : "Wall"}</button>)}
+        </div>
+      </div>
+      {draft && <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={finish}><IcCheck size={14} /> Finish {draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undo}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pts — tap to add corners</span></div>}
+      {!draft && <div className="text-sm" style={{ color: "var(--muted)" }}>Tap the grid to drop corners. Each cell = {gridM} m. Finish to close the room.</div>}
+
+      <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
+        <canvas ref={canvasRef} className="editor" onPointerDown={onDown} />
+      </div>
+
+      {rooms.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms</div><div className="text-sm font-semibold">Total: {round2(totalArea).toFixed(2)} m²</div></div>
+          {rooms.map(r => (
+            <div key={r.id} className="flex items-center gap-2 text-sm">
+              <span className="chip">{r.wall ? "Wall" : "Room"}</span>
+              <span className="flex-1 truncate">{r.name} · <b>{r.wall ? round2(r.perim).toFixed(2) + " m" : round2(shoelace(r.points) * mPerPx * mPerPx).toFixed(2) + " m²"}</b></span>
+              {!r.wall && <select className="inp !py-1 w-40" value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>}
+              <button className="btn btn-ghost !p-1.5" onClick={() => delRoom(r.id)}><IcTrash size={15} /></button>
+            </div>
+          ))}
+          <div className="flex gap-2"><button className="btn btn-primary flex-1" onClick={addToQuote}><IcPlus size={16} /> Add rooms to quote</button><button className="btn btn-ghost" onClick={saveSnapshot}>Save for report</button></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   QUOTE EDITOR
+   ========================================================================= */
+function QuoteEditor({ project, onChange }){
+  const { items, settings } = useStore();
+  const [picker, setPicker] = useState(false);
+  const [q, setQ] = useState("");
+  const lines = project.quoteLines || [];
+  const margin = project.margin ?? settings.defaultMargin;
+  const gst = settings.gst;
+
+  const subEx = lines.reduce((s, l) => s + num(l.qty) * num(l.rateEx), 0);
+  const marginAmt = subEx * margin / 100;
+  const totalEx = subEx + marginAmt;
+  const gstAmt = totalEx * gst / 100;
+  const totalInc = totalEx + gstAmt;
+
+  const setLine = (id, patch) => onChange({ ...project, quoteLines: lines.map(l => l.id === id ? { ...l, ...patch } : l) });
+  const delLine = (id) => onChange({ ...project, quoteLines: lines.filter(l => l.id !== id) });
+  const addManual = () => onChange({ ...project, quoteLines: [...lines, { id: uid(), desc: "", qty: 1, unit: "ea", rateEx: 0, category: "", source: "Manual" }] });
+  const addItem = (it) => { onChange({ ...project, quoteLines: [...lines, { id: uid(), desc: it.description, qty: 1, unit: it.unit, rateEx: it.rate, category: it.category, source: "Pricing DB" }] }); };
+
+  const filtered = items.filter(i => { const s = q.trim().toLowerCase(); return !s || (i.description + " " + i.code).toLowerCase().includes(s); }).slice(0, 60);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <button className="btn btn-primary flex-1" onClick={() => setPicker(true)}><IcPrice size={16} /> Add from database</button>
+        <button className="btn btn-ghost flex-1" onClick={addManual}><IcPlus size={16} /> Manual line</button>
+      </div>
+
+      {lines.length === 0 ? <Empty icon={<IcDoc size={44} />} title="No quote lines yet" sub="Add items from your pricing database, add manual lines, or push measurements across from the Takeoff / Floor plan tabs." /> : (
+        <div className="card overflow-hidden">
+          <div className="scroll-x">
+            <table className="w-full text-sm min-w-[620px]">
+              <thead><tr style={{ background: "var(--bg)", color: "var(--muted)" }} className="text-xs uppercase">
+                <th className="text-left px-2 py-2">Description</th><th className="px-2 w-16">Qty</th><th className="px-2 w-16">Unit</th><th className="px-2 w-24 text-right">Rate ex</th><th className="px-2 w-24 text-right">Amount</th><th></th>
+              </tr></thead>
+              <tbody>
+                {lines.map(l => (
+                  <tr key={l.id} className="border-t align-top" style={{ borderColor: "var(--line)" }}>
+                    <td className="px-2 py-1"><input className="inp !py-1" value={l.desc} onChange={e => setLine(l.id, { desc: e.target.value })} />{l.source && <div className="text-[10px] px-1" style={{ color: "var(--muted)" }}>{l.source}</div>}</td>
+                    <td className="px-1 py-1"><input type="number" className="inp !py-1 !px-1 text-center" value={l.qty} onChange={e => setLine(l.id, { qty: e.target.value })} /></td>
+                    <td className="px-1 py-1"><input className="inp !py-1 !px-1 text-center" value={l.unit} onChange={e => setLine(l.id, { unit: e.target.value })} /></td>
+                    <td className="px-1 py-1"><input type="number" step="0.01" className="inp !py-1 !px-1 text-right" value={l.rateEx} onChange={e => setLine(l.id, { rateEx: e.target.value })} /></td>
+                    <td className="px-2 py-1 text-right font-semibold whitespace-nowrap">{money(num(l.qty) * num(l.rateEx))}</td>
+                    <td className="px-1 py-1"><button className="btn btn-ghost !p-1.5" onClick={() => delLine(l.id)}><IcTrash size={14} /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <div className="card p-4 space-y-2 text-sm">
+        <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>Subtotal (ex GST)</span><span className="font-semibold">{money(subEx)}</span></div>
+        <div className="flex justify-between items-center"><span style={{ color: "var(--muted)" }}>Margin
+          <input type="number" className="inp !py-0.5 !px-1 w-16 inline-block ml-2" value={margin} onChange={e => onChange({ ...project, margin: num(e.target.value) })} />%</span>
+          <span className="font-semibold">{money(marginAmt)}</span></div>
+        <div className="flex justify-between border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-semibold">Total (ex GST)</span><span className="font-bold brand-text">{money(totalEx)}</span></div>
+        <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>GST ({gst}%)</span><span className="font-semibold">{money(gstAmt)}</span></div>
+        <div className="flex justify-between text-base border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-bold">Total (inc GST)</span><span className="font-bold">{money(totalInc)}</span></div>
+      </div>
+
+      <Modal open={picker} onClose={() => setPicker(false)} title="Add from pricing database" wide>
+        <input className="inp mb-3" placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+        {items.length === 0 ? <p className="text-sm" style={{ color: "var(--muted)" }}>No items in the database yet. Add some under the Prices tab.</p> : (
+          <div className="space-y-1 max-h-[55vh] overflow-y-auto">
+            {filtered.map(i => (
+              <button key={i.id} className="w-full text-left card p-2 flex justify-between items-center hover:brightness-95" onClick={() => { addItem(i); }}>
+                <span className="text-sm"><b>{i.description}</b><span className="text-xs" style={{ color: "var(--muted)" }}> · {i.unit}{i.category ? " · " + i.category : ""}</span></span>
+                <span className="font-semibold text-sm whitespace-nowrap ml-2">{money(i.rate)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+/* =========================================================================
+   REPORT (branded, printable)
+   ========================================================================= */
+function totalsFor(project, settings){
+  const lines = project.quoteLines || [];
+  const margin = project.margin ?? settings.defaultMargin;
+  const subEx = lines.reduce((s, l) => s + num(l.qty) * num(l.rateEx), 0);
+  const totalEx = subEx * (1 + margin / 100);
+  const gstAmt = totalEx * settings.gst / 100;
+  return { subEx, margin, marginAmt: totalEx - subEx, totalEx, gstAmt, totalInc: totalEx + gstAmt };
+}
+
+function ReportView({ project }){
+  const { settings } = useStore();
+  const t = totalsFor(project, settings);
+  const lines = project.quoteLines || [];
+  const drawings = (project.drawings || []).filter(d => d.snapshot);
+  const plans = (project.floorplans || []).filter(p => p.snapshot);
+
+  return (
+    <div className="pb-28">
+      <div className="no-print flex gap-2 justify-end mb-3 max-w-[800px] mx-auto">
+        <button className="btn btn-primary" onClick={() => window.print()}><IcPrint size={16} /> Print / Save PDF</button>
+      </div>
+
+      <div className="report-sheet mx-auto card p-8 shadow-sm">
+        {/* letterhead */}
+        <div className="flex justify-between items-start gap-6 pb-4 mb-5" style={{ borderBottom: "3px solid var(--brand)" }}>
+          <div className="min-w-0">
+            {settings.logo ? <img src={settings.logo} alt="logo" style={{ maxHeight: 64, marginBottom: 8 }} /> : <div className="text-2xl font-extrabold brand-text">{settings.company}</div>}
+            <div className="text-xs" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+              {settings.logo && <div className="font-bold" style={{ color: "var(--ink)" }}>{settings.company}</div>}
+              {settings.address && <div>{settings.address}</div>}
+              {settings.abn && <div>ABN {settings.abn}{settings.license ? " · Lic " + settings.license : ""}</div>}
+              {(settings.phone || settings.email) && <div>{settings.phone}{settings.phone && settings.email ? " · " : ""}{settings.email}</div>}
+              {settings.website && <div>{settings.website}</div>}
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-extrabold brand-text tracking-tight">QUOTATION</div>
+            <div className="text-sm mt-1"><b>{project.quoteNo || "—"}</b></div>
+            <div className="text-xs" style={{ color: "var(--muted)" }}>{fmtDate(project.date || project.createdAt || now())}</div>
+            <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Valid: {settings.validity}</div>
+          </div>
+        </div>
+
+        {/* client / site */}
+        <div className="grid grid-cols-2 gap-6 mb-5 text-sm">
+          <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Prepared for</div><div className="font-semibold">{project.client || "—"}</div></div>
+          <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Site / project</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
+        </div>
+
+        {/* line items */}
+        <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
+          <thead><tr style={{ background: "var(--brand)", color: "#fff" }}>
+            <th className="text-left px-3 py-2">Description</th><th className="px-2 py-2 w-14">Qty</th><th className="px-2 py-2 w-14">Unit</th><th className="px-3 py-2 w-24 text-right">Rate</th><th className="px-3 py-2 w-24 text-right">Amount</th>
+          </tr></thead>
+          <tbody>
+            {lines.map((l, i) => (
+              <tr key={l.id} style={{ background: i % 2 ? "#f7f9fb" : "#fff" }}>
+                <td className="px-3 py-2" style={{ borderBottom: "1px solid var(--line)" }}>{l.desc}</td>
+                <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{round2(num(l.qty))}</td>
+                <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{l.unit}</td>
+                <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.rateEx))}</td>
+                <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * num(l.rateEx))}</td>
+              </tr>
+            ))}
+            {lines.length === 0 && <tr><td colSpan="5" className="px-3 py-4 text-center" style={{ color: "var(--muted)" }}>No line items.</td></tr>}
+          </tbody>
+        </table>
+
+        {/* totals */}
+        <div className="flex justify-end mb-6">
+          <div className="w-72 text-sm space-y-1">
+            <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>Subtotal (ex GST)</span><span>{money(t.subEx)}</span></div>
+            {t.margin > 0 && <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>Margin ({t.margin}%)</span><span>{money(t.marginAmt)}</span></div>}
+            <div className="flex justify-between font-semibold pt-1" style={{ borderTop: "1px solid var(--line)" }}><span>Total (ex GST)</span><span>{money(t.totalEx)}</span></div>
+            <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>GST ({settings.gst}%)</span><span>{money(t.gstAmt)}</span></div>
+            <div className="flex justify-between text-base font-extrabold px-2 py-1 rounded" style={{ background: "var(--brand)", color: "#fff" }}><span>Total (inc GST)</span><span>{money(t.totalInc)}</span></div>
+          </div>
+        </div>
+
+        {project.notes && <div className="mb-4 text-sm"><div className="font-bold mb-1">Scope / notes</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.notes}</div></div>}
+
+        {/* attached drawings */}
+        {(drawings.length > 0 || plans.length > 0) && (
+          <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
+            <div className="font-bold text-sm mb-2">Marked-up drawings & plans</div>
+            <div className="grid grid-cols-2 gap-3">
+              {drawings.map(d => <div key={d.id}><img src={d.snapshot} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{d.name}</div></div>)}
+              {plans.map(p => <div key={p.id}><img src={p.snapshot} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{p.name}</div></div>)}
+            </div>
+          </div>
+        )}
+
+        {/* terms */}
+        <div className="text-xs pt-4 mt-4" style={{ borderTop: "1px solid var(--line)", color: "var(--muted)", whiteSpace: "pre-wrap" }}>
+          <div className="font-bold mb-1" style={{ color: "var(--ink)" }}>Terms & conditions</div>
+          {project.terms || settings.terms}
+        </div>
+        <div className="text-center text-xs mt-6" style={{ color: "var(--muted)" }}>Thank you for the opportunity to quote — {settings.company}</div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================================
+   JOB WORKSPACE
+   ========================================================================= */
+function newDrawingFromFile(file){
+  return new Promise((resolve, reject) => {
+    const name = file.name.replace(/\.[^.]+$/, "");
+    if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+      const r = new FileReader();
+      r.onload = async () => {
+        try {
+          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(r.result) }).promise;
+          const page = await pdf.getPage(1);
+          const vp = page.getViewport({ scale: 2 });
+          const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+          await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+          resolve({ id: uid(), name, type: "pdf", bg: cv.toDataURL("image/jpeg", 0.82), natW: vp.width, natH: vp.height, annotations: [], scaleMpp: null });
+        } catch (e) { reject(e); }
+      };
+      r.readAsArrayBuffer(file);
+    } else {
+      const r = new FileReader();
+      r.onload = () => { const im = new Image(); im.onload = () => resolve({ id: uid(), name, type: "image", bg: r.result, natW: im.naturalWidth, natH: im.naturalHeight, annotations: [], scaleMpp: null }); im.src = r.result; };
+      r.readAsDataURL(file);
+    }
+  });
+}
+
+function JobWorkspace({ project, onChange, onBack, onDelete }){
+  const { notify } = useStore();
+  const [tab, setTab] = useState("details");
+  const [openDrawing, setOpenDrawing] = useState(null);
+  const [openPlan, setOpenPlan] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const drawings = project.drawings || [];
+  const plans = project.floorplans || [];
+
+  const upd = (patch) => onChange({ ...project, ...patch });
+  const updDrawing = (d) => onChange({ ...project, drawings: drawings.map(x => x.id === d.id ? d : x) });
+  const updPlan = (p) => onChange({ ...project, floorplans: plans.map(x => x.id === p.id ? p : x) });
+  const addToQuote = (newLines) => { onChange({ ...project, quoteLines: [...(project.quoteLines || []), ...newLines] }); notify(newLines.length + " line(s) added to quote"); setTab("quote"); setOpenDrawing(null); setOpenPlan(null); };
+
+  const onFile = async (e) => {
+    const file = e.target.files[0]; if (!file) return; setLoading(true);
+    try { const d = await newDrawingFromFile(file); onChange({ ...project, drawings: [...drawings, d] }); setOpenDrawing(d.id); }
+    catch (err) { alert("Could not load that file. For PDFs, make sure you're online the first time so the PDF engine can load."); }
+    setLoading(false); e.target.value = "";
+  };
+  const addPlan = () => { const p = { id: uid(), name: "Floor plan " + (plans.length + 1), gridMetres: 0.5, rooms: [] }; onChange({ ...project, floorplans: [...plans, p] }); setOpenPlan(p.id); };
+
+  const curDrawing = drawings.find(d => d.id === openDrawing);
+  const curPlan = plans.find(p => p.id === openPlan);
+  const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["quote", "Quote"], ["report", "Report"]];
+  const t = totalsFor(project, useStore().settings);
+
+  return (
+    <div className="max-w-4xl mx-auto p-4 pb-28">
+      <div className="flex items-center gap-2 mb-3">
+        <button className="btn btn-ghost !p-2" onClick={onBack}><IcBack size={18} /></button>
+        <div className="flex-1 min-w-0"><div className="font-bold truncate">{project.title || "Untitled job"}</div><div className="text-xs truncate" style={{ color: "var(--muted)" }}>{project.client} {project.client && project.site ? "·" : ""} {project.site}</div></div>
+        <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>Total inc GST</div><div className="font-bold brand-text">{money(t.totalInc)}</div></div>
+      </div>
+
+      <div className="scroll-x flex gap-1.5 mb-4">
+        {tabs.map(([k, l]) => <button key={k} className={"tab " + (tab === k ? "tab-active" : "card")} onClick={() => { setTab(k); setOpenDrawing(null); setOpenPlan(null); }}>{l}</button>)}
+      </div>
+
+      {tab === "details" && (
+        <div className="card p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Quote #"><input className="inp" value={project.quoteNo || ""} onChange={e => upd({ quoteNo: e.target.value })} /></Field>
+            <Field label="Date"><input type="date" className="inp" value={new Date(project.date || project.createdAt || now()).toISOString().slice(0,10)} onChange={e => upd({ date: new Date(e.target.value).getTime() })} /></Field>
+          </div>
+          <Field label="Job / project title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
+          <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
+          <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
+          <Field label="Scope / notes (shown on quote)"><textarea className="inp" rows="4" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
+          <button className="btn btn-danger w-full" onClick={onDelete}><IcTrash size={16} /> Delete job</button>
+        </div>
+      )}
+
+      {tab === "drawings" && !curDrawing && (
+        <div className="space-y-3">
+          <label className="btn btn-primary cursor-pointer w-full">{loading ? "Loading…" : <><IcUpload size={16} /> Add drawing (PDF or photo)</>}<input type="file" accept="application/pdf,image/*" className="hidden" onChange={onFile} disabled={loading} /></label>
+          {drawings.length === 0 ? <Empty icon={<IcRuler size={44} />} title="No drawings yet" sub="Add a PDF plan or a site photo, calibrate the scale, then measure lengths/areas, count items and add markups." /> :
+            <div className="grid grid-cols-2 gap-3">
+              {drawings.map(d => (
+                <div key={d.id} className="card overflow-hidden">
+                  <button className="block w-full" onClick={() => setOpenDrawing(d.id)}><img src={d.snapshot || d.bg} className="w-full h-32 object-cover" /></button>
+                  <div className="p-2 flex items-center justify-between"><span className="text-sm font-semibold truncate">{d.name}</span><button className="btn btn-ghost !p-1.5" onClick={() => onChange({ ...project, drawings: drawings.filter(x => x.id !== d.id) })}><IcTrash size={14} /></button></div>
+                </div>
+              ))}
+            </div>}
+        </div>
+      )}
+      {tab === "drawings" && curDrawing && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2"><button className="btn btn-ghost !p-2" onClick={() => setOpenDrawing(null)}><IcBack size={16} /></button><input className="inp flex-1" value={curDrawing.name} onChange={e => updDrawing({ ...curDrawing, name: e.target.value })} /></div>
+          <TakeoffCanvas drawing={curDrawing} onChange={updDrawing} onAddToQuote={addToQuote} />
+        </div>
+      )}
+
+      {tab === "plans" && !curPlan && (
+        <div className="space-y-3">
+          <button className="btn btn-primary w-full" onClick={addPlan}><IcPlus size={16} /> New floor plan</button>
+          {plans.length === 0 ? <Empty icon={<IcGrid size={44} />} title="No floor plans yet" sub="Draw a scaled floor plan on a grid — rooms auto-calculate area and perimeter, and can feed straight into the quote." /> :
+            <div className="grid grid-cols-2 gap-3">
+              {plans.map(p => (
+                <div key={p.id} className="card overflow-hidden">
+                  <button className="block w-full" onClick={() => setOpenPlan(p.id)}>{p.snapshot ? <img src={p.snapshot} className="w-full h-32 object-cover" /> : <div className="h-32 flex items-center justify-center" style={{ background: "var(--bg)", color: "var(--muted)" }}><IcGrid size={32} /></div>}</button>
+                  <div className="p-2 flex items-center justify-between"><span className="text-sm font-semibold truncate">{p.name}</span><button className="btn btn-ghost !p-1.5" onClick={() => onChange({ ...project, floorplans: plans.filter(x => x.id !== p.id) })}><IcTrash size={14} /></button></div>
+                </div>
+              ))}
+            </div>}
+        </div>
+      )}
+      {tab === "plans" && curPlan && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2"><button className="btn btn-ghost !p-2" onClick={() => setOpenPlan(null)}><IcBack size={16} /></button><input className="inp flex-1" value={curPlan.name} onChange={e => updPlan({ ...curPlan, name: e.target.value })} /></div>
+          <FloorPlanEditor plan={curPlan} onChange={updPlan} onAddToQuote={addToQuote} />
+        </div>
+      )}
+
+      {tab === "quote" && <QuoteEditor project={project} onChange={onChange} />}
+      {tab === "report" && <ReportView project={project} />}
+    </div>
+  );
+}
+
+/* =========================================================================
+   JOBS LIST
+   ========================================================================= */
+function JobsScreen({ onOpen }){
+  const { projects, upsertProject, settings } = useStore();
+  const create = async () => {
+    const seq = settings.quoteSeq || 1;
+    const p = await upsertProject({ title: "", client: "", site: "", date: now(), quoteNo: "RJG-Q" + String(seq).padStart(4, "0"), margin: settings.defaultMargin, terms: settings.terms, drawings: [], floorplans: [], quoteLines: [] });
+    await (async () => { await dbPut("kv", { ...settings, quoteSeq: seq + 1 }, "settings"); })();
+    onOpen(p.id);
+  };
+  return (
+    <div className="max-w-4xl mx-auto p-4 pb-28">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-bold">Jobs <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({projects.length})</span></h2>
+        <button className="btn btn-primary" onClick={create}><IcPlus size={16} /> New job</button>
+      </div>
+      {projects.length === 0 ? <Empty icon={<IcJobs size={48} />} title="No jobs yet" sub="Create a job to start pricing, take off drawings and produce a quote." /> : (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {projects.map(p => {
+            const t = totalsFor(p, settings);
+            return (
+              <button key={p.id} className="card p-4 text-left hover:brightness-[.98]" onClick={() => onOpen(p.id)}>
+                <div className="flex justify-between items-start">
+                  <div className="min-w-0"><div className="font-bold truncate">{p.title || "Untitled job"}</div><div className="text-sm truncate" style={{ color: "var(--muted)" }}>{p.client || "No client"}</div></div>
+                  <span className="chip">{p.quoteNo}</span>
+                </div>
+                <div className="text-xs mt-1 truncate" style={{ color: "var(--muted)" }}><IcPin size={12} className="inline" /> {p.site || "—"}</div>
+                <div className="flex justify-between items-end mt-3">
+                  <span className="text-xs" style={{ color: "var(--muted)" }}>{fmtDate(p.date || p.createdAt)}</span>
+                  <span className="font-bold brand-text">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================================
+   APP SHELL
+   ========================================================================= */
+function AppShell(){
+  const { settings, projects, upsertProject, deleteProject, ready } = useStore();
+  const [nav, setNav] = useState("jobs");
+  const [jobId, setJobId] = useState(null);
+
+  // apply brand colours
+  useEffect(() => {
+    document.documentElement.style.setProperty("--brand", settings.brand || "#13294B");
+    document.documentElement.style.setProperty("--brand-2", settings.brand2 || "#E8792B");
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = settings.brand || "#13294B";
+  }, [settings.brand, settings.brand2]);
+
+  const job = projects.find(p => p.id === jobId);
+
+  if (!ready) return <div className="min-h-screen flex items-center justify-center" style={{ color: "var(--muted)" }}>Loading…</div>;
+
+  return (
+    <div className="min-h-screen">
+      <header className="brand-bg text-white sticky top-0 z-30 no-print" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">
+          {settings.logo ? <img src={settings.logo} className="h-8" alt="" /> : <div className="font-extrabold tracking-tight">{settings.company}</div>}
+          <div className="text-xs opacity-80 ml-1">Site Pricing & Takeoff</div>
+        </div>
+      </header>
+
+      <main>
+        {job ? (
+          <JobWorkspace project={job} onChange={(p) => upsertProject(p)} onBack={() => setJobId(null)} onDelete={() => { if (confirm("Delete this job permanently?")) { deleteProject(job.id); setJobId(null); } }} />
+        ) : nav === "jobs" ? <JobsScreen onOpen={setJobId} />
+          : nav === "prices" ? <PricingScreen />
+          : <SettingsScreen />}
+      </main>
+
+      {!job && (
+        <nav className="fixed bottom-0 left-0 right-0 z-30 no-print card !rounded-none !border-x-0 !border-b-0 flex" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+          {[["jobs", "Jobs", IcJobs], ["prices", "Prices", IcPrice], ["settings", "Settings", IcGear]].map(([k, l, Ic]) => (
+            <button key={k} className={"navbtn " + (nav === k ? "navbtn-active" : "")} onClick={() => setNav(k)}><Ic size={22} />{l}</button>
+          ))}
+        </nav>
+      )}
+    </div>
+  );
+}
+
+function Root(){ return <StoreProvider><AppShell /></StoreProvider>; }
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+</script>
+
+<script>
+  // pdf.js worker
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "./vendor/pdf.worker.min.js";
+  // compile app source (JSX) with Babel standalone — no build step needed
+  var src = document.getElementById("app-source").textContent;
+  var out = Babel.transform(src, { presets: [["react", { runtime: "classic" }]] }).code;
+  var s = document.createElement("script");
+  s.textContent = out;
+  document.body.appendChild(s);
+  // register offline service worker
+  if ("serviceWorker" in navigator) { window.addEventListener("load", function(){ navigator.serviceWorker.register("./sw.js").catch(function(){}); }); }
+</script>
+</body>
+</html>
