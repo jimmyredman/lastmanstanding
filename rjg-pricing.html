@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="RJG Pricing" />
-<meta name="theme-color" content="#13294B" />
+<meta name="theme-color" content="#02224B" />
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="apple-touch-icon" href="./icon.svg" />
 <link rel="icon" href="./icon.svg" />
@@ -21,10 +21,16 @@
 <script src="./vendor/pdf.min.js"></script>
 
 <style>
+  /* ---- RJG brand fonts (vendored, offline) ---- */
+  @font-face{font-family:'Montserrat';font-weight:400;font-display:swap;src:url('./vendor/fonts/montserrat-latin-400-normal.woff2') format('woff2');}
+  @font-face{font-family:'Montserrat';font-weight:600;font-display:swap;src:url('./vendor/fonts/montserrat-latin-600-normal.woff2') format('woff2');}
+  @font-face{font-family:'Montserrat';font-weight:700;font-display:swap;src:url('./vendor/fonts/montserrat-latin-700-normal.woff2') format('woff2');}
+  @font-face{font-family:'Montserrat';font-weight:800;font-display:swap;src:url('./vendor/fonts/montserrat-latin-800-normal.woff2') format('woff2');}
+  @font-face{font-family:'Bebas Neue';font-weight:400;font-display:swap;src:url('./vendor/fonts/bebas-neue-latin-400-normal.woff2') format('woff2');}
   :root{
-    /* ---- RJG brand tokens: change --brand / --brand-2 to re-skin everything ---- */
-    --brand:#13294B;      /* primary (headers, buttons) */
-    --brand-2:#E8792B;    /* accent (highlights, active) */
+    /* ---- RJG brand tokens (from Corporate Colour Guide 2022): change --brand / --brand-2 to re-skin everything ---- */
+    --brand:#02224B;      /* primary RJG blue (RGB 2,34,75) */
+    --brand-2:#2B5AA0;    /* accent — lighter tint of brand blue for active/highlight states */
     --ink:#141922;
     --muted:#5b6472;
     --line:#e4e7ec;
@@ -33,8 +39,9 @@
     --ok:#16a34a;
     --danger:#dc2626;
   }
-  html,body{background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent;overscroll-behavior:none;}
+  html,body{background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent;overscroll-behavior:none;font-family:'Montserrat',system-ui,-apple-system,sans-serif;}
   *{box-sizing:border-box;}
+  .wordmark{font-family:'Bebas Neue','Montserrat',sans-serif;letter-spacing:.02em;}
   .brand-bg{background:var(--brand);}
   .brand2-bg{background:var(--brand-2);}
   .brand-text{color:var(--brand);}
@@ -127,8 +134,8 @@ const DEFAULT_SETTINGS = {
   email: "james@rjgbuilders.com.au",
   website: "",
   logo: "",               // dataURL
-  brand: "#13294B",
-  brand2: "#E8792B",
+  brand: "#02224B",       // RJG corporate blue
+  brand2: "#2B5AA0",      // accent tint
   gst: 10,                 // %
   defaultMargin: 20,       // %
   quoteSeq: 1,
@@ -795,7 +802,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     ctx.strokeStyle = "#e6eaf0"; ctx.lineWidth = 1;
     for (let c = 0; c <= cols; c++){ ctx.beginPath(); ctx.moveTo(c*gridPx, 0); ctx.lineTo(c*gridPx, worldH); ctx.stroke(); }
     for (let rN = 0; rN <= rowsN; rN++){ ctx.beginPath(); ctx.moveTo(0, rN*gridPx); ctx.lineTo(worldW, rN*gridPx); ctx.stroke(); }
-    const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#13294B";
+    const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#02224B";
     const drawPoly = (pts, closed, name, filled) => {
       if (!pts.length) return;
       ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round";
@@ -987,8 +994,8 @@ function ReportView({ project }){
         {/* letterhead */}
         <div className="flex justify-between items-start gap-6 pb-4 mb-5" style={{ borderBottom: "3px solid var(--brand)" }}>
           <div className="min-w-0">
-            {settings.logo ? <img src={settings.logo} alt="logo" style={{ maxHeight: 64, marginBottom: 8 }} /> : <div className="text-2xl font-extrabold brand-text">{settings.company}</div>}
-            <div className="text-xs" style={{ color: "var(--muted)", lineHeight: 1.6 }}>
+            {settings.logo ? <img src={settings.logo} alt="logo" style={{ maxHeight: 64, marginBottom: 8 }} /> : <><div className="wordmark brand-text" style={{ fontSize: 34, lineHeight: 1 }}>{settings.company}</div><div className="wordmark brand2-text" style={{ fontSize: 12, letterSpacing: 4 }}>RISE · JOIN · GROW</div></>}
+            <div className="text-xs" style={{ color: "var(--muted)", lineHeight: 1.6, marginTop: 6 }}>
               {settings.logo && <div className="font-bold" style={{ color: "var(--ink)" }}>{settings.company}</div>}
               {settings.address && <div>{settings.address}</div>}
               {settings.abn && <div>ABN {settings.abn}{settings.license ? " · Lic " + settings.license : ""}</div>}
@@ -997,7 +1004,7 @@ function ReportView({ project }){
             </div>
           </div>
           <div className="text-right">
-            <div className="text-2xl font-extrabold brand-text tracking-tight">QUOTATION</div>
+            <div className="wordmark brand-text" style={{ fontSize: 40, lineHeight: 1 }}>QUOTATION</div>
             <div className="text-sm mt-1"><b>{project.quoteNo || "—"}</b></div>
             <div className="text-xs" style={{ color: "var(--muted)" }}>{fmtDate(project.date || project.createdAt || now())}</div>
             <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Valid: {settings.validity}</div>
@@ -1243,9 +1250,9 @@ function AppShell(){
 
   // apply brand colours
   useEffect(() => {
-    document.documentElement.style.setProperty("--brand", settings.brand || "#13294B");
-    document.documentElement.style.setProperty("--brand-2", settings.brand2 || "#E8792B");
-    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = settings.brand || "#13294B";
+    document.documentElement.style.setProperty("--brand", settings.brand || "#02224B");
+    document.documentElement.style.setProperty("--brand-2", settings.brand2 || "#2B5AA0");
+    const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.content = settings.brand || "#02224B";
   }, [settings.brand, settings.brand2]);
 
   const job = projects.find(p => p.id === jobId);
@@ -1256,8 +1263,8 @@ function AppShell(){
     <div className="min-h-screen">
       <header className="brand-bg text-white sticky top-0 z-30 no-print" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">
-          {settings.logo ? <img src={settings.logo} className="h-8" alt="" /> : <div className="font-extrabold tracking-tight">{settings.company}</div>}
-          <div className="text-xs opacity-80 ml-1">Site Pricing & Takeoff</div>
+          {settings.logo ? <img src={settings.logo} className="h-8" alt="" /> : <div className="wordmark text-2xl leading-none">{settings.company}</div>}
+          <div className="text-xs opacity-80 ml-1">Site Pricing &amp; Takeoff</div>
         </div>
       </header>
 
