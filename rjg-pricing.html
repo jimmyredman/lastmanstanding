@@ -304,7 +304,7 @@ function SettingsScreen(){
         <Field label="Website"><input className="inp" value={f.website} onChange={e => set("website", e.target.value)} /></Field>
         <Field label="Logo (shown on app & quotes)">
           <div className="flex items-center gap-3">
-            <img src={f.logo || DEFAULT_LOGO} alt="logo" className="h-12 rounded border" style={{ borderColor: "var(--line)" }} />
+            <div className="rounded flex items-center px-3" style={{ background: "var(--brand)", height: 56 }}><img src={f.logo || DEFAULT_LOGO} alt="logo" style={{ height: 40 }} /></div>
             <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} /> {f.logo ? "Replace" : "Override"}<input type="file" accept="image/*" className="hidden" onChange={onLogo} /></label>
             {f.logo && <button className="btn btn-ghost" onClick={() => set("logo", "")}>Use default</button>}
           </div>
