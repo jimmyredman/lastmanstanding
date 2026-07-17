@@ -129,7 +129,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v13 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v14 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
   company: "RJG Builders",
@@ -582,6 +582,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   const [tool, setTool] = useState("length");
   const [zoom, setZoom] = useState(1);
   const [color, setColor] = useState("#e11d48");
+  const [areaMode, setAreaMode] = useState("polygon");   // polygon | box | circle
   const [draft, setDraft] = useState(null); // {tool, points:[]}
   const [wrapW, setWrapW] = useState(360);
   const [, force] = useState(0);
@@ -702,6 +703,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       return;
     }
     if (tool === "text") { commit({ tool: "text", points: [p] }); return; }
+    if (tool === "area" && areaMode !== "polygon") { setDraft({ tool: "area", shape: areaMode, start: p, points: [p], dragging: true }); return; }
     if (twoPt) {
       setDraft(d => {
         if (!d || d.tool !== tool) return { tool, points: [p] };
@@ -715,12 +717,19 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   };
   const onMove = (e) => {
     if (!draft) return;
+    if (draft.dragging && draft.shape) {
+      const p = toImg(e), a = draft.start;
+      if (draft.shape === "box") setDraft({ ...draft, points: [{ x: a.x, y: a.y }, { x: p.x, y: a.y }, { x: p.x, y: p.y }, { x: a.x, y: p.y }] });
+      else { const r = dist(a, p), pts = []; for (let i = 0; i < 40; i++){ const t = i / 40 * Math.PI * 2; pts.push({ x: a.x + r * Math.cos(t), y: a.y + r * Math.sin(t) }); } setDraft({ ...draft, points: pts }); }
+      return;
+    }
     if (["length", "arrow", "rect", "calibrate"].includes(draft.tool) && draft.points.length >= 1) {
       const p = toImg(e); setDraft({ ...draft, points: [draft.points[0], p], _preview: true });
     } else if (draft.tool === "pen") { const p = toImg(e); setDraft({ ...draft, points: [...draft.points, p] }); }
   };
   const onUp = (e) => {
     if (!draft) return;
+    if (draft.dragging && draft.shape) { const pts = draft.points; setDraft(null); if (pts.length >= 3 && shoelace(pts) * displayScale * displayScale > 60) commit({ tool: "area", points: pts }); return; }
     if (["length", "arrow", "rect", "calibrate"].includes(draft.tool) && draft._preview && draft.points.length === 2 && dist(draft.points[0], draft.points[1]) * displayScale > 6) {
       const done = { tool: draft.tool, points: draft.points }; setDraft(null); commit(done);
     } else if (draft.tool === "pen") { const done = { tool: "pen", points: draft.points }; setDraft(null); if (done.points.length > 1) commit(done); }
@@ -764,6 +773,13 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       <div className="scroll-x flex gap-1.5 pb-1">
         {tools.map(t => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{TOOL_LABELS[t]}</button>)}
       </div>
+      {tool === "area" && (
+        <div className="flex items-center gap-2 text-sm">
+          <span style={{ color: "var(--muted)" }}>Area shape:</span>
+          {[["polygon","Points"],["box","Rectangle"],["circle","Circle"]].map(([m,l]) => <button key={m} className={"tab " + (areaMode === m ? "tab-active" : "card")} onClick={() => { setAreaMode(m); setDraft(null); }}>{l}</button>)}
+          <span style={{ color: "var(--muted)" }}>{areaMode === "polygon" ? "tap corners, Finish" : "drag to draw"}</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-3 flex-wrap text-sm">
         <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="4" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /></label>
@@ -773,7 +789,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
             <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-6 w-7 rounded border" title="Custom colour" />
           </div>
         )}
-        {draft && (draft.tool === "area" || draft.tool === "count") && <><button className="btn btn-accent !py-1" onClick={finishShape}><IcCheck size={14} /> Finish</button><button className="btn btn-ghost !py-1" onClick={undoPoint}>Undo pt</button></>}
+        {draft && !draft.dragging && (draft.tool === "area" || draft.tool === "count") && <><button className="btn btn-accent !py-1" onClick={finishShape}><IcCheck size={14} /> Finish</button><button className="btn btn-ghost !py-1" onClick={undoPoint}>Undo pt</button></>}
       </div>
 
       <div ref={wrapRef} className="card overflow-hidden" style={{ maxHeight: "62vh", overflowY: "auto" }}>
@@ -827,6 +843,8 @@ function smoothPath(ctx, pts){
 }
 const STAMP_DEFAULT_M = { door: 0.9, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, sink: 0.6, toilet: 0.4, car: 4.8, tree: 4.0, fence: 3.0, pool: 6.0 };
 const STAMP_TYPES = [["door","Door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["sink","Sink"],["toilet","Toilet"],["car","Car"],["tree","Tree"],["fence","Fence"],["pool","Pool"]];
+const STAMP_LABEL = Object.fromEntries(STAMP_TYPES);
+const STAMP_CATEGORIES = [["Openings", ["door","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Fixtures", ["sink","toilet"]], ["Outdoor / site", ["car","tree","fence","pool"]]];
 function rrect(ctx, x, y, w, h, r){ r = Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawStamp(ctx, s, brand){
   const w = s.size, half = w / 2;
@@ -846,10 +864,19 @@ function drawStamp(ctx, s, brand){
   } else if (s.type === "table"){
     const h = w * 0.62; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, 4); ctx.stroke();
   } else if (s.type === "bench"){
-    const h = w * 0.26; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, 3); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-half, -h/2-3); ctx.lineTo(half, -h/2-3); ctx.stroke();
+    const h = w * 0.34; ctx.lineWidth = 2.2;
+    rrect(ctx, -half, -h/2 + 3, w, h - 3, 3); ctx.stroke();                                   // seat
+    ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(-half, -h/2); ctx.lineTo(half, -h/2); ctx.stroke();  // backrest
+    ctx.lineWidth = 1; const nb = Math.max(3, Math.round(w / 11)); for (let i = 1; i < nb; i++){ const x = -half + w*i/nb; ctx.beginPath(); ctx.moveTo(x, -h/2 + 4); ctx.lineTo(x, h/2 - 1); ctx.stroke(); }
   } else if (s.type === "car"){
-    const h = w * 0.42; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, h*0.35); ctx.stroke();
-    ctx.lineWidth = 1.6; rrect(ctx, -half + w*0.12, -h*0.32, w*0.30, h*0.64, 3); ctx.stroke(); rrect(ctx, half - w*0.42, -h*0.32, w*0.30, h*0.64, 3); ctx.stroke();
+    const h = w * 0.44, bl = brand;
+    ctx.fillStyle = "rgba(2,34,75,.05)"; ctx.strokeStyle = bl; ctx.lineWidth = 2.6;
+    rrect(ctx, -half, -h/2, w, h, h*0.42); ctx.fill(); ctx.stroke();                          // body
+    ctx.lineWidth = 1.7; rrect(ctx, -w*0.16, -h*0.34, w*0.44, h*0.68, h*0.22); ctx.stroke();   // cabin
+    ctx.beginPath(); ctx.moveTo(w*0.28, -h*0.30); ctx.lineTo(w*0.40, -h*0.16); ctx.moveTo(w*0.28, h*0.30); ctx.lineTo(w*0.40, h*0.16); ctx.stroke(); // windscreen
+    ctx.beginPath(); ctx.moveTo(-w*0.20, -h*0.30); ctx.lineTo(-w*0.30, -h*0.15); ctx.moveTo(-w*0.20, h*0.30); ctx.lineTo(-w*0.30, h*0.15); ctx.stroke(); // rear window
+    ctx.fillStyle = bl; const ww = w*0.12, wh = Math.max(3, h*0.16);                            // wheels
+    [[-w*0.32, -h/2 - wh*0.3], [-w*0.32, h/2 - wh*0.7], [w*0.20, -h/2 - wh*0.3], [w*0.20, h/2 - wh*0.7]].forEach(([wx, wy]) => { rrect(ctx, wx, wy, ww, wh, 2); ctx.fill(); });
   } else if (s.type === "tree"){
     ctx.fillStyle = "rgba(34,139,60,.20)"; ctx.strokeStyle = "#228b3c"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(0, 0, half, 0, 7); ctx.fill(); ctx.stroke();
@@ -888,6 +915,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [preview, setPreview] = useState(null); // live {rooms, stamps} during a move-drag
   const [sel, setSel] = useState(null);         // selected stamp id (for rotate/resize handles)
   const [labels, setLabels] = useState(true);   // show object labels on the plan
+  const [lockLen, setLockLen] = useState(0);    // fixed wall-segment length in metres (0 = off)
 
   const gridM = plan.gridMetres || 0.5;   // metres per grid cell
   const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
@@ -909,7 +937,17 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const placePoint = (e) => { const praw = toWorld(e, false); return snapVertex(praw) || toWorld(e, true); };
   // rotate/resize handle positions for a selected stamp (world coords)
   const rotv = (vx, vy, a) => ({ x: vx*Math.cos(a) - vy*Math.sin(a), y: vx*Math.sin(a) + vy*Math.cos(a) });
-  const stampHandles = (s) => { const a = (s.angle || 0) * Math.PI / 180; const half = s.size / 2; const rz = rotv(half + 12/S, 0, a); const rt = rotv(0, -(half + 30/S), a); return { resize: { x: s.x + rz.x, y: s.y + rz.y }, rotate: { x: s.x + rt.x, y: s.y + rt.y } }; };
+  const stampHandles = (s) => { const a = (s.angle || 0) * Math.PI / 180; const half = s.size / 2; const rz = rotv(half + 12/S, 0, a); const rt = rotv(0, -(half + 30/S), a); const dl = rotv(-(half + 12/S), 0, a); return { resize: { x: s.x + rz.x, y: s.y + rz.y }, rotate: { x: s.x + rt.x, y: s.y + rt.y }, del: { x: s.x + dl.x, y: s.y + dl.y } }; };
+  // next corner while chaining a wall: fixed length if locked, else ortho/snap/corner-snap
+  const chainNext = (last, e) => {
+    if (lockLen > 0){
+      const praw = toWorld(e, false); let ang = Math.atan2(praw.y - last.y, praw.x - last.x);
+      if (ortho){ const step = Math.PI/4; ang = Math.round(ang/step)*step; }
+      const d = lockLen * pxPerM;
+      return { x: clamp(last.x + d*Math.cos(ang), 0, worldW), y: clamp(last.y + d*Math.sin(ang), 0, worldH) };
+    }
+    return straightEnd(last, e);
+  };
   // straight wall endpoint: snap to existing corner, else optional ortho (0/45/90) lock + grid snap
   const straightEnd = (a, e) => {
     const praw = toWorld(e, false);
@@ -975,10 +1013,19 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, 4, 0, 7); ctx.fill();
         ctx.fillStyle = "#e8792b"; ctx.fillRect(h.resize.x - 7, h.resize.y - 7, 14, 14);                        // resize square
         ctx.fillStyle = "#fff"; ctx.fillRect(h.resize.x - 3, h.resize.y - 3, 6, 6);
+        ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, 9, 0, 7); ctx.fill();             // delete
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(h.del.x-3.5, h.del.y-3.5); ctx.lineTo(h.del.x+3.5, h.del.y+3.5); ctx.moveTo(h.del.x+3.5, h.del.y-3.5); ctx.lineTo(h.del.x-3.5, h.del.y+3.5); ctx.stroke();
       }
     }
     if (draft){
       if (draft.tool === "room"){ ctx.strokeStyle=brand; ctx.lineWidth=4; ctx.beginPath(); draft.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.fillStyle=brand; draft.points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
+      else if (draft.tool === "wall"){ // chained wall with per-segment lengths
+        const pts = draft.preview ? [...draft.points, draft.preview] : draft.points;
+        ctx.strokeStyle=brand; ctx.lineWidth=5; ctx.lineJoin="round"; ctx.lineCap="round";
+        ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke();
+        ctx.fillStyle=brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+        for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
+      }
       else drawWall(draft.points, draft.tool === "curve");
     }
   }, [rooms, stamps, draft, tool, sel, labels, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
@@ -998,7 +1045,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (tool === "move"){
       const praw = toWorld(e, false);
       const s = stamps.find(x => x.id === sel);
-      if (s){ const h = stampHandles(s); if (dist(praw, h.rotate) < 20/S){ setDrag({ kind: "rotate", id: s.id }); setPreview(base); return; } if (dist(praw, h.resize) < 20/S){ setDrag({ kind: "resize", id: s.id }); setPreview(base); return; } }
+      if (s){ const h = stampHandles(s);
+        if (dist(praw, h.del) < 20/S){ delStamp(s.id); setSel(null); return; }
+        if (dist(praw, h.rotate) < 20/S){ setDrag({ kind: "rotate", id: s.id }); setPreview(base); return; }
+        if (dist(praw, h.resize) < 20/S){ setDrag({ kind: "resize", id: s.id }); setPreview(base); return; }
+      }
       const hit = hitTest(praw);
       if (hit && hit.kind === "stamp"){ setSel(hit.id); setDrag(hit); setPreview(base); return; }
       if (hit){ setDrag(hit); setPreview(base); return; }
@@ -1006,9 +1057,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     }
     if (tool === "room"){ const p = placePoint(e); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
     if (STAMP_DEFAULT_M[tool]){ commitStamp(toWorld(e, true), tool); return; }
-    // wall (straight drag) or curve (freehand drag)
-    const p = placePoint(e);
-    setDraft({ tool, points: [p, p], dragging: true, start: p });
+    if (tool === "curve"){ const p = placePoint(e); setDraft({ tool: "curve", points: [p, p], dragging: true, start: p }); return; }
+    if (tool === "wall"){ if (!draft || draft.tool !== "wall"){ setDraft({ tool: "wall", points: [], chain: true }); } return; }
   };
   const onMove = (e) => {
     if (drag){
@@ -1018,18 +1068,18 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         if (drag.kind === "vertex"){ const p = toWorld(e, true); return { stamps: base.stamps, rooms: base.rooms.map(r => r.id === drag.id ? { ...r, points: r.points.map((pt, k) => k === drag.idx ? p : pt) } : r) }; }
         const praw = toWorld(e, false); const s = base.stamps.find(x => x.id === drag.id); if (!s) return base;
         if (drag.kind === "rotate"){ let deg = Math.atan2(praw.y - s.y, praw.x - s.x) * 180 / Math.PI + 90; if (snap) deg = Math.round(deg / 15) * 15; deg = ((Math.round(deg) % 360) + 360) % 360; return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, angle: deg } : x) }; }
-        // resize
         let newSize = Math.max(0.2 * pxPerM, 2 * (dist({ x: s.x, y: s.y }, praw) - 12/S));
         return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, size: newSize } : x) };
       });
       return;
     }
+    if (draft && draft.tool === "wall" && draft.chain){ const last = draft.points[draft.points.length-1]; const pv = draft.points.length ? chainNext(last, e) : placePoint(e); setDraft({ ...draft, preview: pv }); return; }
     if (!draft || !draft.dragging) return;
     if (draft.tool === "curve"){ const p = toWorld(e, false); const last = draft.points[draft.points.length-1]; if (!last || dist(last,p) > 3) setDraft({ ...draft, points: [...draft.points, p] }); }
-    else { const end = straightEnd(draft.start, e); setDraft({ ...draft, points: [draft.start, end] }); }
   };
-  const onUp = () => {
+  const onUp = (e) => {
     if (drag){ if (preview) onChange({ ...plan, rooms: preview.rooms, stamps: preview.stamps }); setDrag(null); setPreview(null); return; }
+    if (draft && draft.tool === "wall" && draft.chain){ const last = draft.points[draft.points.length-1]; const pt = draft.points.length ? chainNext(last, e) : placePoint(e); setDraft({ ...draft, points: [...draft.points, pt], preview: null }); return; }
     if (!draft || !draft.dragging) return;
     const pts = draft.points, curved = draft.tool === "curve";
     setDraft(null);
@@ -1038,8 +1088,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   };
 
   const finishRoom = () => { if (draft && draft.tool === "room" && draft.points.length >= 3){ const name = prompt("Room name:", "Room " + (rooms.filter(r=>!r.wall).length + 1)) || "Room"; onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points }] }); } setDraft(null); };
+  const finishWall = () => { if (draft && draft.tool === "wall" && draft.points.length >= 2){ const pts = draft.points; onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Wall " + (rooms.filter(r => r.wall).length + 1), points: pts, wall: true, perim: round2(perimeter(pts, false) * mPerPx) }] }); } setDraft(null); };
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
+  const renameShape = (id, name) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, name } : r) });
   const delStamp = (id) => onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) });
   const rotStamp = (id, delta) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: (((s.angle||0)+delta)%360+360)%360 } : s) });
   const setAngle = (id, deg) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((Math.round(num(deg))%360)+360)%360 } : s) });
@@ -1055,13 +1107,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   };
   const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
 
-  const DRAW_TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["move","Move"]];
-  const stampLabel = (STAMP_TYPES.find(x => x[0] === tool) || [null, ""])[1];
+  const DRAW_TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["move","Edit"]];
+  const stampLabel = STAMP_LABEL[tool] || "";
   const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room. Corners snap to nearby corners so rooms close cleanly."
-    : tool === "wall" ? "Drag your finger / pencil to draw a straight wall — it locks to the line (90°/45° with Straighten), and snaps to nearby corners."
+    : tool === "wall" ? "Tap to drop each corner and keep going around bends (drag works too); Finish when done. Set a length below to fix each segment."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
-    : tool === "move" ? "Drag a corner or object to move it. Tap an object to select it, then drag the round knob to rotate or the square to resize — with your finger or pencil."
-    : "Tap the plan to drop a " + stampLabel + ". Then use Move to drag, rotate (knob) and resize (square) it by hand.";
+    : tool === "move" ? "Tap an object to select it: drag it to move, drag the round knob to rotate, the square to resize, the red ✕ to delete. Drag room/wall corners to reshape."
+    : "Tap the plan to drop a " + stampLabel + ". Then use Edit to move, rotate, resize or delete it by hand.";
 
   return (
     <div className="space-y-3">
@@ -1071,17 +1123,19 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={labels} onChange={e => setLabels(e.target.checked)} /> Labels</label>
       </div>
-      <div className="scroll-x flex gap-1.5">
-        {DRAW_TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
-      </div>
-      <div>
-        <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Add symbol / object — tap one, then tap the plan:</div>
+      <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
-          {STAMP_TYPES.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
+          {DRAW_TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
         </div>
+        <select className="inp !py-1.5 !w-auto" value={STAMP_DEFAULT_M[tool] ? tool : ""} onChange={e => { if (e.target.value){ setTool(e.target.value); setDraft(null); } }}>
+          <option value="">+ Add object…</option>
+          {STAMP_CATEGORIES.map(([cat, keys]) => <optgroup key={cat} label={cat}>{keys.map(k => <option key={k} value={k}>{STAMP_LABEL[k]}</option>)}</optgroup>)}
+        </select>
+        {STAMP_DEFAULT_M[tool] && <span className="text-sm" style={{ color: "var(--muted)" }}>Placing <b className="brand-text">{stampLabel}</b> — tap the plan</span>}
       </div>
-      {draft && draft.tool === "room"
-        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={finishRoom}><IcCheck size={14} /> Finish room</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pts</span></div>
+      {tool === "wall" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={lockLen > 0} onChange={e => setLockLen(e.target.checked ? 3 : 0)} /> Fixed segment length {lockLen > 0 && <><input type="number" step="0.1" min="0.1" className="inp !py-1 w-20" value={lockLen} onChange={e => setLockLen(Math.max(0.1, num(e.target.value)))} /> m</>}</label>}
+      {draft && (draft.tool === "room" || draft.tool === "wall")
+        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={draft.tool === "room" ? finishRoom : finishWall}><IcCheck size={14} /> Finish {draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pt{draft.points.length === 1 ? "" : "s"}</span></div>
         : <div className="text-sm" style={{ color: "var(--muted)" }}>{hint} · 1 cell = {gridM} m</div>}
 
       <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
@@ -1092,10 +1146,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         <div className="card p-3 space-y-2">
           <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms & walls</div><div className="text-sm font-semibold">Total floor: {round2(totalArea).toFixed(2)} m²</div></div>
           {rooms.map(r => (
-            <div key={r.id} className="flex items-center gap-2 text-sm">
+            <div key={r.id} className="flex items-center gap-2 text-sm flex-wrap">
               <span className="chip">{r.wall ? (r.curved ? "Curve" : "Wall") : "Room"}</span>
-              <span className="flex-1 truncate">{r.name} · <b>{r.wall ? round2(shapeQty(r)).toFixed(2) + " m" : round2(shapeQty(r)).toFixed(2) + " m²"}</b></span>
-              <select className="inp !py-1 w-40" value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>
+              <input className="inp !py-1" style={{ flex: "1 1 120px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} />
+              <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
+              <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>
               <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
             </div>
           ))}
