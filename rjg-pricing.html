@@ -19,6 +19,8 @@
 <script src="./vendor/babel.min.js"></script>
 <script src="./vendor/xlsx.full.min.js"></script>
 <script src="./vendor/pdf.min.js"></script>
+<script src="./vendor/jspdf.umd.min.js"></script>
+<script src="./vendor/html2canvas.min.js"></script>
 
 <style>
   /* ---- RJG brand fonts (vendored, offline) ---- */
@@ -230,6 +232,7 @@ const IcX = I(<><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5"
 const IcSearch = I(<><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></>);
 const IcPrint = I(<><polyline points="6 9 6 2 18 2 18 9"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><rect x="7" y="14" width="10" height="7"/></>);
 const IcPin = I(<><path d="M12 21s-6-5.7-6-10a6 6 0 1112 0c0 4.3-6 10-6 10z"/><circle cx="12" cy="11" r="2"/></>);
+const IcCamera = I(<><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.2"/></>);
 
 /* =========================================================================
    UI primitives
@@ -1073,20 +1076,132 @@ function totalsFor(project, settings){
   return { subEx, margin, marginAmt: totalEx - subEx, totalEx, gstAmt, totalInc: totalEx + gstAmt };
 }
 
-function ReportView({ project }){
-  const { settings } = useStore();
+/* ---- export helpers ---- */
+async function urlToDataUrl(url){ const res = await fetch(url); const blob = await res.blob(); return await new Promise((rs) => { const r = new FileReader(); r.onload = () => rs(r.result); r.readAsDataURL(blob); }); }
+async function getLogoDataUrl(settings){ if (settings.logo) return settings.logo; try { return await urlToDataUrl(DEFAULT_LOGO); } catch(e){ return ""; } }
+async function elementToPdf(el){
+  const { jsPDF } = window.jspdf;
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true, windowWidth: el.scrollWidth });
+  const pdf = new jsPDF({ unit: "pt", format: "a4", compress: true });
+  const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+  const imgW = pageW, imgH = canvas.height * imgW / canvas.width;
+  const img = canvas.toDataURL("image/jpeg", 0.92);
+  if (imgH <= pageH) pdf.addImage(img, "JPEG", 0, 0, imgW, imgH);
+  else { let pos = 0, remaining = imgH; while (remaining > 0){ pdf.addImage(img, "JPEG", 0, pos, imgW, imgH); remaining -= pageH; if (remaining > 0){ pdf.addPage(); pos -= pageH; } } }
+  return pdf;
+}
+function quoteFilename(project, ext){ const q = (project.quoteNo || "quote").replace(/[^a-z0-9\-]/gi, "_"); return "RJG-" + q + "." + ext; }
+async function shareOrEmailPdf(blob, filename, subject, body){
+  const file = new File([blob], filename, { type: "application/pdf" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })){
+    try { await navigator.share({ files: [file], title: subject, text: body }); return "shared"; }
+    catch(e){ if (e && e.name === "AbortError") return "cancel"; }
+  }
+  download(filename, blob);
+  window.location.href = "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body + "\n\nThe quote PDF (" + filename + ") has been downloaded to this device — please attach it to this email.");
+  return "fallback";
+}
+function buildWordHtml(project, settings, t, logo, attachments){
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const nl = (s) => esc(s).replace(/\n/g, "<br/>");
+  const b = settings.brand || "#02224B";
+  const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.rateEx))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*num(l.rateEx))}</td></tr>`).join("");
+  const atts = (attachments || []).map(a => `<div style="margin:8px 0"><img src="${a.src}" style="max-width:520px;border:1px solid #e4e7ec"/><div style="font-size:11px;color:#5b6472">${esc(a.caption)}</div></div>`).join("");
+  const block = (title, body) => body ? `<div style="margin:0 0 14px 0"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">${esc(title)}</div><div>${nl(body)}</div></div>` : "";
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Quotation ${esc(project.quoteNo)}</title></head>
+  <body style="font-family:Arial,Helvetica,sans-serif;color:#141922;font-size:13px">
+  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px"><tr>
+    <td style="background:${b};padding:14px 18px" width="55%">${logo?`<img src="${logo}" style="height:54px"/>`:`<span style="color:#fff;font-size:22px;font-weight:bold">${esc(settings.company)}</span>`}</td>
+    <td style="background:${b};padding:14px 18px;color:#ffffff;text-align:right;font-size:11px" width="45%">${esc(settings.phone)}<br/>${esc(settings.address)}<br/>${esc(settings.website)}</td>
+  </tr></table>
+  <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:14px"><tr>
+    <td style="font-size:30px;font-weight:bold;color:${b}">QUOTATION</td>
+    <td style="text-align:right;font-size:12px">Quote # <b>${esc(project.quoteNo)}</b><br/>Date ${esc(fmtDate(project.date||project.createdAt||now()))}<br/>Valid ${esc(settings.validity)}</td>
+  </tr></table>
+  <table width="100%" style="margin-bottom:14px"><tr>
+    <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Prepared for</div><b>${esc(project.client)}</b></td>
+    <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Site / project</div><b>${esc(project.title)}</b><br/>${esc(project.site)}</td>
+  </tr></table>
+  ${block("Scope of works", project.notes)}
+  ${block("Exclusions", project.exclusions)}
+  <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:12px">
+    <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th><th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th></tr>
+    ${rows}
+  </table>
+  <table align="right" style="margin-bottom:14px;font-size:13px">
+    ${t.margin>0?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr>`:""}
+    <tr><td style="font-weight:bold;padding:2px 16px 2px 0">Total price ex GST</td><td align="right"><b>${money(t.totalEx)}</b></td></tr>
+    <tr><td style="color:#5b6472;padding:2px 16px 2px 0">GST component (${settings.gst}%)</td><td align="right">${money(t.gstAmt)}</td></tr>
+    <tr><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px">Total price inc GST</td><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px" align="right">${money(t.totalInc)}</td></tr>
+  </table>
+  <div style="clear:both"></div>
+  <div style="margin:8px 0 14px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> notice needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
+  ${atts?`<div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Attachments</div>${atts}`:""}
+  <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Terms &amp; conditions</b><br/>${nl(project.terms||settings.terms)}</div>
+  <div style="background:${b};color:#fff;text-align:center;font-size:11px;font-weight:bold;padding:8px;margin-top:14px">ABN: ${esc(settings.abn)} &nbsp;•&nbsp; Open Builders Licence: ${esc(settings.license)} &nbsp;•&nbsp; ${esc(settings.website)}</div>
+  </body></html>`;
+}
+
+function ReportView({ project, onChange }){
+  const { settings, notify } = useStore();
   const t = totalsFor(project, settings);
   const lines = project.quoteLines || [];
+  const sheetRef = useRef(null);
+  const [busy, setBusy] = useState("");
+  const inc = (x) => x.include !== false;
+  const photos = (project.photos || []).filter(p => p.data);
   const drawings = (project.drawings || []).filter(d => d.snapshot);
   const plans = (project.floorplans || []).filter(p => p.snapshot);
+  const incPhotos = photos.filter(inc), incDrawings = drawings.filter(inc), incPlans = plans.filter(inc);
+  const attachments = [
+    ...incPhotos.map(p => ({ src: p.data, caption: p.caption || "Site photo" })),
+    ...incDrawings.map(d => ({ src: d.snapshot, caption: "Takeoff — " + d.name })),
+    ...incPlans.map(p => ({ src: p.snapshot, caption: "Floor plan — " + p.name }))
+  ];
+  const hasAttachChoices = photos.length + drawings.length + plans.length > 0;
+
+  const toggle = (kind, id) => {
+    const key = kind === "photo" ? "photos" : kind === "drawing" ? "drawings" : "floorplans";
+    onChange({ ...project, [key]: (project[key] || []).map(x => x.id === id ? { ...x, include: x.include === false } : x) });
+  };
+
+  const doPdf = async () => { setBusy("pdf"); try { const pdf = await elementToPdf(sheetRef.current); pdf.save(quoteFilename(project, "pdf")); } catch(e){ alert("PDF export failed: " + e.message); } setBusy(""); };
+  const doShare = async () => {
+    setBusy("share");
+    try {
+      const pdf = await elementToPdf(sheetRef.current);
+      const blob = pdf.output("blob");
+      const subject = "Quotation " + (project.quoteNo || "") + (project.title ? " — " + project.title : "");
+      const body = "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find our quotation attached.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company;
+      const r = await shareOrEmailPdf(blob, quoteFilename(project, "pdf"), subject, body);
+      if (r === "shared") notify("Shared");
+    } catch(e){ alert("Share failed: " + e.message); }
+    setBusy("");
+  };
+  const doWord = async () => { setBusy("word"); try { const logo = await getLogoDataUrl(settings); const html = buildWordHtml(project, settings, t, logo, attachments); download(quoteFilename(project, "doc"), new Blob([html], { type: "application/msword" })); } catch(e){ alert("Word export failed: " + e.message); } setBusy(""); };
 
   return (
     <div className="pb-28">
-      <div className="no-print flex gap-2 justify-end mb-3 max-w-[800px] mx-auto">
-        <button className="btn btn-primary" onClick={() => window.print()}><IcPrint size={16} /> Print / Save PDF</button>
+      <div className="no-print max-w-[800px] mx-auto mb-3 space-y-3">
+        <div className="flex gap-2 flex-wrap">
+          <button className="btn btn-primary" disabled={busy} onClick={doShare}><IcUpload size={16} /> {busy === "share" ? "Preparing…" : "Email / Share (PDF)"}</button>
+          <button className="btn btn-ghost" disabled={busy} onClick={doPdf}><IcDoc size={16} /> {busy === "pdf" ? "…" : "PDF"}</button>
+          <button className="btn btn-ghost" disabled={busy} onClick={doWord}><IcDoc size={16} /> {busy === "word" ? "…" : "Word"}</button>
+          <button className="btn btn-ghost" disabled={busy} onClick={() => window.print()}><IcPrint size={16} /> Print</button>
+        </div>
+        {hasAttachChoices && (
+          <div className="card p-3">
+            <div className="font-semibold text-sm brand-text mb-2">Attachments to include</div>
+            <div className="space-y-1 text-sm">
+              {photos.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("photo", p.id)} /> <span className="chip">Photo</span> {p.caption || "Site photo"}</label>)}
+              {drawings.map(d => <label key={d.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(d)} onChange={() => toggle("drawing", d.id)} /> <span className="chip">Takeoff</span> {d.name}</label>)}
+              {plans.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("plan", p.id)} /> <span className="chip">Floor plan</span> {p.name}</label>)}
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="report-sheet mx-auto shadow-sm overflow-hidden" style={{ border: "2px solid var(--brand)", borderRadius: 6 }}>
+      <div ref={sheetRef} className="report-sheet mx-auto shadow-sm overflow-hidden" style={{ border: "2px solid var(--brand)", borderRadius: 6 }}>
         {/* ===== letterhead band ===== */}
         <div className="flex justify-between items-center" style={{ background: "var(--brand)", color: "#fff", padding: "14px 22px" }}>
           <img src={settings.logo || DEFAULT_LOGO} alt={settings.company} style={{ height: 58 }} />
@@ -1154,13 +1269,12 @@ function ReportView({ project }){
             {settings.paymentTerms && <div>Payment terms are <b>{settings.paymentTerms}</b>.</div>}
           </div>
 
-          {/* attached drawings */}
-          {(drawings.length > 0 || plans.length > 0) && (
+          {/* attachments — photos, marked-up drawings, floor plans (only ticked ones) */}
+          {attachments.length > 0 && (
             <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
-              <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Marked-up drawings &amp; plans</div>
+              <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Attachments</div>
               <div className="grid grid-cols-2 gap-3">
-                {drawings.map(d => <div key={d.id}><img src={d.snapshot} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{d.name}</div></div>)}
-                {plans.map(p => <div key={p.id}><img src={p.snapshot} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{p.name}</div></div>)}
+                {attachments.map((a, i) => <div key={i} style={{ pageBreakInside: "avoid" }}><img src={a.src} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{a.caption}</div></div>)}
               </div>
             </div>
           )}
@@ -1216,10 +1330,19 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
   const [loading, setLoading] = useState(false);
   const drawings = project.drawings || [];
   const plans = project.floorplans || [];
+  const photos = project.photos || [];
 
   const upd = (patch) => onChange({ ...project, ...patch });
   const updDrawing = (d) => onChange({ ...project, drawings: drawings.map(x => x.id === d.id ? d : x) });
   const updPlan = (p) => onChange({ ...project, floorplans: plans.map(x => x.id === p.id ? p : x) });
+  const updPhoto = (id, patch) => onChange({ ...project, photos: photos.map(p => p.id === id ? { ...p, ...patch } : p) });
+  const delPhoto = (id) => onChange({ ...project, photos: photos.filter(p => p.id !== id) });
+  const addPhotos = (e) => {
+    const files = [...e.target.files]; if (!files.length) return;
+    let pending = files.length; const added = [];
+    files.forEach(file => { const r = new FileReader(); r.onload = () => { added.push({ id: uid(), data: r.result, caption: "", include: true }); if (--pending === 0) onChange({ ...project, photos: [...photos, ...added] }); }; r.readAsDataURL(file); });
+    e.target.value = "";
+  };
   const addToQuote = (newLines) => { onChange({ ...project, quoteLines: [...(project.quoteLines || []), ...newLines] }); notify(newLines.length + " line(s) added to quote"); setTab("quote"); setOpenDrawing(null); setOpenPlan(null); };
 
   const onFile = async (e) => {
@@ -1232,7 +1355,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
 
   const curDrawing = drawings.find(d => d.id === openDrawing);
   const curPlan = plans.find(p => p.id === openPlan);
-  const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["quote", "Quote"], ["report", "Report"]];
+  const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["photos", "Photos"], ["quote", "Quote"], ["report", "Report"]];
   const t = totalsFor(project, useStore().settings);
 
   return (
@@ -1304,8 +1427,32 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
         </div>
       )}
 
+      {tab === "photos" && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <label className="btn btn-primary flex-1 cursor-pointer"><IcCamera size={16} /> Take photo<input type="file" accept="image/*" capture="environment" className="hidden" onChange={addPhotos} /></label>
+            <label className="btn btn-ghost flex-1 cursor-pointer"><IcUpload size={16} /> Add photos<input type="file" accept="image/*" multiple className="hidden" onChange={addPhotos} /></label>
+          </div>
+          {photos.length === 0 ? <Empty icon={<IcCamera size={44} />} title="No photos yet" sub="Take a photo on site or add from your gallery. Tick which ones go on the quote in the Report tab." /> :
+            <div className="grid grid-cols-2 gap-3">
+              {photos.map(p => (
+                <div key={p.id} className="card overflow-hidden">
+                  <img src={p.data} className="w-full h-40 object-cover" />
+                  <div className="p-2 space-y-2">
+                    <input className="inp !py-1 text-sm" placeholder="Caption (shown on quote)" value={p.caption || ""} onChange={e => updPhoto(p.id, { caption: e.target.value })} />
+                    <div className="flex items-center justify-between text-xs">
+                      <label className="flex items-center gap-1"><input type="checkbox" checked={p.include !== false} onChange={e => updPhoto(p.id, { include: e.target.checked })} /> On quote</label>
+                      <button className="btn btn-ghost !p-1.5" onClick={() => delPhoto(p.id)}><IcTrash size={14} /></button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>}
+        </div>
+      )}
+
       {tab === "quote" && <QuoteEditor project={project} onChange={onChange} />}
-      {tab === "report" && <ReportView project={project} />}
+      {tab === "report" && <ReportView project={project} onChange={onChange} />}
     </div>
   );
 }
