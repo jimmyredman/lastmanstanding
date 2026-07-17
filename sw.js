@@ -1,8 +1,9 @@
 /* RJG Pricing — offline service worker.
-   Runtime cache-first with network fallback so the app + its CDN libraries
-   keep working on-site once they've been loaded once. */
-const CACHE = "rjg-pricing-v12";
+   Network-first for same-origin requests so updates always arrive when there is
+   signal; falls back to the cache when offline so the app still works on-site. */
+const CACHE = "rjg-pricing-v13";
 const PRECACHE = [
+  "./index.html",
   "./rjg-pricing.html",
   "./manifest.webmanifest",
   "./icon.svg",
@@ -38,17 +39,25 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
-  e.respondWith(
-    caches.match(req).then((hit) => {
-      if (hit) return hit;
-      return fetch(req).then((res) => {
-        // Cache successful same-origin and opaque CDN responses for next time.
-        try {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
-        } catch (_) {}
+  const url = new URL(req.url);
+  const sameOrigin = url.origin === self.location.origin;
+
+  if (sameOrigin) {
+    // Network-first: always try the network, cache the fresh copy, fall back to cache offline.
+    e.respondWith(
+      fetch(req).then((res) => {
+        try { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } catch (_) {}
         return res;
-      }).catch(() => hit);
-    })
+      }).catch(() => caches.match(req).then((hit) => hit || caches.match("./index.html") || caches.match("./rjg-pricing.html")))
+    );
+    return;
+  }
+
+  // Cross-origin (none by default — everything is vendored): cache-first.
+  e.respondWith(
+    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
+      try { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); } catch (_) {}
+      return res;
+    }).catch(() => hit))
   );
 });

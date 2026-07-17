@@ -129,6 +129,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
+const APP_VERSION = "v13 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
   company: "RJG Builders",
@@ -350,6 +351,7 @@ function SettingsScreen(){
           <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} style={{ transform: "rotate(180deg)" }} /> Restore backup<input type="file" accept="application/json" className="hidden" onChange={restore} /></label>
         </div>
         <div className="text-xs" style={{ color: "var(--muted)" }}>{items.length} price items · {projects.length} jobs stored.</div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>App version <b>{APP_VERSION}</b></div>
       </div>
     </div>
   );
