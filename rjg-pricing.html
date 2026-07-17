@@ -21,6 +21,8 @@
 <script src="./vendor/pdf.min.js"></script>
 <script src="./vendor/jspdf.umd.min.js"></script>
 <script src="./vendor/html2canvas.min.js"></script>
+<script src="./vendor/three.min.js"></script>
+<script src="./vendor/OrbitControls.js"></script>
 
 <style>
   /* ---- RJG brand fonts (vendored, offline) ---- */
@@ -129,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v15 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v16 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -920,8 +922,81 @@ function drawStamp(ctx, s, brand){
   ctx.restore();
 }
 
+/* ---- 3D view of a floor plan (Three.js) ---- */
+function Plan3D({ plan, onClose, onSave }){
+  const mountRef = useRef(null);
+  const capRef = useRef(null);
+  const [ok, setOk] = useState(true);
+  useEffect(() => {
+    const THREE = window.THREE; const mount = mountRef.current;
+    if (!THREE || !mount){ setOk(false); return; }
+    try {
+    const W = mount.clientWidth || 360, H = mount.clientHeight || 360;
+    const mpp = (plan.gridMetres || 0.5) / (plan.gridPx || 28);
+    const wallH = plan.wallHeight || 2.7;
+    const rooms = plan.rooms || [], stamps = plan.stamps || [];
+    const allPts = []; rooms.forEach(r => r.points.forEach(p => allPts.push(p))); stamps.forEach(s => allPts.push({ x: s.x, y: s.y }));
+    let cx = 0, cy = 0, ext = 10;
+    if (allPts.length){ const xs = allPts.map(p => p.x), ys = allPts.map(p => p.y); const minx = Math.min(...xs), maxx = Math.max(...xs), miny = Math.min(...ys), maxy = Math.max(...ys); cx = (minx+maxx)/2; cy = (miny+maxy)/2; ext = Math.max((maxx-minx)*mpp, (maxy-miny)*mpp, 5); }
+    const toM = (p) => ({ x: (p.x - cx) * mpp, z: (p.y - cy) * mpp });
+
+    const scene = new THREE.Scene(); scene.background = new THREE.Color(0xeef2f7);
+    const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 2000);
+    camera.position.set(ext*0.95, ext*1.1, ext*0.95);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H);
+    mount.appendChild(renderer.domElement);
+    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH/2, 0); controls.update();
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.0));
+    const dir = new THREE.DirectionalLight(0xffffff, 0.65); dir.position.set(ext, ext*1.6, ext*0.6); scene.add(dir);
+    scene.add(new THREE.GridHelper(Math.ceil(ext*2)+12, Math.ceil(ext*2)+12, 0xc7d0da, 0xdfe5ec));
+
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0xf3f5f9 });
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0xdbe3ec, side: THREE.DoubleSide });
+    const wallEdge = (a, b, h) => { const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const len = Math.hypot(dx, dz); if (len < 0.02) return; const m = new THREE.Mesh(new THREE.BoxGeometry(len, h, 0.1), wallMat); m.position.set((A.x+B.x)/2, h/2, (A.z+B.z)/2); m.rotation.y = -Math.atan2(dz, dx); scene.add(m); };
+    rooms.forEach(r => {
+      const h = r.height || wallH; const pts = r.points.map(toM);
+      if (!r.wall && pts.length >= 3){
+        const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
+        const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const fm = new THREE.Mesh(g, floorMat); fm.position.y = 0.02; scene.add(fm);
+        for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h);
+      } else { for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); }
+    });
+    stamps.forEach(s => {
+      const M = toM({ x: s.x, y: s.y }), w = s.size * mpp, ang = -(s.angle||0)*Math.PI/180;
+      const place = (mesh, hy) => { mesh.position.set(M.x, hy, M.z); mesh.rotation.y = ang; scene.add(mesh); };
+      if (s.type === "tree"){ const trunk = new THREE.Mesh(new THREE.CylinderGeometry(w*0.06, w*0.09, w*0.5, 8), new THREE.MeshLambertMaterial({ color: 0x7a5230 })); trunk.position.set(M.x, w*0.25, M.z); scene.add(trunk); const can = new THREE.Mesh(new THREE.ConeGeometry(w*0.5, w*0.95, 12), new THREE.MeshLambertMaterial({ color: 0x3f9d55 })); can.position.set(M.x, w*0.5+w*0.47, M.z); scene.add(can); }
+      else if (s.type === "pool"){ place(new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, w*0.6), new THREE.MeshLambertMaterial({ color: 0x2f8fd0 })), 0.15); }
+      else if (s.type === "door" || s.type === "window" || s.type === "opening"){ /* part of walls */ }
+      else { const hMap = { car: 1.45, table: 0.75, bench: 0.45, bed: 0.55, chair: 0.9, sink: 0.85, toilet: 0.7, fence: 1.5 }; const dMap = { car: w*0.44, fence: 0.08, bench: w*0.34, table: w*0.62, bed: w*1.3 }; const hh = hMap[s.type] || 0.8, depth = dMap[s.type] || w*0.7; const col = s.type === "car" ? 0x9aa7b4 : 0xccd4de; place(new THREE.Mesh(new THREE.BoxGeometry(w, hh, depth), new THREE.MeshLambertMaterial({ color: col })), hh/2); }
+    });
+
+    let raf; const loop = () => { controls.update(); renderer.render(scene, camera); raf = requestAnimationFrame(loop); }; loop();
+    const onR = () => { const w = mount.clientWidth, h = mount.clientHeight; if (!w || !h) return; camera.aspect = w/h; camera.updateProjectionMatrix(); renderer.setSize(w, h); };
+    window.addEventListener("resize", onR);
+    capRef.current = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.9); };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onR); try { controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement); } catch(_){} };
+    } catch (err) { setOk(false); }
+  }, []);
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col no-print" style={{ background: "#eef2f7" }}>
+      <div className="brand-bg text-white flex items-center justify-between px-4 py-3">
+        <div className="font-bold truncate">3D view — {plan.name}</div>
+        <div className="flex gap-2">
+          {ok && <button className="btn btn-accent" onClick={() => { const d = capRef.current && capRef.current(); if (d) onSave(d); }}><IcCheck size={16} /> Save render</button>}
+          <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)" }} onClick={onClose}><IcX size={16} /> Close</button>
+        </div>
+      </div>
+      {ok ? <div ref={mountRef} className="flex-1" style={{ touchAction: "none", minHeight: 0 }} />
+          : <div className="flex-1 flex items-center justify-center text-center p-6" style={{ color: "var(--muted)" }}>3D engine needs to load once online. Reconnect and reopen.</div>}
+      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>Drag to orbit · pinch / scroll to zoom · walls at {plan.wallHeight || 2.7} m</div>
+    </div>
+  );
+}
+
 function FloorPlanEditor({ plan, onChange, onAddToQuote }){
-  const { items } = useStore();
+  const { items, notify } = useStore();
+  const [show3d, setShow3d] = useState(false);
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [wrapW, setWrapW] = useState(360);
@@ -1111,6 +1186,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
   const renameShape = (id, name) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, name } : r) });
+  const setHeight = (id, h) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, height: Math.max(0.1, num(h)) } : r) });
+  const save3dRender = (dataUrl) => { onChange({ ...plan, render3d: dataUrl, include: true }); setShow3d(false); notify("3D render saved to quote"); };
   const clearAll = () => { if ((rooms.length || stamps.length) && confirm("Clear everything on this floor plan?")){ setDraft(null); setSel(null); onChange({ ...plan, rooms: [], stamps: [], snapshot: undefined }); } };
   const delStamp = (id) => onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) });
   const rotStamp = (id, delta) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: (((s.angle||0)+delta)%360+360)%360 } : s) });
@@ -1138,7 +1215,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   return (
     <div className="space-y-3">
       <div className="flex gap-2 items-center flex-wrap">
-        <Field label="Grid = metres"><input type="number" step="0.1" className="inp w-24" value={gridM} onChange={e => onChange({ ...plan, gridMetres: num(e.target.value) || 0.5 })} /></Field>
+        <Field label="Grid = metres"><input type="number" step="0.1" className="inp w-20" value={gridM} onChange={e => onChange({ ...plan, gridMetres: num(e.target.value) || 0.5 })} /></Field>
+        <Field label="Wall height (m)"><input type="number" step="0.1" className="inp w-24" value={plan.wallHeight || 2.7} onChange={e => onChange({ ...plan, wallHeight: num(e.target.value) || 2.7 })} /></Field>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap grid</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={labels} onChange={e => setLabels(e.target.checked)} /> Labels</label>
@@ -1162,6 +1240,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
         <canvas ref={canvasRef} className="editor" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
+      {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-primary w-full" onClick={() => setShow3d(true)}><IcGrid size={16} /> 3D view / render</button>}
 
       {rooms.length > 0 && (
         <div className="card p-3 space-y-2">
@@ -1171,6 +1250,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
               <span className="chip">{r.wall ? (r.curved ? "Curve" : "Wall") : "Room"}</span>
               <input className="inp !py-1" style={{ flex: "1 1 120px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} />
               <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
+              <label className="flex items-center gap-1 whitespace-nowrap" style={{ color: "var(--muted)" }}>H<input type="number" step="0.1" className="inp !py-1 w-16" value={r.height || plan.wallHeight || 2.7} onChange={e => setHeight(r.id, e.target.value)} />m</label>
               <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>
               <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
             </div>
@@ -1195,6 +1275,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
           <button className="btn btn-ghost w-full" onClick={saveSnapshot}>Save for report</button>
         </div>
       )}
+
+      {show3d && <Plan3D plan={plan} onClose={() => setShow3d(false)} onSave={save3dRender} />}
     </div>
   );
 }
@@ -1368,12 +1450,12 @@ function ReportView({ project, onChange }){
   const inc = (x) => x.include !== false;
   const photos = (project.photos || []).filter(p => p.data);
   const drawings = (project.drawings || []).filter(d => d.snapshot);
-  const plans = (project.floorplans || []).filter(p => p.snapshot);
+  const plans = (project.floorplans || []).filter(p => p.snapshot || p.render3d);
   const incPhotos = photos.filter(inc), incDrawings = drawings.filter(inc), incPlans = plans.filter(inc);
   const attachments = [
     ...incPhotos.map(p => ({ src: p.data, caption: p.caption || "Site photo" })),
     ...incDrawings.map(d => ({ src: d.snapshot, caption: "Takeoff — " + d.name })),
-    ...incPlans.map(p => ({ src: p.snapshot, caption: "Floor plan — " + p.name }))
+    ...incPlans.flatMap(p => [p.snapshot && { src: p.snapshot, caption: "Floor plan — " + p.name }, p.render3d && { src: p.render3d, caption: "3D — " + p.name }].filter(Boolean))
   ];
   const hasAttachChoices = photos.length + drawings.length + plans.length > 0;
 

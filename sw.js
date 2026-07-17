@@ -1,7 +1,7 @@
 /* RJG Pricing — offline service worker.
    Network-first for same-origin requests so updates always arrive when there is
    signal; falls back to the cache when offline so the app still works on-site. */
-const CACHE = "rjg-pricing-v15";
+const CACHE = "rjg-pricing-v16";
 const PRECACHE = [
   "./index.html",
   "./rjg-pricing.html",
@@ -17,6 +17,8 @@ const PRECACHE = [
   "./vendor/pdf.worker.min.js",
   "./vendor/jspdf.umd.min.js",
   "./vendor/html2canvas.min.js",
+  "./vendor/three.min.js",
+  "./vendor/OrbitControls.js",
   "./vendor/fonts/montserrat-latin-400-normal.woff2",
   "./vendor/fonts/montserrat-latin-600-normal.woff2",
   "./vendor/fonts/montserrat-latin-700-normal.woff2",
