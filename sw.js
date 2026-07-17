@@ -1,11 +1,12 @@
 /* RJG Pricing — offline service worker.
    Runtime cache-first with network fallback so the app + its CDN libraries
    keep working on-site once they've been loaded once. */
-const CACHE = "rjg-pricing-v2";
+const CACHE = "rjg-pricing-v3";
 const PRECACHE = [
   "./rjg-pricing.html",
   "./manifest.webmanifest",
   "./icon.svg",
+  "./vendor/rjg-logo.png",
   "./vendor/tailwind.css",
   "./vendor/react.min.js",
   "./vendor/react-dom.min.js",
