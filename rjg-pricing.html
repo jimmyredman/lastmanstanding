@@ -233,6 +233,7 @@ const IcSearch = I(<><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16
 const IcPrint = I(<><polyline points="6 9 6 2 18 2 18 9"/><rect x="4" y="9" width="16" height="8" rx="1.5"/><rect x="7" y="14" width="10" height="7"/></>);
 const IcPin = I(<><path d="M12 21s-6-5.7-6-10a6 6 0 1112 0c0 4.3-6 10-6 10z"/><circle cx="12" cy="11" r="2"/></>);
 const IcCamera = I(<><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z"/><circle cx="12" cy="13" r="3.2"/></>);
+const IcCopy = I(<><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></>);
 
 /* =========================================================================
    UI primitives
@@ -568,6 +569,7 @@ function PricingScreen(){
    ========================================================================= */
 const MEASURE_TOOLS = ["length", "area", "count"];
 const TOOL_LABELS = { calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
+const MARKUP_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#ea580c", "#eab308", "#111827", "#ffffff"];
 
 function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   const { items } = useStore();
@@ -670,7 +672,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       if (real && px > 0) { onChange({ ...drawing, scaleMpp: real / px }); }
       setDraft(null); return;
     }
-    const ann = { id: uid(), tool: d.tool, points: d.points, color: MEASURE_TOOLS.includes(d.tool) ? "#e11d48" : color };
+    const ann = { id: uid(), tool: d.tool, points: d.points, color };
     if (d.tool === "text") { const t = prompt("Text:", ""); if (!t) { setDraft(null); return; } ann.text = t; }
     onChange({ ...drawing, annotations: [...anns, ann] });
     setDraft(null);
@@ -746,7 +748,12 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
 
       <div className="flex items-center gap-3 flex-wrap text-sm">
         <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="4" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /></label>
-        {!MEASURE_TOOLS.includes(tool) && tool !== "calibrate" && <label className="flex items-center gap-1">Colour <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-7 w-8 rounded border" /></label>}
+        {tool !== "calibrate" && (
+          <div className="flex items-center gap-1">
+            {MARKUP_COLORS.map(c => <button key={c} onClick={() => setColor(c)} title={c} style={{ width: 20, height: 20, borderRadius: 6, background: c, border: color === c ? "2px solid var(--ink)" : "1px solid var(--line)" }} />)}
+            <input type="color" value={color} onChange={e => setColor(e.target.value)} className="h-6 w-7 rounded border" title="Custom colour" />
+          </div>
+        )}
         {draft && (draft.tool === "area" || draft.tool === "count") && <><button className="btn btn-accent !py-1" onClick={finishShape}><IcCheck size={14} /> Finish</button><button className="btn btn-ghost !py-1" onClick={undoPoint}>Undo pt</button></>}
       </div>
 
@@ -795,22 +802,41 @@ function smoothPath(ctx, pts){
   for (let i = 1; i < pts.length - 1; i++){ const xc = (pts[i].x + pts[i+1].x) / 2, yc = (pts[i].y + pts[i+1].y) / 2; ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
   ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
 }
-const STAMP_DEFAULT_M = { door: 0.9, window: 1.2, opening: 1.0 };
+const STAMP_DEFAULT_M = { door: 0.9, window: 1.2, opening: 1.0, table: 1.5, bench: 1.6, car: 4.8, tree: 4.0, fence: 3.0, pool: 6.0 };
+const STAMP_TYPES = [["door","Door"],["window","Window"],["opening","Opening"],["table","Table"],["bench","Bench"],["car","Car"],["tree","Tree"],["fence","Fence"],["pool","Pool"]];
+function rrect(ctx, x, y, w, h, r){ r = Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawStamp(ctx, s, brand){
   const w = s.size, half = w / 2;
   ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((s.angle || 0) * Math.PI / 180);
-  ctx.strokeStyle = brand; ctx.fillStyle = brand; ctx.lineWidth = 3; ctx.lineJoin = "round";
+  ctx.strokeStyle = brand; ctx.fillStyle = brand; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.setLineDash([]);
   if (s.type === "door"){
-    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -6); ctx.moveTo(half, 0); ctx.lineTo(half, -6); ctx.stroke();      // jambs
-    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -w); ctx.stroke();                                                  // leaf
-    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(-half, 0, w, -Math.PI/2, 0); ctx.stroke();                                     // swing
+    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -6); ctx.moveTo(half, 0); ctx.lineTo(half, -6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -w); ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(-half, 0, w, -Math.PI/2, 0); ctx.stroke();
   } else if (s.type === "window"){
     ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.moveTo(-half, -3); ctx.lineTo(half, -3); ctx.moveTo(-half, 3); ctx.lineTo(half, 3); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-half, -6); ctx.lineTo(-half, 6); ctx.moveTo(half, -6); ctx.lineTo(half, 6); ctx.stroke();
-  } else { // opening
-    ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(-half, -7); ctx.lineTo(-half, 7); ctx.moveTo(half, -7); ctx.lineTo(half, 7); ctx.stroke();
-    ctx.strokeStyle = "#9aa3b2"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke(); ctx.setLineDash([]);
+  } else if (s.type === "opening"){
+    ctx.beginPath(); ctx.moveTo(-half, -7); ctx.lineTo(-half, 7); ctx.moveTo(half, -7); ctx.lineTo(half, 7); ctx.stroke();
+    ctx.strokeStyle = "#9aa3b2"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke();
+  } else if (s.type === "table"){
+    const h = w * 0.62; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, 4); ctx.stroke();
+  } else if (s.type === "bench"){
+    const h = w * 0.26; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, 3); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-half, -h/2-3); ctx.lineTo(half, -h/2-3); ctx.stroke();
+  } else if (s.type === "car"){
+    const h = w * 0.42; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, h*0.35); ctx.stroke();
+    ctx.lineWidth = 1.6; rrect(ctx, -half + w*0.12, -h*0.32, w*0.30, h*0.64, 3); ctx.stroke(); rrect(ctx, half - w*0.42, -h*0.32, w*0.30, h*0.64, 3); ctx.stroke();
+  } else if (s.type === "tree"){
+    ctx.fillStyle = "rgba(34,139,60,.20)"; ctx.strokeStyle = "#228b3c"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, half, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#7a5230"; ctx.beginPath(); ctx.arc(0, 0, Math.max(3, w*0.08), 0, 7); ctx.fill();
+  } else if (s.type === "fence"){
+    ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke();
+    const n = Math.max(2, Math.round(w / 14)); for (let i = 0; i <= n; i++){ const x = -half + (w * i / n); ctx.beginPath(); ctx.moveTo(x, -5); ctx.lineTo(x, 5); ctx.stroke(); }
+  } else if (s.type === "pool"){
+    const h = w * 0.6; ctx.fillStyle = "rgba(56,150,220,.25)"; ctx.strokeStyle = "#2f6fb0"; ctx.lineWidth = 3; rrect(ctx, -half, -h/2, w, h, Math.min(w,h)*0.28); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#2f6fb0"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; ctx.fillText("POOL", 0, 4);
   }
   ctx.restore();
 }
@@ -842,9 +868,14 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
   const gridSnap = (v) => Math.round(v / gridPx) * gridPx;
   const toWorld = (e, applySnap) => { const r = canvasRef.current.getBoundingClientRect(); let x = (e.clientX - r.left) / S, y = (e.clientY - r.top) / S; if (applySnap && snap){ x = gridSnap(x); y = gridSnap(y); } return { x: clamp(x,0,worldW), y: clamp(y,0,worldH) }; };
-  // straight wall endpoint: optional ortho (0/45/90) lock, then grid snap
+  // snap to a nearby existing room/wall corner (so rooms close cleanly)
+  const snapVertex = (praw, exclude) => { let best = null, bd = 15 / S; for (const r of rooms){ if (exclude && r.id === exclude) continue; for (const v of r.points){ const d = dist(praw, v); if (d < bd){ bd = d; best = { x: v.x, y: v.y }; } } } return best; };
+  const placePoint = (e) => { const praw = toWorld(e, false); return snapVertex(praw) || toWorld(e, true); };
+  // straight wall endpoint: snap to existing corner, else optional ortho (0/45/90) lock + grid snap
   const straightEnd = (a, e) => {
-    let p = toWorld(e, false);
+    const praw = toWorld(e, false);
+    const v = snapVertex(praw); if (v) return v;
+    let p = praw;
     if (ortho){
       const dx = p.x - a.x, dy = p.y - a.y, d = Math.hypot(dx, dy);
       if (d > 0){ let ang = Math.atan2(dy, dx); const step = Math.PI/4; ang = Math.round(ang/step)*step; p = { x: a.x + d*Math.cos(ang), y: a.y + d*Math.sin(ang) }; }
@@ -904,10 +935,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const onDown = (e) => {
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
     if (tool === "move"){ const hit = hitTest(toWorld(e, false)); if (hit){ setDrag(hit); setPreview({ rooms: plan.rooms || [], stamps: plan.stamps || [] }); } return; }
-    if (tool === "room"){ const p = toWorld(e, true); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
-    if (tool === "door" || tool === "window" || tool === "opening"){ commitStamp(toWorld(e, true), tool); return; }
+    if (tool === "room"){ const p = placePoint(e); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
+    if (STAMP_DEFAULT_M[tool]){ commitStamp(toWorld(e, true), tool); return; }
     // wall (straight drag) or curve (freehand drag)
-    const p = toWorld(e, true);
+    const p = placePoint(e);
     setDraft({ tool, points: [p, p], dragging: true, start: p });
   };
   const onMove = (e) => {
@@ -937,7 +968,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
   const delStamp = (id) => onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) });
-  const rotStamp = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((s.angle||0)+45)%360 } : s) });
+  const rotStamp = (id, delta) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: (((s.angle||0)+delta)%360+360)%360 } : s) });
+  const setAngle = (id, deg) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((Math.round(num(deg))%360)+360)%360 } : s) });
   const sizeStamp = (id, m) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, size: Math.max(0.1, num(m)) * pxPerM } : s) });
   const setLink = (id, itemId) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, priceItemId: itemId } : r) });
 
@@ -950,12 +982,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   };
   const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
 
-  const TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["door","Door"],["window","Window"],["opening","Opening"],["move","Move"]];
-  const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room."
-    : tool === "wall" ? "Drag your finger / pencil to draw a straight wall — it locks to the line (and 90°/45° with Straighten on)."
+  const DRAW_TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["move","Move"]];
+  const stampLabel = (STAMP_TYPES.find(x => x[0] === tool) || [null, ""])[1];
+  const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room. Corners snap to nearby corners so rooms close cleanly."
+    : tool === "wall" ? "Drag your finger / pencil to draw a straight wall — it locks to the line (90°/45° with Straighten), and snaps to nearby corners."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
     : tool === "move" ? "Drag any corner (orange handle) or symbol to reposition it."
-    : "Tap the plan to drop a " + tool + " symbol. Rotate/resize it in the list below.";
+    : "Tap the plan to drop a " + stampLabel + ". Move it with the Move tool; rotate/resize it in the list below.";
 
   return (
     <div className="space-y-3">
@@ -965,7 +998,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
       </div>
       <div className="scroll-x flex gap-1.5">
-        {TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
+        {DRAW_TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
+      </div>
+      <div>
+        <div className="text-xs mb-1" style={{ color: "var(--muted)" }}>Add symbol / object — tap one, then tap the plan:</div>
+        <div className="scroll-x flex gap-1.5">
+          {STAMP_TYPES.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
+        </div>
       </div>
       {draft && draft.tool === "room"
         ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={finishRoom}><IcCheck size={14} /> Finish room</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pts</span></div>
@@ -992,13 +1031,15 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
       {stamps.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="font-semibold text-sm brand-text">Symbols</div>
+          <div className="font-semibold text-sm brand-text">Symbols & objects</div>
           {stamps.map(s => (
-            <div key={s.id} className="flex items-center gap-2 text-sm">
+            <div key={s.id} className="flex items-center gap-2 text-sm flex-wrap">
               <span className="chip capitalize">{s.type}</span>
-              <label className="flex items-center gap-1">width <input type="number" step="0.1" className="inp !py-1 w-20" value={round2(s.size / pxPerM)} onChange={e => sizeStamp(s.id, e.target.value)} />m</label>
-              <button className="btn btn-ghost !py-1 ml-auto" onClick={() => rotStamp(s.id)}>Rotate ↻ {s.angle||0}°</button>
-              <button className="btn btn-ghost !p-1.5" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
+              <label className="flex items-center gap-1">size <input type="number" step="0.1" className="inp !py-1 w-16" value={round2(s.size / pxPerM)} onChange={e => sizeStamp(s.id, e.target.value)} />m</label>
+              <label className="flex items-center gap-1">angle <input type="number" step="15" className="inp !py-1 w-16" value={s.angle || 0} onChange={e => setAngle(s.id, e.target.value)} />°</label>
+              <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, -15)}>↺</button>
+              <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, 15)}>↻</button>
+              <button className="btn btn-ghost !p-1.5 ml-auto" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
             </div>
           ))}
           <button className="btn btn-ghost w-full" onClick={saveSnapshot}>Save for report</button>
@@ -1384,6 +1425,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
     setLoading(false); e.target.value = "";
   };
   const addPlan = () => { const p = { id: uid(), name: "Floor plan " + (plans.length + 1), gridMetres: 0.5, rooms: [] }; onChange({ ...project, floorplans: [...plans, p] }); setOpenPlan(p.id); };
+  const dupPlan = (p) => { const copy = { ...p, id: uid(), name: p.name + " (copy)", snapshot: undefined, rooms: (p.rooms || []).map(r => ({ ...r, id: uid(), points: r.points.map(pt => ({ ...pt })) })), stamps: (p.stamps || []).map(s => ({ ...s, id: uid() })) }; onChange({ ...project, floorplans: [...plans, copy] }); notify("Floor plan duplicated"); };
 
   const curDrawing = drawings.find(d => d.id === openDrawing);
   const curPlan = plans.find(p => p.id === openPlan);
@@ -1446,7 +1488,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
               {plans.map(p => (
                 <div key={p.id} className="card overflow-hidden">
                   <button className="block w-full" onClick={() => setOpenPlan(p.id)}>{p.snapshot ? <img src={p.snapshot} className="w-full h-32 object-cover" /> : <div className="h-32 flex items-center justify-center" style={{ background: "var(--bg)", color: "var(--muted)" }}><IcGrid size={32} /></div>}</button>
-                  <div className="p-2 flex items-center justify-between"><span className="text-sm font-semibold truncate">{p.name}</span><button className="btn btn-ghost !p-1.5" onClick={() => onChange({ ...project, floorplans: plans.filter(x => x.id !== p.id) })}><IcTrash size={14} /></button></div>
+                  <div className="p-2 flex items-center justify-between gap-1"><span className="text-sm font-semibold truncate">{p.name}</span><div className="flex gap-1"><button className="btn btn-ghost !p-1.5" title="Duplicate" onClick={() => dupPlan(p)}><IcCopy size={14} /></button><button className="btn btn-ghost !p-1.5" onClick={() => onChange({ ...project, floorplans: plans.filter(x => x.id !== p.id) })}><IcTrash size={14} /></button></div></div>
                 </div>
               ))}
             </div>}
@@ -1494,21 +1536,31 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
    ========================================================================= */
 function JobsScreen({ onOpen }){
   const { projects, upsertProject, settings } = useStore();
+  const [q, setQ] = useState("");
   const create = async () => {
     const seq = settings.quoteSeq || 1;
     const p = await upsertProject({ title: "", client: "", site: "", date: now(), quoteNo: "RJG-Q" + String(seq).padStart(4, "0"), margin: settings.defaultMargin, terms: settings.terms, drawings: [], floorplans: [], quoteLines: [] });
     await (async () => { await dbPut("kv", { ...settings, quoteSeq: seq + 1 }, "settings"); })();
     onOpen(p.id);
   };
+  const s = q.trim().toLowerCase();
+  const filtered = s ? projects.filter(p => ((p.title||"") + " " + (p.client||"") + " " + (p.site||"") + " " + (p.quoteNo||"")).toLowerCase().includes(s)) : projects;
   return (
     <div className="max-w-4xl mx-auto p-4 pb-28">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-bold">Jobs <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({projects.length})</span></h2>
+        <h2 className="text-lg font-bold">Jobs <span className="text-sm font-normal" style={{ color: "var(--muted)" }}>({filtered.length}{s ? " of " + projects.length : ""})</span></h2>
         <button className="btn btn-primary" onClick={create}><IcPlus size={16} /> New job</button>
       </div>
-      {projects.length === 0 ? <Empty icon={<IcJobs size={48} />} title="No jobs yet" sub="Create a job to start pricing, take off drawings and produce a quote." /> : (
+      {projects.length > 0 && (
+        <div className="relative mb-3">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }}><IcSearch size={16} /></span>
+          <input className="inp pl-9" placeholder="Search jobs — client, site, title, quote #…" value={q} onChange={e => setQ(e.target.value)} />
+        </div>
+      )}
+      {projects.length === 0 ? <Empty icon={<IcJobs size={48} />} title="No jobs yet" sub="Create a job to start pricing, take off drawings and produce a quote." /> :
+       filtered.length === 0 ? <Empty icon={<IcSearch size={44} />} title="No matches" sub="No jobs match your search." /> : (
         <div className="grid sm:grid-cols-2 gap-3">
-          {projects.map(p => {
+          {filtered.map(p => {
             const t = totalsFor(p, settings);
             return (
               <button key={p.id} className="card p-4 text-left hover:brightness-[.98]" onClick={() => onOpen(p.id)}>
