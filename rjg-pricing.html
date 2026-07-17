@@ -1285,7 +1285,7 @@ function AppShell(){
     <div className="min-h-screen">
       <header className="brand-bg text-white sticky top-0 z-30 no-print" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center gap-2">
-          <img src={settings.logo || DEFAULT_LOGO} className="h-9 rounded" alt={settings.company} />
+          <img src={settings.logo || DEFAULT_LOGO} className="rounded" alt={settings.company} style={{ height: 36, width: "auto" }} />
           <div className="text-xs opacity-80 ml-1">Site Pricing &amp; Takeoff</div>
         </div>
       </header>
