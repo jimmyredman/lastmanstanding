@@ -129,7 +129,8 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v14 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v15 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
   company: "RJG Builders",
@@ -362,7 +363,7 @@ function SettingsScreen(){
    ========================================================================= */
 function ItemModal({ open, onClose, item }){
   const { upsertItem, notify } = useStore();
-  const blank = { code: "", description: "", category: "", unit: "ea", rate: 0, supplier: "", notes: "" };
+  const blank = { code: "", description: "", category: "", type: "Material", unit: "ea", rate: 0, supplier: "", notes: "" };
   const [f, setF] = useState(blank);
   useEffect(() => { setF(item ? { ...blank, ...item } : blank); }, [item, open]);
   const set = (k, v) => setF(p => ({ ...p, [k]: v }));
@@ -370,10 +371,11 @@ function ItemModal({ open, onClose, item }){
   return (
     <Modal open={open} onClose={onClose} title={item ? "Edit price item" : "New price item"}>
       <div className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Field label="Code"><input className="inp" value={f.code} onChange={e => set("code", e.target.value)} /></Field>
-          <div className="col-span-2"><Field label="Category"><input className="inp" list="cats" value={f.category} onChange={e => set("category", e.target.value)} /></Field></div>
+          <Field label="Cost type"><select className="inp" value={f.type || "Material"} onChange={e => set("type", e.target.value)}>{COST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></Field>
         </div>
+        <Field label="Category"><input className="inp" list="cats" value={f.category} onChange={e => set("category", e.target.value)} /></Field>
         <Field label="Description *"><input className="inp" value={f.description} onChange={e => set("description", e.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Unit"><input className="inp" list="units" value={f.unit} onChange={e => set("unit", e.target.value)} /></Field>
@@ -394,15 +396,17 @@ function ImportModal({ open, onClose }){
   const { bulkUpsertItems, notify } = useStore();
   const [rows, setRows] = useState(null);     // array of arrays
   const [headers, setHeaders] = useState([]);
-  const [map, setMap] = useState({ code: "", description: "", category: "", unit: "", rate: "", supplier: "" });
+  const [map, setMap] = useState({ code: "", description: "", category: "", type: "", unit: "", rate: "", supplier: "" });
+  const [defaultType, setDefaultType] = useState("Material");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (!open) { setRows(null); setHeaders([]); } }, [open]);
 
   const guess = (hs) => {
     const find = (...keys) => { const i = hs.findIndex(h => keys.some(k => String(h).toLowerCase().replace(/[^a-z0-9]/g, "").includes(k))); return i === -1 ? "" : String(i); };
-    return { code: find("code", "sku", "itemno", "ref"), description: find("desc", "item", "name", "product"), category: find("categ", "group", "trade", "type"), unit: find("unit", "uom", "measure"), rate: find("rate", "cost", "price", "unitcost", "sell", "amount"), supplier: find("supplier", "vendor", "brand") };
+    return { code: find("code", "sku", "itemno", "ref"), description: find("desc", "item", "name", "product"), category: find("categ", "group", "trade", "classific"), type: find("costtype", "type", "kind"), unit: find("unit", "uom", "measure"), rate: find("rate", "cost", "price", "unitcost", "sell", "amount", "hourly"), supplier: find("supplier", "vendor", "brand") };
   };
+  const normType = (v) => { const s = String(v || "").toLowerCase(); return COST_TYPES.find(t => s.includes(t.toLowerCase())) || (/labou?r|hour|wage/.test(s) ? "Labour" : /equip|plant|machine/.test(s) ? "Equipment" : /crew|gang/.test(s) ? "Crew" : /sub|contractor/.test(s) ? "Subcontractor" : ""); };
 
   const onFile = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -428,6 +432,7 @@ function ImportModal({ open, onClose }){
       code: String(g(row, "code") || "").trim(),
       description: String(g(row, "description") || "").trim(),
       category: String(g(row, "category") || "").trim(),
+      type: (map.type !== "" && normType(g(row, "type"))) || defaultType,
       unit: String(g(row, "unit") || "ea").trim() || "ea",
       rate: num(g(row, "rate")),
       supplier: String(g(row, "supplier") || "").trim()
@@ -443,7 +448,7 @@ function ImportModal({ open, onClose }){
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-cost-register-template.xlsx");
   };
 
-  const fields = [["code", "Code"], ["description", "Description *"], ["category", "Category"], ["unit", "Unit"], ["rate", "Rate (ex GST)"], ["supplier", "Supplier"]];
+  const fields = [["code", "Code"], ["description", "Description *"], ["category", "Category"], ["type", "Cost type (optional)"], ["unit", "Unit"], ["rate", "Rate (ex GST)"], ["supplier", "Supplier"]];
 
   return (
     <Modal open={open} onClose={onClose} title="Import cost register" wide>
@@ -456,6 +461,12 @@ function ImportModal({ open, onClose }){
       ) : (
         <div className="space-y-4">
           <div className="text-sm font-semibold">{rows.length} rows found — map your columns:</div>
+          <div className="card p-3" style={{ background: "var(--bg)" }}>
+            <Field label={"Set all imported rows as cost type" + (map.type !== "" ? " (used only where the Cost type column is blank/unknown)" : "")}>
+              <select className="inp" value={defaultType} onChange={e => setDefaultType(e.target.value)}>{COST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select>
+            </Field>
+            <p className="text-xs mt-1" style={{ color: "var(--muted)" }}>Tip: importing your Labour / Equipment / Crews / Items files separately — set this to match each file.</p>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             {fields.map(([key, label]) => (
               <Field key={key} label={label}>
@@ -488,20 +499,23 @@ function PricingScreen(){
   const { items, deleteItem, clearItems, notify } = useStore();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
+  const [typeF, setTypeF] = useState("");
   const [editing, setEditing] = useState(undefined); // undefined=closed, null=new, obj=edit
   const [importing, setImporting] = useState(false);
 
   const cats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))].sort(), [items]);
+  const usedTypes = useMemo(() => COST_TYPES.filter(t => items.some(i => (i.type || "Material") === t)), [items]);
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return items.filter(i => (!cat || i.category === cat) && (!s || (i.description + " " + i.code + " " + i.supplier).toLowerCase().includes(s)))
+    return items.filter(i => (!cat || i.category === cat) && (!typeF || (i.type || "Material") === typeF) && (!s || (i.description + " " + i.code + " " + i.supplier).toLowerCase().includes(s)))
       .sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.description || "").localeCompare(b.description || ""));
-  }, [items, q, cat]);
+  }, [items, q, cat, typeF]);
 
   const exportXlsx = () => {
-    const ws = XLSX.utils.json_to_sheet(items.map(i => ({ Code: i.code, Description: i.description, Category: i.category, Unit: i.unit, "Rate (ex GST)": i.rate, Supplier: i.supplier })));
+    const ws = XLSX.utils.json_to_sheet(items.map(i => ({ Code: i.code, Description: i.description, Category: i.category, "Cost type": i.type || "Material", Unit: i.unit, "Rate (ex GST)": i.rate, Supplier: i.supplier })));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-cost-register.xlsx");
   };
+  const TYPE_COLOR = { Material: "#2563eb", Labour: "#16a34a", Equipment: "#ea580c", Plant: "#ea580c", Crew: "#7c3aed", Subcontractor: "#0891b2", Prelim: "#64748b", Other: "#64748b" };
 
   return (
     <div className="max-w-4xl mx-auto p-4 pb-28">
@@ -519,7 +533,11 @@ function PricingScreen(){
           <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }}><IcSearch size={16} /></span>
           <input className="inp pl-9" placeholder="Search code, description, supplier…" value={q} onChange={e => setQ(e.target.value)} />
         </div>
-        <select className="inp w-40" value={cat} onChange={e => setCat(e.target.value)}>
+        <select className="inp w-36" value={typeF} onChange={e => setTypeF(e.target.value)}>
+          <option value="">All types</option>
+          {usedTypes.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="inp w-36" value={cat} onChange={e => setCat(e.target.value)}>
           <option value="">All categories</option>
           {cats.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
@@ -532,12 +550,12 @@ function PricingScreen(){
           <div className="scroll-x">
             <table className="w-full text-sm min-w-[560px]">
               <thead><tr style={{ background: "var(--bg)", color: "var(--muted)" }} className="text-xs uppercase tracking-wide">
-                <th className="text-left px-3 py-2">Code</th><th className="text-left px-3 py-2">Description</th><th className="text-left px-3 py-2">Cat</th><th className="text-center px-2 py-2">Unit</th><th className="text-right px-3 py-2">Rate (ex)</th><th className="px-2"></th>
+                <th className="text-left px-3 py-2">Type</th><th className="text-left px-3 py-2">Description</th><th className="text-left px-3 py-2">Cat</th><th className="text-center px-2 py-2">Unit</th><th className="text-right px-3 py-2">Rate (ex)</th><th className="px-2"></th>
               </tr></thead>
               <tbody>
                 {filtered.map(i => (
                   <tr key={i.id} className="border-t" style={{ borderColor: "var(--line)" }}>
-                    <td className="px-3 py-2 font-mono text-xs" style={{ color: "var(--muted)" }}>{i.code}</td>
+                    <td className="px-3 py-2"><span className="text-white text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: TYPE_COLOR[i.type] || "#64748b" }}>{(i.type || "Material").slice(0,4)}</span>{i.code && <div className="font-mono text-[10px] mt-0.5" style={{ color: "var(--muted)" }}>{i.code}</div>}</td>
                     <td className="px-3 py-2">{i.description}{i.supplier && <div className="text-xs" style={{ color: "var(--muted)" }}>{i.supplier}</div>}</td>
                     <td className="px-3 py-2 text-xs">{i.category}</td>
                     <td className="px-2 py-2 text-center text-xs">{i.unit}</td>
@@ -984,8 +1002,9 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     const drawWall = (pts, curved) => {
       ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.lineCap = "round";
       if (curved) smoothPath(ctx, pts); else { ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); }
-      ctx.fillStyle = brand; [pts[0], pts[pts.length-1]].forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
-      const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); }
+      ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      if (curved){ const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); } }
+      else { for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); } }   // per-segment lengths
     };
     rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r.points, r.name));
     stamps.forEach(s => drawStamp(ctx, s, brand));
@@ -1092,6 +1111,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
   const renameShape = (id, name) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, name } : r) });
+  const clearAll = () => { if ((rooms.length || stamps.length) && confirm("Clear everything on this floor plan?")){ setDraft(null); setSel(null); onChange({ ...plan, rooms: [], stamps: [], snapshot: undefined }); } };
   const delStamp = (id) => onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) });
   const rotStamp = (id, delta) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: (((s.angle||0)+delta)%360+360)%360 } : s) });
   const setAngle = (id, deg) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((Math.round(num(deg))%360)+360)%360 } : s) });
@@ -1122,6 +1142,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap grid</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={labels} onChange={e => setLabels(e.target.checked)} /> Labels</label>
+        {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-ghost !py-1 mt-3 ml-auto" onClick={clearAll}><IcTrash size={14} /> Clear plan</button>}
       </div>
       <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
