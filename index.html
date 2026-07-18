@@ -173,16 +173,11 @@ function svgIcon(children, viewBox = "0 0 24 24") {
   };
 }
 
-const Flame = svgIcon(<>
-  <path d="M12 21c-4 0-7-2.7-7-6.5C5 10.3 8 7.3 9 3c1 2 1 4 3 4s2-2 3-4c1 4.3 4 7.3 4 11.5C19 18.3 16 21 12 21z" />
-  <path d="M12 17a2.4 2.4 0 01-2.4-2.4c0-1.4.9-2.1 1.5-3.1.3.7.8 1.2 1.3 1.2s1-.5 1.3-1.2c.6 1 1.6 1.7 1.6 3.1A2.4 2.4 0 0112 17z" fill="currentColor" stroke="none" opacity="0.55" />
-</>);
 const Users = svgIcon(<>
   <circle cx="9" cy="8" r="3" /><path d="M2.5 20c0-3.6 2.9-6.2 6.5-6.2s6.5 2.6 6.5 6.2" />
   <circle cx="17" cy="8.5" r="2.3" /><path d="M15.5 14c2.7.3 5 2.4 5 6" />
 </>);
 const Lock = svgIcon(<><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></>);
-const CreditCard = svgIcon(<><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /><circle cx="17" cy="15" r="1" fill="currentColor" stroke="none" /></>);
 const ShieldAlert = svgIcon(<><path d="M12 3l7 3v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z" /><line x1="12" y1="8" x2="12" y2="13" /><circle cx="12" cy="16" r="0.6" fill="currentColor" stroke="none" /></>);
 const Check = svgIcon(<polyline points="4 12 9 17 20 6" />);
 const X = svgIcon(<><line x1="5" y1="5" x2="19" y2="19" /><line x1="19" y1="5" x2="5" y2="19" /></>);
@@ -191,8 +186,6 @@ const ChevronLeft = svgIcon(<polyline points="15 5 8 12 15 19" />);
 const ChevronDown = svgIcon(<polyline points="6 9 12 15 18 9" />);
 const Clock = svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 15.5 14" /></>);
 const Crown = svgIcon(<path d="M4 18h16l-1.4-8-4.1 3-2.5-5-2.5 5-4.1-3L4 18z" />);
-const ArrowDownCircle = svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="8 11 12 15 16 11" /><line x1="12" y1="8" x2="12" y2="15" /></>);
-const ArrowUpCircle = svgIcon(<><circle cx="12" cy="12" r="9" /><polyline points="8 13 12 9 16 13" /><line x1="12" y1="16" x2="12" y2="9" /></>);
 const LogIn = svgIcon(<><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></>);
 const LogOut = svgIcon(<><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>);
 const UserPlus = svgIcon(<><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6" /><line x1="18" y1="8" x2="18" y2="14" /><line x1="15" y1="11" x2="21" y2="11" /></>);
@@ -216,7 +209,6 @@ function NavSvg({ active, children }) {
 const NavTrophy = ({ active }) => (<NavSvg active={active}><path d="M8 3h8v4a4 4 0 01-8 0V3z"/><path d="M8 4H5.5A2.5 2.5 0 008 8.5"/><path d="M16 4h2.5A2.5 2.5 0 0116 8.5"/><path d="M12 11v4"/><path d="M9.5 20h5"/><path d="M10.5 15h3l1 5h-5l1-5z"/></NavSvg>);
 const NavTarget = ({ active }) => (<NavSvg active={active}><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></NavSvg>);
 const NavBars = ({ active }) => (<NavSvg active={active}><rect x="4" y="12" width="4" height="8" rx="1"/><rect x="10" y="5" width="4" height="15" rx="1"/><rect x="16" y="9" width="4" height="11" rx="1"/></NavSvg>);
-const NavWallet = ({ active }) => (<NavSvg active={active}><rect x="3" y="6.5" width="18" height="12" rx="2"/><path d="M3 10h18"/><circle cx="17" cy="14.2" r="1.1" fill="currentColor" stroke="none"/></NavSvg>);
 const NavGear = ({ active }) => (<NavSvg active={active}><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></NavSvg>);
 const NavClipboard = ({ active }) => (<NavSvg active={active}><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9.5 4V3.2A1.2 1.2 0 0110.7 2h2.6a1.2 1.2 0 011.2 1.2V4"/><path d="M9 12l2 2 4-4"/></NavSvg>);
 
@@ -352,7 +344,19 @@ const NRL_ROUNDS = [
 ];
 function getRound(roundId) { return NRL_ROUNDS.find((r) => r.id === roundId) || NRL_ROUNDS[0]; }
 const ALL_TEAMS = [...new Set(NRL_ROUNDS.flatMap((r) => r.fixtures.flatMap((f) => [f.home, f.away])))];
-const PLATFORM_FEE_RATE = 0.10;
+
+// Fixed tier presets. The host pays the unlock price once (outside the app) to run a
+// competition at that size; the app itself handles NO money — just picks, eliminations
+// and standings. maxPlayers = null means unlimited (Platinum, "100+"). `premium` gets the
+// gold/violet treatment on the join card.
+const TIER_PRESETS = [
+  { id: "bronze",   name: "Bronze",   unlockPrice: 10,  maxPlayers: 5,    color: "#cd7f32", premium: false },
+  { id: "silver",   name: "Silver",   unlockPrice: 50,  maxPlayers: 15,   color: "#c0c0c0", premium: false },
+  { id: "gold",     name: "Gold",     unlockPrice: 100, maxPlayers: 30,   color: "#ffcf4a", premium: true },
+  { id: "platinum", name: "Platinum", unlockPrice: 200, maxPlayers: null, color: "#7cc4ff", premium: true },
+];
+function getTierPreset(id) { return TIER_PRESETS.find((t) => t.id === id) || TIER_PRESETS[0]; }
+function tierCapacityLabel(preset) { return preset.maxPlayers === null ? "100+ players" : `up to ${preset.maxPlayers} players`; }
 
 const DEFAULT_RULES = `HOW TO PLAY
 
@@ -368,9 +372,9 @@ Once you're eliminated, you're out of that competition — no buy-backs. You're 
 
 Entries close once picks lock for the round — you can't join a competition after that point. You'll need to wait for the next one.
 
-A fee of 10% will be taken from the total prize money for operating fees to LMS. Prize pool figures shown in the app already reflect this.
+Any prize pool is organised and paid out by your host outside the app — the app just tracks picks, eliminations and standings. Check with your host on the buy-in and payout for your competition.
 
-There's real money on the line, so set a reminder and don't miss your window.`;
+Set a reminder and don't miss your window.`;
 
 const TEAM_COLORS = {
   Storm: "#4B2E83", Broncos: "#6E0E20", Knights: "#1B3A6B", Sharks: "#0098DB",
@@ -713,7 +717,7 @@ function AuthScreen() {
       if (mode === "create") {
         const cred = await auth.createUserWithEmailAndPassword(email, password);
         await db.collection("users").doc(cred.user.uid).set({
-          name, email, walletBalance: 0, accent: "teal", role: "player",
+          name, email, accent: "teal", role: "player",
           ageVerified: false, avatarPreset: null, createdAt: FieldValue.serverTimestamp(),
         });
       } else {
@@ -876,11 +880,11 @@ function HowToPlayScreen({ onAccept }) {
           <p>• If your team loses, or draws, you're eliminated that round.</p>
           <p>• Once you're out, you're out — no buy-backs.</p>
           <p>• If literally everyone loses in the same round, nobody is eliminated and the competition continues — as per the rules.</p>
-          <p>• Your entry stays in the prize pool for the remaining players even after you're eliminated.</p>
+          <p>• Any buy-in and prize pool are organised by your host outside the app — the app just tracks picks and standings.</p>
         </div>
         <label className="flex items-start gap-3 mt-6 rounded-xl border adapt-border-10 bg-neutral-800 p-4 cursor-pointer">
           <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="text-xs text-neutral-300">I understand how to play, prior to depositing money.</span>
+          <span className="text-xs text-neutral-300">I understand how to play.</span>
         </label>
         <button disabled={!checked} onClick={onAccept} className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
           Continue
@@ -912,16 +916,19 @@ function SportScreen({ userName, onPick, onBack, showBack }) {
 }
 
 function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
-  const isHigh = tier.buyIn >= 50;
+  const preset = getTierPreset(tier.tierLevel);
+  const isHigh = preset.premium;
+  const maxPlayers = preset.maxPlayers;
+  const spotsLeft = maxPlayers === null ? null : Math.max(0, maxPlayers - tier.entries);
+  const isFull = spotsLeft === 0;
   const closeTime = tier.lockTime || tier.startTime; // entries close at lockout, which is always before kickoff
   const msToClose = closeTime.getTime() - now.getTime();
-  const entriesClosed = msToClose <= 0;
+  const entriesClosed = msToClose <= 0 || isFull;
   const isUrgent = !entriesClosed && msToClose <= 1000 * 60 * 60 * 6;
   const started = now.getTime() >= tier.startTime.getTime();
   const countdown = formatCountdown(msToClose);
   const [rulesOpen, setRulesOpen] = useState(false);
   const roundLabel = getRound(tier.roundId).label;
-  const netPool = tier.pool * (1 - PLATFORM_FEE_RATE);
   return (
     <div className={`relative overflow-hidden rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
       {joined && (
@@ -931,17 +938,16 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
           </div>
         </div>
       )}
-      {isHigh && (<div className="inline-flex items-center gap-1 mb-2 rounded-full bg-violet-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white"><Crown size={12} /> High Stakes</div>)}
+      <div className="inline-flex items-center gap-1 mb-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-950" style={{ backgroundColor: preset.color }}><Crown size={12} /> {preset.name}</div>
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
-      <p className="text-sm text-neutral-400 mt-1">${tier.buyIn} buy-in · winner takes the pool</p>
+      <p className="text-sm text-neutral-400 mt-1">{preset.name} tier · {tierCapacityLabel(preset)} · prize pool run by your host</p>
       <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : isUrgent ? "bg-rose-500/15 text-rose-300 animate-pulse" : "bg-amber-400/10 text-amber-300"}`}>
-        <Clock size={13} />{entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : isUrgent ? `Locking in ${countdown} — last chance to join!` : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
+        <Clock size={13} />{isFull && msToClose > 0 ? "Competition full — no spots left" : entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : isUrgent ? `Locking in ${countdown} — last chance to join!` : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
       </div>
       <div className={`mt-4 flex items-center justify-around rounded-xl bg-black/30 border ${PANEL_BORDER} py-4`}>
-        <Scoreboard value={`$${netPool.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
-        <div className="h-10 w-px bg-white/10" /><Scoreboard value={tier.entries} label="Entries" accent={isHigh ? "text-violet-300" : theme.text} />
+        <Scoreboard value={tier.entries} label="Entries" accent={isHigh ? "text-violet-300" : theme.text} />
+        <div className="h-10 w-px bg-white/10" /><Scoreboard value={maxPlayers === null ? "∞" : spotsLeft} label={maxPlayers === null ? "Capacity" : "Spots Left"} accent="gold" />
       </div>
-      <p className="text-[10px] text-neutral-500 text-center mt-1">Prize pool shown after 10% LMS operating fee</p>
       {tier.rules && (
         <div className="mt-4">
           <button onClick={() => setRulesOpen((o) => !o)} className="flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
@@ -965,139 +971,26 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
       ) : (
         <button onClick={() => onJoin(tier)} disabled={entriesClosed}
           className={`mt-5 w-full rounded-xl py-3 text-sm font-semibold transition ${entriesClosed ? "bg-neutral-700 text-neutral-500 cursor-default" : isHigh ? "bg-violet-500 text-white hover:bg-violet-400" : `${theme.bg} text-neutral-950 ${theme.bgHover}`}`}>
-          {entriesClosed ? "Entries closed" : `Enter for $${tier.buyIn}`}
+          {isFull && msToClose > 0 ? "Competition full" : entriesClosed ? "Entries closed" : "Join competition"}
         </button>
       )}
     </div>
   );
 }
 
-function EntryConfirmModal({ tier, balance, onClose, onConfirm, onGoToWallet, theme, error }) {
-  const insufficient = balance < tier.buyIn;
+function EntryConfirmModal({ tier, onClose, onConfirm, theme, error }) {
+  const preset = getTierPreset(tier.tierLevel);
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
       <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
-        <div className="flex items-center justify-between mb-4"><h4 className="text-slate-100 font-semibold">Confirm your entry</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
-        <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 mb-3 flex items-center justify-between`}><span className="text-neutral-300 text-sm">{tier.name} entry</span><span className="text-slate-100 font-scoreboard text-2xl">${tier.buyIn}.00</span></div>
-        <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 mb-4 flex items-center justify-between`}><span className="text-neutral-300 text-sm">Wallet balance</span><span className={`font-scoreboard text-2xl ${insufficient ? "text-rose-400" : theme.text}`}>${balance.toFixed(2)}</span></div>
+        <div className="flex items-center justify-between mb-4"><h4 className="text-slate-100 font-semibold">Join this competition?</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
+        <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 mb-3`}>
+          <div className="flex items-center justify-between"><span className="text-neutral-300 text-sm">{tier.name}</span><span className="text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 text-neutral-950" style={{ backgroundColor: preset.color }}>{preset.name}</span></div>
+          <p className="text-xs text-neutral-500 mt-2">{tierCapacityLabel(preset)} · {tier.entries} entered so far</p>
+        </div>
+        <p className="text-xs text-neutral-400 mb-4">Any buy-in and prize pool for this competition are organised by your host outside the app. The app just tracks your picks and standings.</p>
         {error && <p className="text-xs text-rose-400 mb-3">{error}</p>}
-        {insufficient ? (<><p className="text-sm text-neutral-400 mb-3">Your balance is a bit short. Top up your wallet to enter.</p><button onClick={onGoToWallet} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>Go to Wallet</button></>) : (
-          <button onClick={onConfirm} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>Confirm — deduct ${tier.buyIn} from wallet</button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function DepositModal({ onClose, onConfirm, theme }) {
-  const [amount, setAmount] = useState(50);
-  const [step, setStep] = useState("method"); // method -> applepay | cardform -> processing
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCvc, setCardCvc] = useState("");
-  const presets = [20, 50, 100, 250];
-
-  const finish = async () => { await onConfirm(amount); playCashSound(); onClose(); };
-  const payApplePay = () => { setStep("processing-ap"); setTimeout(finish, 1100); };
-  const cardValid = cardNumber.replace(/\s/g, "").length >= 12 && cardExpiry.length >= 4 && cardCvc.length >= 3;
-  const payCard = () => { setStep("processing-card"); setTimeout(finish, 1100); };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
-      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
-        <div className="flex items-center justify-between mb-3"><h4 className="text-slate-100 font-semibold">Add funds</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
-        <p className="text-[10px] text-amber-300 font-semibold mb-4 leading-relaxed">FOR BETA MODE THIS IS ONLY A SIMULATION, NO REAL MONEY WILL BE USED.</p>
-
-        {step === "method" && (
-          <>
-            <div className="grid grid-cols-4 gap-2 mb-4">{presets.map((p) => (<button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300"}`}>${p}</button>))}</div>
-            <div className="space-y-2">
-              <button onClick={payApplePay} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold bg-black text-white">
-                 Pay — Apple Pay
-              </button>
-              <button onClick={() => setStep("cardform")} className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold bg-neutral-700 text-neutral-200">
-                <CreditCard size={16} /> Add Credit / Debit Card
-              </button>
-            </div>
-          </>
-        )}
-
-        {step === "cardform" && (
-          <>
-            <div className="space-y-2 mb-4">
-              <input value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="Card number" inputMode="numeric" maxLength={19}
-                className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2.5 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
-              <div className="flex gap-2">
-                <input value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="MM/YY" maxLength={5}
-                  className={`flex-1 rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2.5 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
-                <input value={cardCvc} onChange={(e) => setCardCvc(e.target.value)} placeholder="CVC" inputMode="numeric" maxLength={4}
-                  className={`flex-1 rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2.5 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
-              </div>
-              <p className="text-[10px] text-neutral-500">Simulated card entry — nothing here is transmitted or stored.</p>
-            </div>
-            <div className="grid grid-cols-4 gap-2 mb-4">{presets.map((p) => (<button key={p} onClick={() => setAmount(p)} className={`rounded-lg py-2 text-sm font-semibold border ${amount === p ? `${theme.border} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300"}`}>${p}</button>))}</div>
-            <div className="flex gap-2">
-              <button onClick={() => setStep("method")} className="flex-1 rounded-xl border adapt-border-10 text-neutral-300 py-3 text-sm">Back</button>
-              <button onClick={payCard} disabled={!cardValid} className={`flex-1 rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>Add ${amount}</button>
-            </div>
-          </>
-        )}
-
-        {(step === "processing-ap" || step === "processing-card") && (
-          <div className="py-8 text-center">
-            <div className="mx-auto mb-3 h-8 w-8 rounded-full border-2 border-teal-400 border-t-transparent animate-spin" />
-            <p className="text-sm text-neutral-300">{step === "processing-ap" ? "Confirming with Apple Pay…" : "Processing card payment…"}</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function WithdrawModal({ balance, onClose, onConfirm, theme }) {
-  const [amount, setAmount] = useState("");
-  const [processing, setProcessing] = useState(false);
-  const num = parseFloat(amount) || 0;
-  const valid = num > 0 && num <= balance;
-  const go = async () => { setProcessing(true); await onConfirm(num); playCashSound(); setProcessing(false); onClose(); };
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
-      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
-        <div className="flex items-center justify-between mb-4"><h4 className="text-slate-100 font-semibold">Withdraw (tracked balance)</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
-        <p className="text-[10px] text-amber-300 font-semibold mb-3">FOR BETA MODE THIS IS ONLY A SIMULATION, NO REAL MONEY WILL BE USED.</p>
-        <p className="text-xs text-neutral-500 mb-3">Available balance: ${balance.toFixed(2)}</p>
-        <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" inputMode="decimal" className={`w-full rounded-xl bg-black/30 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400 mb-4`} />
-        <button disabled={!valid || processing} onClick={go} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>{processing ? "Processing…" : `Withdraw $${num > 0 ? num.toFixed(2) : "0.00"}`}</button>
-      </div>
-    </div>
-  );
-}
-
-function WalletTab({ balance, transactions, onDeposit, onWithdraw, theme }) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 px-4 py-3">
-        <p className="text-[11px] text-amber-300 font-semibold text-center leading-relaxed">FOR BETA MODE THIS IS ONLY A SIMULATION, NO REAL MONEY WILL BE USED.</p>
-      </div>
-      <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-6 text-center`}>
-        <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Wallet balance</div>
-        <div className={`font-scoreboard text-6xl ${theme.text} tabular-nums`}>${balance.toFixed(2)}</div>
-        <div className="flex gap-3 mt-5">
-          <button onClick={onDeposit} className={`flex-1 flex items-center justify-center gap-2 rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}><ArrowDownCircle size={16} /> Deposit</button>
-          <button onClick={onWithdraw} className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-neutral-700 hover:bg-neutral-600 text-slate-200 font-semibold py-3 text-sm"><ArrowUpCircle size={16} /> Withdraw</button>
-        </div>
-      </div>
-      <div>
-        <h4 className="text-sm font-semibold text-neutral-300 mb-2">Recent activity</h4>
-        <div className={`rounded-xl border ${PANEL_BORDER} overflow-hidden`}>
-          {transactions.length === 0 && <div className="px-4 py-6 text-center text-sm text-neutral-500">No activity yet.</div>}
-          {transactions.map((t) => (
-            <div key={t.id} className="flex items-center justify-between px-4 py-3 text-sm border-t adapt-border-5 first:border-t-0">
-              <div className="flex items-center gap-2">{t.amount > 0 ? <ArrowDownCircle size={14} className={theme.text} /> : <ArrowUpCircle size={14} className="text-rose-400" />}<span className="text-neutral-300">{t.label}</span></div>
-              <span className={t.amount > 0 ? theme.text : "text-rose-400"}>{t.amount > 0 ? "+" : "-"}${Math.abs(t.amount).toFixed(2)}</span>
-            </div>
-          ))}
-        </div>
+        <button onClick={onConfirm} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>Confirm — I'm in</button>
       </div>
     </div>
   );
@@ -1125,9 +1018,9 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
 function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving, stamping }) {
   if (eliminated) {
     const copy = {
-      eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who takes the pool." },
+      eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who's last standing." },
       kicked: { title: "You've been removed from this competition", body: "Your host has removed you from this competition. Reach out to them if you think this is a mistake." },
-      refunded: { title: "This competition was cancelled", body: "Your entry was refunded to your wallet. Head to Compete to join another one." },
+      cancelled: { title: "This competition was cancelled", body: "Your host cancelled this competition. Head to Compete to join another one." },
     }[entryStatus] || { title: "You're out this round", body: "You're no longer active in this competition." };
     return (<div className="rounded-xl border border-rose-500/30 bg-rose-950/30 p-5 text-center"><ShieldAlert className="mx-auto mb-2 text-rose-400" size={28} /><p className="text-slate-200 font-semibold">{copy.title}</p><p className="text-neutral-500 text-sm mt-1">{copy.body}</p></div>);
   }
@@ -1211,7 +1104,7 @@ function ConfettiBurst() {
   );
 }
 
-function StandingsTab({ players, locked, poolAmount, lockCountdown, lockUrgent, entryCount, winnerUid, winnerName, winnerPayout, myUid }) {
+function StandingsTab({ players, locked, lockCountdown, lockUrgent, entryCount, winnerUid, winnerName, myUid }) {
   const grouped = useMemo(() => {
     const withPick = players.filter((p) => p.pick);
     const noPick = players.filter((p) => !p.pick);
@@ -1237,19 +1130,19 @@ function StandingsTab({ players, locked, poolAmount, lockCountdown, lockUrgent, 
                   Congratulations — you won!
                 </div>
               </div>
-              <p className="text-sm text-amber-200 mt-4 relative">${(winnerPayout || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} has been added to your wallet.</p>
+              <p className="text-sm text-amber-200 mt-4 relative">You're the last one standing. Your host will sort out the prize pool with you.</p>
             </>
           ) : (
             <p className="text-sm text-slate-200 flex items-center justify-center gap-2">
               <Crown size={16} className="text-amber-400 crown-glow" />
-              <span><span className="font-semibold">{winnerName || "A player"}</span> won the pool — ${(winnerPayout || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}!</span>
+              <span><span className="font-semibold">{winnerName || "A player"}</span> is the last one standing!</span>
             </p>
           )}
         </div>
       )}
       <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 flex items-center justify-around`}>
         <Scoreboard value={players.filter((p) => p.status !== "L").length} label="Still Alive" accent="text-teal-300" />
-        <div className="h-10 w-px bg-white/10" /><Scoreboard value={`$${poolAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} label="Prize Pool" accent="gold" />
+        <div className="h-10 w-px bg-white/10" /><Scoreboard value={entryCount || players.length} label="Entries" accent="gold" />
       </div>
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2">{locked ? <Eye size={14} className="text-teal-300" /> : <EyeOff size={14} className="text-neutral-500" />}This round's tips</h4>
@@ -1507,11 +1400,11 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
                   <div className="text-[10px] text-neutral-500">
                     {h.status === "eliminated" && "Eliminated"}
                     {h.status === "kicked" && "Removed by host"}
-                    {h.status === "refunded" && "Refunded — competition cancelled"}
+                    {h.status === "cancelled" && "Competition cancelled"}
                   </div>
                 </div>
-                <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${h.status === "refunded" ? "bg-sky-400/10 text-sky-300" : h.status === "kicked" ? "bg-rose-500/10 text-rose-400" : "bg-neutral-700 text-neutral-300"}`}>
-                  {h.status === "refunded" ? "Refunded" : h.status === "kicked" ? "Kicked" : "Lost"}
+                <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${h.status === "cancelled" ? "bg-sky-400/10 text-sky-300" : h.status === "kicked" ? "bg-rose-500/10 text-rose-400" : "bg-neutral-700 text-neutral-300"}`}>
+                  {h.status === "cancelled" ? "Cancelled" : h.status === "kicked" ? "Kicked" : "Lost"}
                 </span>
               </div>
             ))}
@@ -1535,7 +1428,7 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
 
 function HostTierForm({ initial, onSave, onCancel, theme }) {
   const [name, setName] = useState(initial?.name || "");
-  const [buyIn, setBuyIn] = useState(initial?.buyIn ?? 5);
+  const [tierLevel, setTierLevel] = useState(initial?.tierLevel || "bronze");
   const [roundId, setRoundId] = useState(initial?.roundId || NRL_ROUNDS[0].id);
   const [lockAt, setLockAt] = useState(() => {
     if (initial?.lockTime) return toDatetimeLocalValue(initial.lockTime);
@@ -1543,7 +1436,7 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
     return toDatetimeLocalValue(new Date(round.firstKickoff.getTime() - 1000 * 60 * 60 * 24));
   });
   const [rules, setRules] = useState(initial ? (initial.rules || "") : DEFAULT_RULES);
-  const canSave = name && buyIn > 0 && roundId && lockAt;
+  const canSave = name && tierLevel && roundId && lockAt;
   const selectedRound = getRound(roundId);
   const roundAlreadyStarted = selectedRound.firstKickoff.getTime() <= Date.now();
 
@@ -1556,7 +1449,22 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
   return (
     <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 space-y-3`}>
       <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Competition name" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
-      <div><label className="text-[11px] text-neutral-500 mb-1 block">Buy-in ($)</label><input value={buyIn} onChange={(e) => setBuyIn(Number(e.target.value))} type="number" min="1" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} /></div>
+      <div>
+        <label className="text-[11px] text-neutral-500 mb-1 block">Tier (sets max players — unlock price paid outside the app)</label>
+        <div className="grid grid-cols-2 gap-2">
+          {TIER_PRESETS.map((p) => {
+            const active = tierLevel === p.id;
+            return (
+              <button key={p.id} type="button" onClick={() => setTierLevel(p.id)}
+                className={`rounded-lg border px-3 py-2 text-left ${active ? "bg-black/40" : "adapt-border-10 bg-black/20"}`}
+                style={active ? { borderColor: p.color, boxShadow: `0 0 0 1px ${p.color}` } : {}}>
+                <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-100"><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: p.color }} />{p.name}</div>
+                <div className="text-[10px] text-neutral-500 mt-0.5">${p.unlockPrice} · {tierCapacityLabel(p)}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <div>
         <label className="text-[11px] text-neutral-500 mb-1 block">Select round to start</label>
         <select value={roundId} onChange={(e) => onRoundChange(e.target.value)} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`}>
@@ -1574,7 +1482,7 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
       <div><label className="text-[11px] text-neutral-500 mb-1 block">Rules / description</label><textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={4} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none`} /></div>
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel} className="flex-1 rounded-lg border adapt-border-10 text-neutral-300 py-2 text-sm">Cancel</button>
-        <button disabled={!canSave} onClick={() => onSave({ name, buyIn, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
+        <button disabled={!canSave} onClick={() => onSave({ name, tierLevel, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
       </div>
     </div>
   );
@@ -1794,10 +1702,11 @@ function InviteModal({ tier, onClose, theme }) {
   const sendInvite = () => {
     const hoursLeft = Math.max(1, Math.round((tier.lockTime.getTime() - Date.now()) / (1000 * 60 * 60)));
     const roundLabel = getRound(tier.roundId).label;
+    const preset = getTierPreset(tier.tierLevel);
     const baseUrl = window.location.origin + window.location.pathname;
-    const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&buyIn=${tier.buyIn}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft}`;
+    const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&tier=${preset.id}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft}`;
     const subject = "You're invited to play Last Man Standing!";
-    const body = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a $${tier.buyIn} buy-in competition. ${roundLabel} locks in about ${hoursLeft} hours, so don't wait around!\n\nTap the link below to see the competition and jump in:\n${inviteUrl}\n\nHurry — last one standing takes the pool!`;
+    const body = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a ${preset.name} tier competition (${tierCapacityLabel(preset)}). ${roundLabel} locks in about ${hoursLeft} hours, so don't wait around!\n\nTap the link below to see the competition and jump in:\n${inviteUrl}\n\nHurry — be the last one standing!`;
     const list = emails.split(/[,;\n]/).map((e) => e.trim()).filter(Boolean);
     const mailto = `mailto:${encodeURIComponent(list.join(","))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
@@ -1821,7 +1730,7 @@ function InviteModal({ tier, onClose, theme }) {
   );
 }
 
-function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancelRefund, rollingEarnings, now, theme }) {
+function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [cancelling, setCancelling] = useState(null);
@@ -1829,11 +1738,6 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
   const [invitingTierId, setInvitingTierId] = useState(null);
   return (
     <div className="space-y-4 pb-6">
-      <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 text-center`}>
-        <div className="text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Rolling LMS Earnings</div>
-        <div className="font-scoreboard text-4xl text-amber-300 tabular-nums">${rollingEarnings.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
-        <p className="text-[10px] text-neutral-500 mt-1">10% platform fee across all active competitions</p>
-      </div>
       {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ Create new competition</button>)}
       {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={async (data) => { await onCreate(data); setCreating(false); }} />)}
       <div className="space-y-3">
@@ -1849,7 +1753,7 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-slate-100 font-medium">{tier.name}{tier.cancelled && <span className="ml-2 text-[10px] text-rose-400">(Cancelled)</span>}</div>
-                    <div className="text-xs text-neutral-500">${tier.buyIn} buy-in · starts {tier.startLabel} · {tier.entries} entered</div>
+                    <div className="text-xs text-neutral-500">{getTierPreset(tier.tierLevel).name} · {tier.entries}{getTierPreset(tier.tierLevel).maxPlayers === null ? "" : `/${getTierPreset(tier.tierLevel).maxPlayers}`} entered · starts {tier.startLabel}</div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setEditingId(tier.id)} className="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600"><Pencil size={14} /></button>
@@ -1872,15 +1776,15 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                     <HostResultsPanel tier={tier} now={now} theme={theme} />
                     {cancelling === tier.id ? (
                       <div className="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3">
-                        <p className="text-[11px] text-rose-300 mb-2">This refunds every active entrant's buy-in and closes the competition. This can't be undone.</p>
+                        <p className="text-[11px] text-rose-300 mb-2">This closes the competition for everyone still in it. Sort out any buy-in refunds with your entrants directly. This can't be undone.</p>
                         <div className="flex gap-2">
                           <button onClick={() => setCancelling(null)} className="flex-1 rounded-lg border adapt-border-10 text-neutral-300 py-1.5 text-xs">Never mind</button>
-                          <button onClick={async () => { await onCancelRefund(tier); setCancelling(null); }} className="flex-1 rounded-lg bg-rose-500 text-white py-1.5 text-xs font-semibold">Confirm cancel &amp; refund</button>
+                          <button onClick={async () => { await onCancel(tier); setCancelling(null); }} className="flex-1 rounded-lg bg-rose-500 text-white py-1.5 text-xs font-semibold">Confirm cancel</button>
                         </div>
                       </div>
                     ) : (
                       <button onClick={() => setCancelling(tier.id)} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 font-semibold py-2.5 text-sm">
-                        <Ban size={15} /> Cancel competition &amp; refund everyone
+                        <Ban size={15} /> Cancel competition
                       </button>
                     )}
                   </>
@@ -1909,10 +1813,6 @@ function AppShell({ user }) {
   const [sport, setSport] = useState(null);
   const [tab, setTab] = useState("compete");
   const [now, setNow] = useState(new Date());
-
-  const [transactions, setTransactions] = useState([]);
-  const [showDeposit, setShowDeposit] = useState(false);
-  const [showWithdraw, setShowWithdraw] = useState(false);
 
   const [rawTiers, setRawTiers] = useState([]);
   const [entryCounts, setEntryCounts] = useState({});
@@ -1988,12 +1888,6 @@ function AppShell({ user }) {
   }, [user.uid]);
 
   useEffect(() => {
-    const unsub = db.collection("users").doc(user.uid).collection("transactions").orderBy("createdAt", "desc").limit(20)
-      .onSnapshot((snap) => setTransactions(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    return unsub;
-  }, [user.uid]);
-
-  useEffect(() => {
     const unsub = db.collection("tiers").onSnapshot((snap) => {
       setRawTiers(snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, startTime: data.startTime.toDate(), lockTime: data.lockTime ? data.lockTime.toDate() : null }; }));
     });
@@ -2007,7 +1901,7 @@ function AppShell({ user }) {
   }, [rawTiers.map((t) => t.id).join(","), user.uid]);
 
   const joinedTierIds = Object.keys(myEntries);
-  const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0, pool: (entryCounts[t.id] || 0) * t.buyIn })), [rawTiers, entryCounts]);
+  const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0 })), [rawTiers, entryCounts]);
   // viewingTierId is which joined competition you're actively looking at on My Pick / Standings —
   // falls back to whichever joined competition comes first if nothing's been explicitly chosen yet.
   const joinedTierId = (viewingTierId && myEntries[viewingTierId]) ? viewingTierId : (joinedTierIds[0] || null);
@@ -2107,16 +2001,14 @@ function AppShell({ user }) {
 
   const confirmEntry = async () => {
     const tier = entryTarget; setEntryError("");
+    const preset = getTierPreset(tier.tierLevel);
+    // Capacity gate. Not already joined + a hard player cap that's already full → block.
+    if (!myEntries[tier.id] && preset.maxPlayers !== null && (entryCounts[tier.id] || 0) >= preset.maxPlayers) {
+      setEntryError("This competition is full — no spots left.");
+      return;
+    }
     try {
-      await db.runTransaction(async (tx) => {
-        const userRef = db.collection("users").doc(user.uid);
-        const userDoc = await tx.get(userRef);
-        const bal = userDoc.data().walletBalance || 0;
-        if (bal < tier.buyIn) throw new Error("Insufficient balance");
-        tx.update(userRef, { walletBalance: FieldValue.increment(-tier.buyIn) });
-        tx.set(db.collection("users").doc(user.uid).collection("transactions").doc(), { label: `${tier.name} entry`, amount: -tier.buyIn, createdAt: FieldValue.serverTimestamp() });
-        tx.set(db.collection("entries").doc(`${tier.id}_${user.uid}`), { tierId: tier.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
-      });
+      await db.collection("entries").doc(`${tier.id}_${user.uid}`).set({ tierId: tier.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
       playDingSound();
       setViewingTierId(tier.id);
       setEntryTarget(null); setTab("pick");
@@ -2138,8 +2030,8 @@ function AppShell({ user }) {
     }
   };
 
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
-  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, buyIn: data.buyIn, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
+  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
   const kickEntrant = (tierId, uid, name) => {
     if (!confirm(`Kick ${name || "this entrant"} from the competition? They'll be marked as kicked and won't be able to submit further picks. You can restore them afterward if needed.`)) return;
@@ -2151,41 +2043,24 @@ function AppShell({ user }) {
   const markWinner = async (tierId, uid, name) => {
     const tier = tiers.find((t) => t.id === tierId);
     if (!tier) return;
-    const netPool = tier.pool * (1 - PLATFORM_FEE_RATE);
     const already = !!tier.winnerUid;
     const confirmMsg = already
-      ? `"${tier.name}" already has a winner (${tier.winnerName || "someone"}). Mark ${name} as the winner instead? The $${netPool.toLocaleString(undefined, { maximumFractionDigits: 2 })} pool was already paid out once — this only relabels the winner and won't pay out again. Fix wallets manually if you're correcting a mistake.`
-      : `Mark ${name} as the winner of "${tier.name}"? This pays out the $${netPool.toLocaleString(undefined, { maximumFractionDigits: 2 })} prize pool to their wallet right away and can't be undone automatically.`;
+      ? `"${tier.name}" already has a winner (${tier.winnerName || "someone"}). Mark ${name} as the last one standing instead? This just relabels the winner in the app — sort out the prize pool with your players directly.`
+      : `Mark ${name} as the last one standing in "${tier.name}"? This records them as the winner in the app. The prize pool is paid out by you outside the app.`;
     if (!confirm(confirmMsg)) return;
-    await db.runTransaction(async (tx) => {
-      const tierRef = db.collection("tiers").doc(tierId);
-      const tierDoc = await tx.get(tierRef);
-      const existingWinner = tierDoc.exists ? tierDoc.data().winnerUid : null;
-      tx.update(tierRef, { winnerUid: uid, winnerName: name, winnerAt: FieldValue.serverTimestamp(), winnerPayout: netPool });
-      if (existingWinner) return; // pool already paid out for this competition — never pay twice
-      const userRef = db.collection("users").doc(uid);
-      tx.update(userRef, { walletBalance: FieldValue.increment(netPool) });
-      tx.set(userRef.collection("transactions").doc(), { label: `Won "${tier.name}"`, amount: netPool, createdAt: FieldValue.serverTimestamp() });
-    });
+    await db.collection("tiers").doc(tierId).update({ winnerUid: uid, winnerName: name, winnerAt: FieldValue.serverTimestamp() });
   };
 
-  const cancelAndRefund = async (tier) => {
+  const cancelCompetition = async (tier) => {
     const snap = await db.collection("entries").where("tierId", "==", tier.id).get();
     const batch = db.batch();
     snap.docs.forEach((d) => {
-      const entry = d.data();
-      if (entry.status !== "active") return;
-      batch.update(d.ref, { status: "refunded" });
-      batch.update(db.collection("users").doc(entry.uid), { walletBalance: FieldValue.increment(tier.buyIn) });
-      batch.set(db.collection("users").doc(entry.uid).collection("transactions").doc(), {
-        label: `Refund — ${tier.name} cancelled`, amount: tier.buyIn, createdAt: FieldValue.serverTimestamp(),
-      });
+      if (d.data().status !== "active") return;
+      batch.update(d.ref, { status: "cancelled" });
     });
     batch.update(db.collection("tiers").doc(tier.id), { cancelled: true });
     await batch.commit();
   };
-
-  const rollingEarnings = useMemo(() => tiers.filter((t) => !t.cancelled).reduce((sum, t) => sum + t.pool * PLATFORM_FEE_RATE, 0), [tiers]);
 
   if (screen === "loading" || !profile) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG, color: "var(--app-text)" }}>Loading…</div>;
   if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { updateProfile({ ...idInfo, ageVerified: true }); setScreen("howtoplay"); }} />;
@@ -2197,7 +2072,6 @@ function AppShell({ user }) {
     { id: "compete", label: "Compete", Icon: NavTrophy },
     { id: "pick", label: "My Pick", Icon: NavTarget },
     { id: "standings", label: "Standings", Icon: NavBars },
-    { id: "wallet", label: "Wallet", Icon: NavWallet },
     ...(isHost ? [{ id: "host", label: "Host", Icon: NavClipboard }] : []),
     { id: "settings", label: "Settings", Icon: NavGear },
   ];
@@ -2239,10 +2113,9 @@ function AppShell({ user }) {
             onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
-        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} poolAmount={currentTier.pool * (1 - PLATFORM_FEE_RATE)} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} winnerPayout={currentTier.winnerPayout} myUid={user.uid} />}
+        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
-        {tab === "wallet" && <WalletTab balance={profile.walletBalance || 0} transactions={transactions} onDeposit={() => setShowDeposit(true)} onWithdraw={() => setShowWithdraw(true)} theme={theme} />}
-        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancelRefund={cancelAndRefund} rollingEarnings={rollingEarnings} now={now} theme={theme} />}
+        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} now={now} theme={theme} />}
         {tab === "settings" && (
           <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
@@ -2259,7 +2132,7 @@ function AppShell({ user }) {
         </div>
       </nav>
 
-      {entryTarget && (<EntryConfirmModal tier={entryTarget} balance={profile.walletBalance || 0} onClose={() => { setEntryTarget(null); setEntryError(""); }} onConfirm={confirmEntry} onGoToWallet={() => { setEntryTarget(null); setTab("wallet"); setShowDeposit(true); }} theme={theme} error={entryError} />)}
+      {entryTarget && (<EntryConfirmModal tier={entryTarget} onClose={() => { setEntryTarget(null); setEntryError(""); }} onConfirm={confirmEntry} theme={theme} error={entryError} />)}
       {invitingTier && (<InviteModal tier={invitingTier} theme={theme} onClose={() => setInvitingTier(null)} />)}
       {pickStamp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
@@ -2271,8 +2144,6 @@ function AppShell({ user }) {
           </div>
         </div>
       )}
-      {showDeposit && (<DepositModal onClose={() => setShowDeposit(false)} theme={theme} onConfirm={async (amount) => { await db.collection("users").doc(user.uid).update({ walletBalance: FieldValue.increment(amount) }); await db.collection("users").doc(user.uid).collection("transactions").add({ label: "Balance added", amount, createdAt: FieldValue.serverTimestamp() }); }} />)}
-      {showWithdraw && (<WithdrawModal balance={profile.walletBalance || 0} onClose={() => setShowWithdraw(false)} theme={theme} onConfirm={async (amount) => { await db.collection("users").doc(user.uid).update({ walletBalance: FieldValue.increment(-amount) }); await db.collection("users").doc(user.uid).collection("transactions").add({ label: "Withdrawal", amount: -amount, createdAt: FieldValue.serverTimestamp() }); }} />)}
     </div>
   );
 }
@@ -2361,7 +2232,7 @@ function SplashScreen({ onFinish }) {
 
 function InviteLandingScreen({ params, onContinue }) {
   const name = params.get("name") || "Last Man Standing";
-  const buyIn = params.get("buyIn") || "5";
+  const preset = getTierPreset(params.get("tier") || "bronze");
   const round = params.get("round") || "";
   const hours = params.get("hours") || "";
   return (
@@ -2378,7 +2249,7 @@ function InviteLandingScreen({ params, onContinue }) {
             <h3 className="text-lg font-semibold text-slate-100">{name}</h3>
             {round && <span className="text-xs text-neutral-500">{round}</span>}
           </div>
-          <p className="text-sm text-neutral-400 mt-1">${buyIn} buy-in · winner takes the pool</p>
+          <p className="text-sm text-neutral-400 mt-1">{preset.name} tier · {tierCapacityLabel(preset)}</p>
           {hours && (
             <div className="mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium bg-rose-500/15 text-rose-300 animate-pulse">
               <Clock size={13} /> Locks in about {hours} hours — don't wait around!
