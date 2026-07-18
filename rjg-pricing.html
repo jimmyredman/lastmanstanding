@@ -414,8 +414,51 @@ function ImportModal({ open, onClose }){
   const [map, setMap] = useState({ code: "", description: "", category: "", type: "", unit: "", rate: "", supplier: "" });
   const [defaultType, setDefaultType] = useState("Material");
   const [busy, setBusy] = useState(false);
+  const [preset, setPreset] = useState(null);      // derived items when a known template (e.g. ProEst/Forma) is detected
 
-  useEffect(() => { if (!open) { setRows(null); setHeaders([]); } }, [open]);
+  useEffect(() => { if (!open) { setRows(null); setHeaders([]); setPreset(null); } }, [open]);
+
+  // Detect + parse a ProEst / Autodesk Forma "Line item Library Import" export.
+  // Header sits ~row 26, real data below it, and each row can carry material,
+  // labour and subcontract costs across separate columns — so we derive one
+  // rate + cost type per line rather than asking the user to map columns.
+  const parseProEst = (aoa) => {
+    const hdr = aoa.findIndex(r => r.some(c => /line item name/i.test(String(c))));
+    if (hdr === -1) return null;
+    const H = aoa[hdr].map(c => String(c).toLowerCase());
+    const col = (...keys) => H.findIndex(h => keys.some(k => h.includes(k)));
+    const cA = col("line item name"), cU = col("unit of measure"), cM = col("material cost"),
+          cLd = col("labor description", "labour description"), cLp = col("labor productivity", "labour productivity"),
+          cEd = col("equipment description"), cSub = col("subcontractor"), cCrew = col("crew");
+    const out = [];
+    for (let i = hdr + 1; i < aoa.length; i++){
+      const row = aoa[i];
+      const rawName = String(row[cA] || "").trim();
+      if (!rawName || /example/i.test(rawName)) continue;
+      const m = rawName.match(/^(\d[\d.]*\d|\d+)\s+([\s\S]*)$/);
+      const code = m ? m[1] : "";
+      const description = (m ? m[2] : rawName).trim();
+      if (!description) continue;
+      const unit = String(row[cU] || "").trim().toLowerCase() || "ea";
+      const matCost = cM  >= 0 ? num(row[cM])  : 0;
+      const sub     = cSub>= 0 ? num(row[cSub]): 0;
+      const labDesc = cLd >= 0 ? String(row[cLd] || "").trim() : "";
+      const labProd = cLp >= 0 ? num(row[cLp]) : 0;
+      const equipDesc = cEd >= 0 ? String(row[cEd] || "").trim() : "";
+      const crew = cCrew >= 0 ? String(row[cCrew] || "").trim() : "";
+      let type = "Material", rate = 0;
+      if (matCost > 0)      { type = "Material"; rate = matCost; }
+      else if (sub > 0)     { type = "Subcontractor"; rate = sub; }
+      else if (labDesc)     { type = "Labour"; }
+      else if (equipDesc)   { type = "Equipment"; }
+      const notes = [];
+      if (labDesc)   notes.push("Labour: " + labDesc + (labProd ? " · " + labProd + " /hr" : ""));
+      if (equipDesc) notes.push("Plant: " + equipDesc);
+      if (crew && !/^0$/.test(crew)) notes.push("Crew: " + crew);
+      out.push({ code, description, category: "", type, unit, rate: round2(rate), supplier: "", notes: notes.join(" · ") });
+    }
+    return out.length ? out : null;
+  };
 
   const guess = (hs) => {
     const find = (...keys) => { const i = hs.findIndex(h => keys.some(k => String(h).toLowerCase().replace(/[^a-z0-9]/g, "").includes(k))); return i === -1 ? "" : String(i); };
@@ -432,6 +475,8 @@ function ImportModal({ open, onClose }){
         const ws = wb.Sheets[wb.SheetNames[0]];
         const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }).filter(row => row.some(c => String(c).trim() !== ""));
         if (aoa.length < 2) { alert("No data rows found."); return; }
+        const pe = parseProEst(aoa);
+        if (pe) { setPreset(pe); return; }   // recognised ProEst / Forma export — no manual mapping needed
         const hs = aoa[0].map(h => String(h).trim());
         setHeaders(hs); setRows(aoa.slice(1)); setMap(guess(hs));
       } catch (err) { alert("Could not read file. Use .xlsx or .csv."); }
@@ -463,13 +508,46 @@ function ImportModal({ open, onClose }){
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-cost-register-template.xlsx");
   };
 
+  const doImportPreset = async () => {
+    setBusy(true);
+    const n = await bulkUpsertItems(preset);
+    setBusy(false);
+    notify(n + " items imported");
+    onClose();
+  };
+
   const fields = [["code", "Code"], ["description", "Description *"], ["category", "Category"], ["type", "Cost type (optional)"], ["unit", "Unit"], ["rate", "Rate (ex GST)"], ["supplier", "Supplier"]];
+
+  const presetBreak = preset ? COST_TYPES.map(t => [t, preset.filter(p => p.type === t).length]).filter(([, n]) => n > 0) : [];
+  const presetPriced = preset ? preset.filter(p => p.rate > 0).length : 0;
 
   return (
     <Modal open={open} onClose={onClose} title="Import cost register" wide>
-      {!rows ? (
+      {preset ? (
         <div className="space-y-4">
-          <p className="text-sm" style={{ color: "var(--muted)" }}>Upload your cost register as <b>.xlsx</b> or <b>.csv</b>. The first row must be column headers. You'll map columns on the next step.</p>
+          <div className="rounded-lg p-3 text-sm" style={{ background: "rgba(2,34,75,.06)", border: "1px solid var(--line)" }}>
+            <div className="font-semibold brand-text">ProEst / Forma library detected</div>
+            <div style={{ color: "var(--muted)" }}>Columns mapped automatically — no manual step needed.</div>
+          </div>
+          <div className="text-sm font-semibold">{preset.length} line items ready · {presetPriced} with a rate</div>
+          <div className="flex flex-wrap gap-2">
+            {presetBreak.map(([t, n]) => <span key={t} className="chip">{t}: {n}</span>)}
+          </div>
+          <div className="card p-3 text-xs overflow-x-auto" style={{ background: "var(--bg)" }}>
+            <div className="font-semibold mb-1">Preview (first 6)</div>
+            {preset.slice(0, 6).map((it, i) => (
+              <div key={i} className="whitespace-nowrap">{it.code ? it.code + " · " : ""}{it.description} — <b>{it.type}</b> · {it.unit}{it.rate > 0 ? " · " + money(it.rate) : " · (no $ in file)"}</div>
+            ))}
+          </div>
+          <p className="text-xs" style={{ color: "var(--muted)" }}>Rates come from the file's Material or Subcontractor columns (ex GST). Labour/Plant rows carry the trade + productivity in Notes; add their $ rate later or import your Labor/Equipment library files.</p>
+          <div className="flex gap-2">
+            <button className="btn btn-ghost flex-1" onClick={() => setPreset(null)}>Back</button>
+            <button className="btn btn-primary flex-1" disabled={busy} onClick={doImportPreset}><IcCheck size={16} /> Import {preset.length} items</button>
+          </div>
+        </div>
+      ) : !rows ? (
+        <div className="space-y-4">
+          <p className="text-sm" style={{ color: "var(--muted)" }}>Upload your cost register as <b>.xlsx</b> or <b>.csv</b>. A <b>ProEst / Forma</b> library export is recognised automatically; for any other file the first row should be column headers and you'll map columns on the next step.</p>
           <label className="btn btn-primary cursor-pointer w-full"><IcUpload size={16} /> Choose file<input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={onFile} /></label>
           <button className="btn btn-ghost w-full" onClick={template}><IcDoc size={16} /> Download blank template</button>
         </div>
