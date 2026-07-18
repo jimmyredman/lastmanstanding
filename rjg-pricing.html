@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v19 · 17 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v20 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -189,11 +189,20 @@ function StoreProvider({ children }){
     setItems((prev) => { const i = prev.findIndex(p => p.id === rec.id); if (i === -1) return [...prev, rec]; const c = prev.slice(); c[i] = rec; return c; });
     return rec;
   };
+  // Merge-by-code: an incoming row with a code that already exists updates that
+  // item in place (so re-imports refresh rates instead of duplicating). Rows
+  // without a code, or with a new code, are added fresh.
   const bulkUpsertItems = async (arr) => {
-    const stamped = arr.map(a => ({ ...a, id: a.id || uid(), updatedAt: now() }));
+    let created = 0, updated = 0;
+    const stamped = arr.map(a => {
+      const code = String(a.code || "").trim();
+      const existing = code ? items.find(p => String(p.code || "").trim().toLowerCase() === code.toLowerCase()) : null;
+      if (existing) { updated++; return { ...existing, ...a, id: existing.id, updatedAt: now() }; }
+      created++; return { ...a, id: a.id || uid(), updatedAt: now() };
+    });
     for (const r of stamped) await dbPut("items", r);
     setItems((prev) => { const map = new Map(prev.map(p => [p.id, p])); stamped.forEach(r => map.set(r.id, r)); return [...map.values()]; });
-    return stamped.length;
+    return { created, updated, total: stamped.length };
   };
   const deleteItem = async (id) => { await dbDel("items", id); setItems(prev => prev.filter(p => p.id !== id)); };
   const clearItems = async () => { for (const it of items) await dbDel("items", it.id); setItems([]); };
@@ -226,6 +235,7 @@ const IcPrice = I(<><path d="M20 12l-8 8-9-9V4h7z"/><circle cx="7.5" cy="7.5" r=
 const IcGear = I(<><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2.5 12h3M18.5 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></>);
 const IcPlus = I(<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>);
 const IcBack = I(<polyline points="15 5 8 12 15 19"/>);
+const IcFwd = I(<polyline points="9 5 16 12 9 19"/>);
 const IcTrash = I(<><polyline points="4 7 20 7"/><path d="M6 7l1 13a2 2 0 002 2h6a2 2 0 002-2l1-13"/><path d="M9 7V4h6v3"/></>);
 const IcEdit = I(<><path d="M4 20l1-4 11-11 3 3-11 11-4 1z"/><line x1="14" y1="6" x2="18" y2="10"/></>);
 const IcUpload = I(<><path d="M12 15V3"/><polyline points="7 8 12 3 17 8"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></>);
@@ -497,9 +507,9 @@ function ImportModal({ open, onClose }){
       rate: num(g(row, "rate")),
       supplier: String(g(row, "supplier") || "").trim()
     })).filter(it => it.description);
-    const n = await bulkUpsertItems(items);
+    const res = await bulkUpsertItems(items);
     setBusy(false);
-    notify(n + " items imported");
+    notify(res.updated ? (res.created + " added · " + res.updated + " updated") : (res.created + " items imported"));
     onClose();
   };
 
@@ -510,9 +520,9 @@ function ImportModal({ open, onClose }){
 
   const doImportPreset = async () => {
     setBusy(true);
-    const n = await bulkUpsertItems(preset);
+    const res = await bulkUpsertItems(preset);
     setBusy(false);
-    notify(n + " items imported");
+    notify(res.updated ? (res.created + " added · " + res.updated + " updated") : (res.created + " items imported"));
     onClose();
   };
 
@@ -1037,17 +1047,24 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
 
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0xeef2f7);
     const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 3000);
-    camera.position.set(ext*1.0, ext*1.15, ext*1.0);
+    // Frame the whole footprint from a raised 3/4 angle so furniture inside a
+    // roofless plan is actually visible (pull back based on the scene radius).
+    const R = Math.max(ext * 0.72, 4);                       // bounding radius in metres
+    const dist = R / Math.sin((50 * Math.PI / 180) / 2) * 1.15;
+    camera.position.set(dist * 0.72, dist * 0.82, dist * 0.72);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H);
     mount.appendChild(renderer.domElement);
-    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH/2, 0); controls.update();
+    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH * 0.35, 0); controls.update();
     scene.add(new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.05));
     const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(ext, ext*1.6, ext*0.6); scene.add(dir);
     scene.add(new THREE.GridHelper(Math.ceil(ext*2)+14, Math.ceil(ext*2)+14, 0xc7d0da, 0xdfe5ec));
 
     const mat = (c, opts) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, opts || {}));
-    const wallMat = mat(0xf3f5f9), floorMat = mat(0xdbe3ec, { side: THREE.DoubleSide }), roofMat = mat(new THREE.Color(roofColor), { side: THREE.DoubleSide }), glassMat = mat(0x9fd0e6, { transparent: true, opacity: 0.5 });
+    const glossy = (c, shin, opts) => new THREE.MeshPhongMaterial(Object.assign({ color: c, shininess: shin || 40, specular: 0x333333 }, opts || {}));  // metal / gloss / water highlights
+    // Dollhouse walls: slightly see-through so furniture inside is always visible.
+    const wallMat = mat(0xeef1f6, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+    const floorMat = mat(0xd5dde7, { side: THREE.DoubleSide }), roofMat = mat(new THREE.Color(roofColor), { side: THREE.DoubleSide, transparent: true, opacity: 0.85 }), glassMat = glossy(0x9fd0e6, 90, { transparent: true, opacity: 0.4 });
     const box = (w, h, d, m, x, y, z, ry) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x, y, z); if (ry) me.rotation.y = ry; return me; };
 
     // ---- walls with door/window openings ----
@@ -1094,18 +1111,70 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       if (s.type === "door" || s.type === "window" || s.type === "opening") return;
       const M = toM({ x: s.x, y: s.y }), w = s.size * mpp, ang = -(s.angle||0)*Math.PI/180;
       const grp = new THREE.Group(); grp.position.set(M.x, 0, M.z); grp.rotation.y = ang;
+      // shared little builders
       const leg = (x, z, hgt, m, r) => { const g = new THREE.Mesh(new THREE.BoxGeometry(r||0.06, hgt, r||0.06), m); g.position.set(x, hgt/2, z); grp.add(g); };
-      if (s.type === "tree"){ const trunk = new THREE.Mesh(new THREE.CylinderGeometry(w*0.05, w*0.08, w*0.55, 8), mat(0x7a5230)); trunk.position.y = w*0.27; grp.add(trunk); [0,1,2].forEach(i => { const c = new THREE.Mesh(new THREE.ConeGeometry(w*(0.55-i*0.13), w*0.55, 12), mat(0x3f9d55)); c.position.y = w*0.55 + i*w*0.32; grp.add(c); }); }
-      else if (s.type === "pool"){ const d = w*0.6; grp.add(box(w, 0.35, d, mat(0x2f8fd0), 0, 0.18, 0)); [[-w/2,0],[w/2,0],[0,-d/2],[0,d/2]].forEach(()=>{}); grp.add(box(w+0.3, 0.15, 0.3, mat(0xcfd6de), 0, 0.32, -d/2-0.05)); grp.add(box(w+0.3, 0.15, 0.3, mat(0xcfd6de), 0, 0.32, d/2+0.05)); grp.add(box(0.3, 0.15, d, mat(0xcfd6de), -w/2-0.05, 0.32, 0)); grp.add(box(0.3, 0.15, d, mat(0xcfd6de), w/2+0.05, 0.32, 0)); }
-      else if (s.type === "car"){ const d = w*0.44, bh = 0.6; grp.add(box(w*0.98, bh, d, mat(0x8894a3), 0, 0.35, 0)); grp.add(box(w*0.5, 0.55, d*0.86, mat(0xaeb8c4), -w*0.02, 0.9, 0)); [[-w*0.3,-d/2],[w*0.28,-d/2],[-w*0.3,d/2],[w*0.28,d/2]].forEach(([wx,wz])=>{ const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.32,0.32,0.2,14), mat(0x22262c)); wheel.rotation.z = Math.PI/2; wheel.position.set(wx, 0.3, wz); grp.add(wheel); }); }
-      else if (s.type === "table"){ const d = w*0.62; grp.add(box(w, 0.08, d, mat(0xcaa27a), 0, 0.74, 0)); [[-w/2+0.08,-d/2+0.08],[w/2-0.08,-d/2+0.08],[-w/2+0.08,d/2-0.08],[w/2-0.08,d/2-0.08]].forEach(([x,z])=>leg(x,z,0.72,mat(0x9c7b56))); }
-      else if (s.type === "chair"){ const d = w; grp.add(box(w, 0.07, d, mat(0xcbd2db), 0, 0.45, 0)); grp.add(box(w, w*0.9, 0.07, mat(0xcbd2db), 0, 0.45+w*0.45, -d/2+0.04)); [[-w/2+0.05,-d/2+0.05],[w/2-0.05,-d/2+0.05],[-w/2+0.05,d/2-0.05],[w/2-0.05,d/2-0.05]].forEach(([x,z])=>leg(x,z,0.44,mat(0x9aa2ad),0.05)); }
-      else if (s.type === "bench"){ const d = w*0.34; grp.add(box(w, 0.07, d, mat(0xb98d63), 0, 0.45, 0.03)); grp.add(box(w, 0.32, 0.06, mat(0xb98d63), 0, 0.6, -d/2)); leg(-w/2+0.1,0,0.44,mat(0x7c6144)); leg(w/2-0.1,0,0.44,mat(0x7c6144)); }
-      else if (s.type === "bed"){ const d = w*1.3; grp.add(box(w, 0.3, d, mat(0x9aa6b3), 0, 0.15, 0)); grp.add(box(w*0.96, 0.18, d*0.96, mat(0xeef2f6), 0, 0.4, 0.02)); grp.add(box(w*0.42, 0.14, d*0.2, mat(0xffffff), -w*0.22, 0.55, -d/2+d*0.14)); grp.add(box(w*0.42, 0.14, d*0.2, mat(0xffffff), w*0.22, 0.55, -d/2+d*0.14)); grp.add(box(w, 0.5, 0.1, mat(0x8a97a5), 0, 0.5, -d/2)); }
-      else if (s.type === "toilet"){ const bowl = new THREE.Mesh(new THREE.CylinderGeometry(w*0.42, w*0.36, 0.42, 16), mat(0xffffff)); bowl.position.set(0, 0.21, w*0.2); grp.add(bowl); grp.add(box(w*0.9, 0.5, w*0.28, mat(0xf3f5f8), 0, 0.45, -w*0.45)); grp.add(new THREE.Mesh(new THREE.CylinderGeometry(w*0.44, w*0.44, 0.05, 16), mat(0xe8ecf1)).translateY(0.44).translateZ(w*0.2)); }
-      else if (s.type === "sink"){ grp.add(box(w, 0.85, w*0.7, mat(0xe4e8ee), 0, 0.425, 0)); grp.add(box(w*0.8, 0.12, w*0.5, mat(0xf7f9fb), 0, 0.9, 0)); const tap = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.22,8), mat(0x9aa2ad)); tap.position.set(0,1.0,-w*0.2); grp.add(tap); }
-      else if (s.type === "fence"){ const d = 0.06; grp.add(box(w, 0.05, d, mat(0x9c7b56), 0, 1.35, 0)); grp.add(box(w, 0.05, d, mat(0x9c7b56), 0, 0.8, 0)); const n = Math.max(2, Math.round(w/1.0)); for (let i = 0; i <= n; i++){ grp.add(box(0.1, 1.5, d, mat(0x7c6144), -w/2 + w*i/n, 0.75, 0)); } }
-      else { grp.add(box(w, 0.8, w*0.7, mat(0xccd4de), 0, 0.4, 0)); }
+      const cyl = (rt, rb, h, m, x, y, z, seg) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg||16), m); g.position.set(x, y, z); grp.add(g); return g; };
+      const cushion = (bw, bh, bd, m, x, y, z) => { const g = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), m); g.position.set(x, y, z); grp.add(g); return g; };  // soft-ish block
+      // faint contact shadow so objects sit on the floor
+      const sh = new THREE.Mesh(new THREE.CircleGeometry(w*0.6, 20), mat(0x9aa6b3, { transparent: true, opacity: 0.18 })); sh.rotateX(-Math.PI/2); sh.position.y = 0.015; grp.add(sh);
+
+      if (s.type === "tree"){
+        cyl(w*0.045, w*0.09, w*0.6, glossy(0x6b4a2a, 8), 0, w*0.3, 0, 8);                     // trunk
+        [0,1,2,3].forEach(i => { const c = new THREE.Mesh(new THREE.ConeGeometry(w*(0.6-i*0.12), w*0.5, 14), mat(i%2?0x389049:0x43a95b)); c.position.y = w*0.6 + i*w*0.26; grp.add(c); });  // layered canopy
+      }
+      else if (s.type === "pool"){
+        const d = w*0.6; grp.add(box(w+0.3, 0.34, 0.3, mat(0xdfe4ea), 0, 0.34, -d/2-0.05)); grp.add(box(w+0.3, 0.34, 0.3, mat(0xdfe4ea), 0, 0.34, d/2+0.05)); grp.add(box(0.3, 0.34, d, mat(0xdfe4ea), -w/2-0.05, 0.34, 0)); grp.add(box(0.3, 0.34, d, mat(0xdfe4ea), w/2+0.05, 0.34, 0));  // coping
+        grp.add(box(w, 0.3, d, mat(0x1f7fb8), 0, 0.16, 0));                                    // shell
+        const water = box(w*0.98, 0.02, d*0.98, glossy(0x37a9e0, 120, { transparent: true, opacity: 0.85 }), 0, 0.31, 0); grp.add(water);  // shiny water surface
+        cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.3, 0.5, d/2, 8); cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.2, 0.5, d/2, 8);   // ladder rails
+      }
+      else if (s.type === "car"){
+        const d = w*0.42, body = glossy(0x2f6ea5, 60);
+        grp.add(box(w*0.98, 0.42, d, body, 0, 0.5, 0));                                        // lower body
+        const cabin = new THREE.Mesh(new THREE.BoxGeometry(w*0.62, 0.42, d*0.9), body); cabin.position.set(-w*0.02, 0.86, 0); grp.add(cabin);  // cabin
+        grp.add(box(w*0.6, 0.34, d*0.82, glassMat, -w*0.02, 0.9, 0));                          // glass greenhouse
+        grp.add(box(w*0.06, 0.12, d*0.7, glossy(0xfff2c0, 100), w*0.49, 0.5, 0));              // headlights
+        grp.add(box(w*0.05, 0.1, d*0.7, glossy(0xc42b2b, 100), -w*0.49, 0.5, 0));              // tail lights
+        [[-w*0.3,-d/2],[w*0.3,-d/2],[-w*0.3,d/2],[w*0.3,d/2]].forEach(([wx,wz])=>{ const t = new THREE.Mesh(new THREE.CylinderGeometry(0.33,0.33,0.22,18), mat(0x1b1e23)); t.rotation.z = Math.PI/2; t.position.set(wx, 0.33, wz); grp.add(t); const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.24,10), glossy(0xc9ced6, 90)); hub.rotation.z = Math.PI/2; hub.position.set(wx, 0.33, wz); grp.add(hub); });
+      }
+      else if (s.type === "table"){
+        const d = w*0.62; grp.add(box(w, 0.06, d, glossy(0xc79a6b, 25), 0, 0.75, 0)); grp.add(box(w*0.94, 0.03, d*0.9, mat(0xd9b489), 0, 0.79, 0));  // top + placemat sheen
+        [[-w/2+0.08,-d/2+0.08],[w/2-0.08,-d/2+0.08],[-w/2+0.08,d/2-0.08],[w/2-0.08,d/2-0.08]].forEach(([x,z])=>leg(x,z,0.72,mat(0x8f6f4c),0.07));
+      }
+      else if (s.type === "chair"){
+        const d = w; grp.add(box(w, 0.09, d, mat(0xd3d9e0), 0, 0.45, 0)); cushion(w*0.9, 0.06, d*0.9, mat(0xeef1f5), 0, 0.5, 0);  // seat + cushion
+        grp.add(box(w, w*0.85, 0.08, mat(0xc4ccd6), 0, 0.45+w*0.42, -d/2+0.05)); grp.add(box(w*0.86, w*0.6, 0.04, mat(0xeef1f5), 0, 0.45+w*0.4, -d/2+0.09));  // backrest + pad
+        [[-w/2+0.06,-d/2+0.06],[w/2-0.06,-d/2+0.06],[-w/2+0.06,d/2-0.06],[w/2-0.06,d/2-0.06]].forEach(([x,z])=>leg(x,z,0.44,glossy(0x8a929c,60),0.05));
+      }
+      else if (s.type === "bench"){
+        const d = w*0.36; [-0.11,0,0.11].forEach(off => grp.add(box(w, 0.05, d*0.28, glossy(0xb5885e, 20), 0, 0.45, off*d*2)));  // seat slats
+        [-0.05,0.09].forEach(off => grp.add(box(w, 0.06, d*0.3, glossy(0xb5885e, 20), 0, 0.62+off, -d/2)));                      // back slats
+        leg(-w/2+0.1,-d/2+0.05,0.44,mat(0x6f5638)); leg(w/2-0.1,-d/2+0.05,0.44,mat(0x6f5638)); leg(-w/2+0.1,d/2-0.05,0.44,mat(0x6f5638)); leg(w/2-0.1,d/2-0.05,0.44,mat(0x6f5638));
+      }
+      else if (s.type === "bed"){
+        const d = w*1.35; grp.add(box(w, 0.28, d, mat(0x8f6f4c), 0, 0.16, 0));                  // base
+        grp.add(box(w*0.97, 0.2, d*0.97, mat(0xf1f4f8), 0, 0.4, 0));                            // mattress
+        grp.add(box(w*0.97, 0.12, d*0.6, glossy(0xcfe0ef, 15), 0, 0.5, d*0.16));                // folded blanket
+        grp.add(box(w*0.4, 0.16, d*0.2, mat(0xffffff), -w*0.24, 0.56, -d*0.36)); grp.add(box(w*0.4, 0.16, d*0.2, mat(0xffffff), w*0.24, 0.56, -d*0.36));  // pillows
+        grp.add(box(w*1.02, 0.62, 0.12, mat(0x7c6141), 0, 0.55, -d/2));                         // headboard
+      }
+      else if (s.type === "toilet"){
+        cyl(w*0.4, w*0.32, 0.44, glossy(0xffffff, 30), 0, 0.22, w*0.18, 20);                    // bowl
+        grp.add(new THREE.Mesh(new THREE.TorusGeometry(w*0.36, w*0.09, 8, 20), glossy(0xf4f6f9, 30)).translateY(0.44).translateZ(w*0.18));  // seat ring
+        grp.add(box(w*0.86, 0.5, w*0.26, glossy(0xffffff, 30), 0, 0.5, -w*0.45));               // cistern
+        grp.add(box(w*0.2, 0.06, 0.12, mat(0xd8dde3), w*0.3, 0.78, -w*0.45));                   // flush button
+      }
+      else if (s.type === "sink"){
+        grp.add(box(w, 0.86, w*0.62, glossy(0xeef1f5, 20), 0, 0.43, 0));                        // vanity cabinet
+        grp.add(box(w*1.04, 0.08, w*0.66, glossy(0xdfe4ea, 40), 0, 0.9, 0));                    // benchtop
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(w*0.28, w*0.2, 0.16, 20), glossy(0xffffff, 60)); basin.position.set(0, 0.9, 0); grp.add(basin);  // basin
+        cyl(0.028, 0.028, 0.26, glossy(0xb7bec7, 110), 0, 1.06, -w*0.2, 10); grp.add(box(0.03, 0.03, 0.14, glossy(0xb7bec7, 110), 0, 1.18, -w*0.13));  // tap + spout
+      }
+      else if (s.type === "fence"){
+        grp.add(box(w, 0.05, 0.05, glossy(0x9c7b56, 15), 0, 1.35, 0)); grp.add(box(w, 0.05, 0.05, glossy(0x9c7b56, 15), 0, 0.8, 0));  // rails
+        const n = Math.max(3, Math.round(w/0.6)); for (let i = 0; i <= n; i++){ const x = -w/2 + w*i/n; grp.add(box(0.08, 1.5, 0.04, mat(0x8a6c49), x, 0.75, 0)); const cap = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.13, 4), mat(0x7c6144)); cap.position.set(x, 1.56, 0); cap.rotation.y = Math.PI/4; grp.add(cap); }  // pickets + caps
+      }
+      else { grp.add(box(w, 0.8, w*0.7, mat(0xc2cad4), 0, 0.4, 0)); grp.add(box(w*0.9, 0.05, w*0.6, mat(0xa9b3bf), 0, 0.82, 0)); }
       scene.add(grp);
     });
 
@@ -1869,12 +1938,35 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
             </div>}
         </div>
       )}
-      {tab === "drawings" && curDrawing && (
+      {tab === "drawings" && curDrawing && (() => {
+        const di = drawings.findIndex(d => d.id === curDrawing.id);
+        const go = (step) => { const n = drawings[di + step]; if (n) setOpenDrawing(n.id); };
+        return (
         <div className="space-y-3">
-          <div className="flex items-center gap-2"><button className="btn btn-ghost !p-2" onClick={() => setOpenDrawing(null)}><IcBack size={16} /></button><input className="inp flex-1" value={curDrawing.name} onChange={e => updDrawing({ ...curDrawing, name: e.target.value })} /></div>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-ghost !p-2" onClick={() => setOpenDrawing(null)} title="Back to all drawings"><IcBack size={16} /></button>
+            <input className="inp flex-1 min-w-0" value={curDrawing.name} onChange={e => updDrawing({ ...curDrawing, name: e.target.value })} />
+          </div>
+          {drawings.length > 1 && (
+            <div className="flex items-center justify-between gap-2 card p-1.5">
+              <button className="btn btn-ghost !py-1.5" disabled={di <= 0} onClick={() => go(-1)}><IcBack size={16} /> Prev</button>
+              <div className="flex items-center gap-1 overflow-x-auto px-1 flex-1 justify-center">
+                {drawings.map((d, i) => (
+                  <button key={d.id} onClick={() => setOpenDrawing(d.id)} title={d.name}
+                    className={"shrink-0 rounded overflow-hidden border-2 " + (d.id === curDrawing.id ? "" : "opacity-60")}
+                    style={{ borderColor: d.id === curDrawing.id ? "var(--brand)" : "transparent" }}>
+                    <img src={d.snapshot || d.bg} className="h-11 w-14 object-cover block" />
+                  </button>
+                ))}
+              </div>
+              <button className="btn btn-ghost !py-1.5" disabled={di >= drawings.length - 1} onClick={() => go(1)}>Next <IcFwd size={16} /></button>
+            </div>
+          )}
+          <div className="text-xs text-center" style={{ color: "var(--muted)" }}>Drawing {di + 1} of {drawings.length}{drawings.length > 1 ? " · flick with Prev / Next or tap a thumbnail" : ""}</div>
           <TakeoffCanvas drawing={curDrawing} onChange={updDrawing} onAddToQuote={addToQuote} />
         </div>
-      )}
+        );
+      })()}
 
       {tab === "plans" && !curPlan && (
         <div className="space-y-3">
