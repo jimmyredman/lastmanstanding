@@ -132,8 +132,15 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v28 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v29 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
+// Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
+const JOB_KINDS = {
+  new:       { label: "New job / quote",           short: "Quote", prefix: "RJG-Q", seq: "quoteSeq", priced: true,  badge: "#02224B" },
+  rfq:       { label: "Subcontractor price request", short: "RFQ",  prefix: "RFQ-",  seq: "rfqSeq",   priced: false, badge: "#0f766e" },
+  variation: { label: "Variation to a client",      short: "VPR",  prefix: "VPR-",  seq: "vprSeq",   priced: true,  badge: "#b45309" },
+};
+const jobKind = (p) => (p && JOB_KINDS[p.kind]) ? p.kind : "new";
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
   company: "RJG Builders",
@@ -1897,7 +1904,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 /* =========================================================================
    QUOTE EDITOR
    ========================================================================= */
-function QuoteEditor({ project, onChange }){
+function QuoteEditor({ project, onChange, priced = true }){
   const { items, settings } = useStore();
   const [picker, setPicker] = useState(false);
   const [q, setQ] = useState("");
@@ -1925,12 +1932,14 @@ function QuoteEditor({ project, onChange }){
         <button className="btn btn-ghost flex-1" onClick={addManual}><IcPlus size={16} /> Manual line</button>
       </div>
 
-      {lines.length === 0 ? <Empty icon={<IcDoc size={44} />} title="No quote lines yet" sub="Add items from your pricing database, add manual lines, or push measurements across from the Takeoff / Floor plan tabs." /> : (
+      {!priced && <div className="text-xs" style={{ color: "var(--muted)" }}>This is a subcontractor price request — list the works/quantities to price (no rates). The subbie prices it from your attached photos, takeoffs and plans.</div>}
+
+      {lines.length === 0 ? <Empty icon={<IcDoc size={44} />} title={priced ? "No quote lines yet" : "No items to price yet"} sub="Add items from your pricing database, add manual lines, or push measurements across from the Takeoff / Floor plan tabs." /> : (
         <div className="card overflow-hidden">
           <div className="scroll-x">
             <table className="w-full text-sm min-w-[620px]">
               <thead><tr style={{ background: "var(--bg)", color: "var(--muted)" }} className="text-xs uppercase">
-                <th className="text-left px-2 py-2">Description</th><th className="px-2 w-16">Qty</th><th className="px-2 w-16">Unit</th><th className="px-2 w-24 text-right">Rate ex</th><th className="px-2 w-24 text-right">Amount</th><th></th>
+                <th className="text-left px-2 py-2">Description</th><th className="px-2 w-16">Qty</th><th className="px-2 w-16">Unit</th>{priced && <><th className="px-2 w-24 text-right">Rate ex</th><th className="px-2 w-24 text-right">Amount</th></>}<th></th>
               </tr></thead>
               <tbody>
                 {lines.map(l => (
@@ -1938,8 +1947,8 @@ function QuoteEditor({ project, onChange }){
                     <td className="px-2 py-1"><input className="inp !py-1" value={l.desc} onChange={e => setLine(l.id, { desc: e.target.value })} />{l.source && <div className="text-[10px] px-1" style={{ color: "var(--muted)" }}>{l.source}</div>}</td>
                     <td className="px-1 py-1"><NumInput value={l.qty} onCommit={v => setLine(l.id, { qty: v })} className="inp !py-1 !px-1 text-center" /></td>
                     <td className="px-1 py-1"><input className="inp !py-1 !px-1 text-center" value={l.unit} onChange={e => setLine(l.id, { unit: e.target.value })} /></td>
-                    <td className="px-1 py-1"><NumInput value={l.rateEx} onCommit={v => setLine(l.id, { rateEx: v })} className="inp !py-1 !px-1 text-right" /></td>
-                    <td className="px-2 py-1 text-right font-semibold whitespace-nowrap">{money(num(l.qty) * num(l.rateEx))}</td>
+                    {priced && <td className="px-1 py-1"><NumInput value={l.rateEx} onCommit={v => setLine(l.id, { rateEx: v })} className="inp !py-1 !px-1 text-right" /></td>}
+                    {priced && <td className="px-2 py-1 text-right font-semibold whitespace-nowrap">{money(num(l.qty) * num(l.rateEx))}</td>}
                     <td className="px-1 py-1"><button className="btn btn-ghost !p-1.5" onClick={() => delLine(l.id)}><IcTrash size={14} /></button></td>
                   </tr>
                 ))}
@@ -1949,6 +1958,7 @@ function QuoteEditor({ project, onChange }){
         </div>
       )}
 
+      {priced && (
       <div className="card p-4 space-y-2 text-sm">
         <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>Subtotal (ex GST)</span><span className="font-semibold">{money(subEx)}</span></div>
         <div className="flex justify-between items-center"><span style={{ color: "var(--muted)" }}>Margin
@@ -1958,6 +1968,7 @@ function QuoteEditor({ project, onChange }){
         <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>GST ({gst}%)</span><span className="font-semibold">{money(gstAmt)}</span></div>
         <div className="flex justify-between text-base border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-bold">Total (inc GST)</span><span className="font-bold">{money(totalInc)}</span></div>
       </div>
+      )}
 
       <Modal open={picker} onClose={() => setPicker(false)} title="Add from pricing database" wide>
         <input className="inp mb-3" placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
@@ -2017,39 +2028,50 @@ function buildWordHtml(project, settings, t, logo, attachments){
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const nl = (s) => esc(s).replace(/\n/g, "<br/>");
   const b = settings.brand || "#02224B";
-  const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.rateEx))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*num(l.rateEx))}</td></tr>`).join("");
+  const kind = jobKind(project), priced = JOB_KINDS[kind].priced;
+  const title = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : "QUOTATION";
+  const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #";
+  const dueStr = project.dueDate ? fmtDate(project.dueDate) : "";
+  const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td>${priced?`<td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.rateEx))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*num(l.rateEx))}</td>`:`<td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">&nbsp;</td>`}</tr>`).join("");
   const atts = (attachments || []).map(a => `<div style="margin:8px 0"><img src="${a.src}" style="max-width:520px;border:1px solid #e4e7ec"/><div style="font-size:11px;color:#5b6472">${esc(a.caption)}</div></div>`).join("");
   const block = (title, body) => body ? `<div style="margin:0 0 14px 0"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">${esc(title)}</div><div>${nl(body)}</div></div>` : "";
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Quotation ${esc(project.quoteNo)}</title></head>
+  const recipient = kind === "rfq"
+    ? `<td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Price request to</div><b>${esc(project.subCompany || project.subName)}</b><br/>${esc(project.subName && project.subCompany ? "Attn: " + project.subName : "")}${project.subEmail?`<br/>${esc(project.subEmail)}`:""}${project.subPhone?`<br/>${esc(project.subPhone)}`:""}${project.trade?`<br/>Trade: ${esc(project.trade)}`:""}</td>`
+    : `<td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Prepared for</div><b>${esc(project.client)}</b>${kind==="variation"&&project.contractRef?`<br/>Ref: ${esc(project.contractRef)}`:""}</td>`;
+  const totals = priced ? `<table align="right" style="margin-bottom:14px;font-size:13px">
+    ${t.margin>0?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr>`:""}
+    <tr><td style="font-weight:bold;padding:2px 16px 2px 0">Total price ex GST</td><td align="right"><b>${money(t.totalEx)}</b></td></tr>
+    <tr><td style="color:#5b6472;padding:2px 16px 2px 0">GST component (${settings.gst}%)</td><td align="right">${money(t.gstAmt)}</td></tr>
+    <tr><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px">Total price inc GST</td><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px" align="right">${money(t.totalInc)}</td></tr>
+  </table><div style="clear:both"></div>` : "";
+  const instructions = priced
+    ? `<div style="margin:8px 0 14px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> notice needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>`
+    : `<div style="margin:8px 0 14px 0;background:#e7f2f0;padding:10px;border-radius:4px"><b>Please review the attached photos, takeoffs and plans and provide your price for the above works.</b>${dueStr?` Price required by <b>${esc(dueStr)}</b>.`:""} Send your price to ${esc(settings.email || settings.company)}.</div>`;
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)} ${esc(project.quoteNo)}</title></head>
   <body style="font-family:Arial,Helvetica,sans-serif;color:#141922;font-size:13px">
   <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:14px"><tr>
     <td style="background:${b};padding:14px 18px" width="55%">${logo?`<img src="${logo}" style="height:54px"/>`:`<span style="color:#fff;font-size:22px;font-weight:bold">${esc(settings.company)}</span>`}</td>
     <td style="background:${b};padding:14px 18px;color:#ffffff;text-align:right;font-size:11px" width="45%">${esc(settings.phone)}<br/>${esc(settings.address)}<br/>${esc(settings.website)}</td>
   </tr></table>
   <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:14px"><tr>
-    <td style="font-size:30px;font-weight:bold;color:${b}">QUOTATION</td>
-    <td style="text-align:right;font-size:12px">Quote # <b>${esc(project.quoteNo)}</b><br/>Date ${esc(fmtDate(project.date||project.createdAt||now()))}<br/>Valid ${esc(settings.validity)}</td>
+    <td style="font-size:30px;font-weight:bold;color:${b}">${title}</td>
+    <td style="text-align:right;font-size:12px">${numLabel} <b>${esc(project.quoteNo)}</b><br/>Date ${esc(fmtDate(project.date||project.createdAt||now()))}${kind==="rfq"?(dueStr?`<br/>Price by <b>${esc(dueStr)}</b>`:""):`<br/>Valid ${esc(settings.validity)}`}</td>
   </tr></table>
   <table width="100%" style="margin-bottom:14px"><tr>
-    <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Prepared for</div><b>${esc(project.client)}</b></td>
-    <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Site / project</div><b>${esc(project.title)}</b><br/>${esc(project.site)}</td>
+    ${recipient}
+    <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">${kind==="rfq"?"Package / site":"Site / project"}</div><b>${esc(project.title)}</b><br/>${esc(project.site)}</td>
   </tr></table>
-  ${block("Scope of works", project.notes)}
+  ${block(kind==="rfq"?"Works to price":kind==="variation"?"Variation description":"Scope of works", project.notes)}
+  ${kind==="variation"?block("Reason for variation", project.reason):""}
   ${block("Exclusions", project.exclusions)}
   <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:12px">
-    <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th><th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th></tr>
+    <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th>${priced?`<th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th>`:`<th align="right" style="padding:7px 10px">Your price</th>`}</tr>
     ${rows}
   </table>
-  <table align="right" style="margin-bottom:14px;font-size:13px">
-    ${t.margin>0?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr>`:""}
-    <tr><td style="font-weight:bold;padding:2px 16px 2px 0">Total price ex GST</td><td align="right"><b>${money(t.totalEx)}</b></td></tr>
-    <tr><td style="color:#5b6472;padding:2px 16px 2px 0">GST component (${settings.gst}%)</td><td align="right">${money(t.gstAmt)}</td></tr>
-    <tr><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px">Total price inc GST</td><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px" align="right">${money(t.totalInc)}</td></tr>
-  </table>
-  <div style="clear:both"></div>
-  <div style="margin:8px 0 14px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> notice needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
+  ${totals}
+  ${instructions}
   ${atts?`<div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Attachments</div>${atts}`:""}
-  <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Terms &amp; conditions</b><br/>${nl(project.terms||settings.terms)}</div>
+  ${kind!=="rfq"?`<div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Terms &amp; conditions</b><br/>${nl(project.terms||settings.terms)}</div>`:""}
   <div style="background:${b};color:#fff;text-align:center;font-size:11px;font-weight:bold;padding:8px;margin-top:14px">ABN: ${esc(settings.abn)} &nbsp;•&nbsp; Open Builders Licence: ${esc(settings.license)} &nbsp;•&nbsp; ${esc(settings.website)}</div>
   </body></html>`;
 }
@@ -2058,6 +2080,9 @@ function ReportView({ project, onChange }){
   const { settings, notify } = useStore();
   const t = totalsFor(project, settings);
   const lines = project.quoteLines || [];
+  const kind = jobKind(project), kv = JOB_KINDS[kind], priced = kv.priced;
+  const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : "QUOTATION";
+  const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #";
   const sheetRef = useRef(null);
   const [busy, setBusy] = useState("");
   const inc = (x) => x.include !== false;
@@ -2081,17 +2106,28 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, m: project.margin, g: settings.gst, br: settings.brand, lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, rn: project.reason, cr: project.contractRef, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
     return () => { cancelled = true; clearTimeout(id); };
   }, [genKey]);
 
-  const subjectBody = () => ({
-    subject: "Quotation " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
-    body: "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find our quotation attached.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company
-  });
+  const dueStr = project.dueDate ? fmtDate(project.dueDate) : "";
+  const subjectBody = () => {
+    if (kind === "rfq") return {
+      subject: "Price request " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
+      body: "Hi" + (project.subName ? " " + project.subName : "") + ",\n\nPlease find attached our price request for " + (project.title || "the works") + (project.site ? " at " + project.site : "") + ".\n\nThe marked-up photos, takeoffs and plans are attached for your pricing." + (dueStr ? "\n\nPlease provide your price by " + dueStr + "." : "") + "\n\nKind regards,\n" + settings.company
+    };
+    if (kind === "variation") return {
+      subject: "Variation " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
+      body: "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find attached a variation" + (project.contractRef ? " to " + project.contractRef : "") + " for your approval.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company
+    };
+    return {
+      subject: "Quotation " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
+      body: "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find our quotation attached.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company
+    };
+  };
   const doPdf = async () => { setBusy("pdf"); try { let blob = shareBlob; if (!blob){ const pdf = await elementToPdf(sheetRef.current); blob = pdf.output("blob"); } download(quoteFilename(project, "pdf"), blob); } catch(e){ alert("PDF export failed: " + e.message); } setBusy(""); };
   const doShare = async () => {
     let blob = shareBlob;
@@ -2145,28 +2181,42 @@ function ReportView({ project, onChange }){
         <div style={{ padding: "26px 30px" }}>
           {/* title row */}
           <div className="flex justify-between items-start gap-6 pb-4 mb-5" style={{ borderBottom: "3px solid var(--brand)" }}>
-            <div className="wordmark brand-text" style={{ fontSize: 44, lineHeight: 1 }}>QUOTATION</div>
+            <div className="wordmark brand-text" style={{ fontSize: 40, lineHeight: 1 }}>{rptTitle}</div>
             <div className="text-right text-sm">
-              <div><span style={{ color: "var(--muted)" }}>Quote #</span> <b>{project.quoteNo || "—"}</b></div>
+              <div><span style={{ color: "var(--muted)" }}>{numLabel}</span> <b>{project.quoteNo || "—"}</b></div>
               <div><span style={{ color: "var(--muted)" }}>Date</span> {fmtDate(project.date || project.createdAt || now())}</div>
-              <div><span style={{ color: "var(--muted)" }}>Valid</span> {settings.validity}</div>
+              {kind === "rfq" ? (dueStr && <div><span style={{ color: "var(--muted)" }}>Price by</span> <b>{dueStr}</b></div>)
+                : <div><span style={{ color: "var(--muted)" }}>Valid</span> {settings.validity}</div>}
             </div>
           </div>
 
-          {/* client / site */}
-          <div className="grid grid-cols-2 gap-6 mb-5 text-sm">
-            <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Prepared for</div><div className="font-semibold">{project.client || "—"}</div></div>
-            <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Site / project</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
-          </div>
+          {/* recipient / site */}
+          {kind === "rfq" ? (
+            <div className="grid grid-cols-2 gap-6 mb-5 text-sm">
+              <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Price request to</div>
+                <div className="font-semibold">{project.subCompany || project.subName || "—"}</div>
+                {project.subName && project.subCompany && <div>Attn: {project.subName}</div>}
+                {project.subEmail && <div>{project.subEmail}</div>}{project.subPhone && <div>{project.subPhone}</div>}{project.trade && <div style={{ color: "var(--muted)" }}>Trade: {project.trade}</div>}
+              </div>
+              <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Package / site</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-6 mb-5 text-sm">
+              <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Prepared for</div><div className="font-semibold">{project.client || "—"}</div>{kind === "variation" && project.contractRef && <div style={{ color: "var(--muted)" }}>Ref: {project.contractRef}</div>}</div>
+              <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Site / project</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
+            </div>
+          )}
 
-          {/* scope / notes */}
-          {project.notes && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Scope of works</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.notes}</div></div>}
+          {/* scope / description */}
+          {project.notes && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>{kind === "rfq" ? "Works to price" : kind === "variation" ? "Variation description" : "Scope of works"}</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.notes}</div></div>}
+          {kind === "variation" && project.reason && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Reason for variation</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.reason}</div></div>}
           {project.exclusions && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Exclusions</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.exclusions}</div></div>}
 
-          {/* line items */}
+          {/* items table */}
+          {(lines.length > 0 || priced) && (
           <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
             <thead><tr style={{ background: "var(--brand)", color: "#fff" }}>
-              <th className="text-left px-3 py-2">Description</th><th className="px-2 py-2 w-14">Qty</th><th className="px-2 py-2 w-14">Unit</th><th className="px-3 py-2 w-24 text-right">Rate</th><th className="px-3 py-2 w-24 text-right">Amount</th>
+              <th className="text-left px-3 py-2">Description</th><th className="px-2 py-2 w-14">Qty</th><th className="px-2 py-2 w-14">Unit</th>{priced ? <><th className="px-3 py-2 w-24 text-right">Rate</th><th className="px-3 py-2 w-24 text-right">Amount</th></> : <th className="px-3 py-2 w-28 text-right">Your price</th>}
             </tr></thead>
             <tbody>
               {lines.map((l, i) => (
@@ -2174,15 +2224,18 @@ function ReportView({ project, onChange }){
                   <td className="px-3 py-2" style={{ borderBottom: "1px solid var(--line)" }}>{l.desc}</td>
                   <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{round2(num(l.qty))}</td>
                   <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{l.unit}</td>
-                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.rateEx))}</td>
-                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * num(l.rateEx))}</td>
+                  {priced ? <><td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.rateEx))}</td>
+                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * num(l.rateEx))}</td></>
+                  : <td style={{ borderBottom: "1px solid var(--line)" }}></td>}
                 </tr>
               ))}
-              {lines.length === 0 && <tr><td colSpan="5" className="px-3 py-4 text-center" style={{ color: "var(--muted)" }}>No line items.</td></tr>}
+              {lines.length === 0 && <tr><td colSpan={priced ? "5" : "4"} className="px-3 py-4 text-center" style={{ color: "var(--muted)" }}>{priced ? "No line items." : "See attached photos, takeoffs and plans for the scope to price."}</td></tr>}
             </tbody>
           </table>
+          )}
 
-          {/* totals — RJG wording */}
+          {/* totals — priced kinds only */}
+          {priced && (
           <div className="flex justify-end mb-5" style={{ pageBreakInside: "avoid" }}>
             <div className="w-96 max-w-full text-sm space-y-1">
               {t.margin > 0 && <div className="flex justify-between gap-6" style={{ color: "var(--muted)" }}><span>Subtotal</span><span>{money(t.subEx)}</span></div>}
@@ -2191,13 +2244,20 @@ function ReportView({ project, onChange }){
               <div className="flex justify-between gap-6 text-base font-extrabold px-3 py-2 rounded mt-1" style={{ background: "var(--brand)", color: "#fff" }}><span>Total price inc GST</span><span>{money(t.totalInc)}</span></div>
             </div>
           </div>
+          )}
 
-          {/* quotation terms */}
+          {/* terms / instructions */}
+          {priced ? (
           <div className="text-sm mb-4 space-y-0.5" style={{ pageBreakInside: "avoid" }}>
             <div>Price is valid for <b>{settings.validity}</b>.</div>
             {settings.noticeToStart && <div><b>{settings.noticeToStart}</b> notice needed to start.</div>}
             {settings.paymentTerms && <div>Payment terms are <b>{settings.paymentTerms}</b>.</div>}
           </div>
+          ) : (
+          <div className="text-sm mb-4 p-3 rounded" style={{ background: "rgba(15,118,110,.08)", pageBreakInside: "avoid" }}>
+            <b>Please review the attached photos, takeoffs and plans and provide your price for the above works.</b>{dueStr && <> Price required by <b>{dueStr}</b>.</>} Send your price to {settings.email || settings.company}.
+          </div>
+          )}
 
           {/* attachments — photos, marked-up drawings, floor plans (only ticked ones) */}
           {attachments.length > 0 && (
@@ -2209,11 +2269,13 @@ function ReportView({ project, onChange }){
             </div>
           )}
 
-          {/* terms */}
+          {/* terms — not shown on subcontractor price requests */}
+          {kind !== "rfq" && (
           <div className="text-xs pt-4 mt-2" style={{ borderTop: "1px solid var(--line)", color: "var(--muted)", whiteSpace: "pre-wrap" }}>
             <div className="font-bold mb-1" style={{ color: "var(--ink)" }}>Terms &amp; conditions</div>
             {project.terms || settings.terms}
           </div>
+          )}
         </div>
 
         {/* ===== footer band ===== */}
@@ -2292,15 +2354,17 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
 
   const curDrawing = drawings.find(d => d.id === openDrawing);
   const curPlan = plans.find(p => p.id === openPlan);
-  const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["photos", "Photos"], ["quote", "Quote"], ["report", "Report"]];
+  const kind = jobKind(project), kv = JOB_KINDS[kind];
+  const quoteTabLabel = kind === "rfq" ? "Scope / items" : kind === "variation" ? "Variation items" : "Quote";
+  const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["photos", "Photos"], ["quote", quoteTabLabel], ["report", "Report"]];
   const t = totalsFor(project, useStore().settings);
 
   return (
     <div className="max-w-4xl mx-auto p-4 pb-28">
       <div className="flex items-center gap-2 mb-3">
         <button className="btn btn-ghost !p-2" onClick={onBack}><IcBack size={18} /></button>
-        <div className="flex-1 min-w-0"><div className="font-bold truncate">{project.title || "Untitled job"}</div><div className="text-xs truncate" style={{ color: "var(--muted)" }}>{project.client} {project.client && project.site ? "·" : ""} {project.site}</div></div>
-        <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>Total inc GST</div><div className="font-bold brand-text">{money(t.totalInc)}</div></div>
+        <div className="flex-1 min-w-0"><div className="font-bold truncate flex items-center gap-2"><span className="chip" style={{ background: kv.badge, color: "#fff" }}>{kv.short}</span>{project.title || "Untitled"}</div><div className="text-xs truncate" style={{ color: "var(--muted)" }}>{kind === "rfq" ? (project.subCompany || project.subName || "") : project.client} {(kind === "rfq" ? (project.subCompany||project.subName) : project.client) && project.site ? "·" : ""} {project.site}</div></div>
+        {kv.priced ? <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>Total inc GST</div><div className="font-bold brand-text">{money(t.totalInc)}</div></div> : <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>{kv.short}</div><div className="font-bold" style={{ color: kv.badge }}>Price request</div></div>}
       </div>
 
       <div className="scroll-x flex gap-1.5 mb-4">
@@ -2310,17 +2374,45 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
       {tab === "details" && (
         <div className="card p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Quote #"><input className="inp" value={project.quoteNo || ""} onChange={e => upd({ quoteNo: e.target.value })} /></Field>
+            <Field label={kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #"}><input className="inp" value={project.quoteNo || ""} onChange={e => upd({ quoteNo: e.target.value })} /></Field>
             <Field label="Date"><input type="date" className="inp" value={new Date(project.date || project.createdAt || now()).toISOString().slice(0,10)} onChange={e => upd({ date: new Date(e.target.value).getTime() })} /></Field>
           </div>
-          <Field label="Job / project title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
-          <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
-          <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
-          <Field label="Scope / notes (shown on quote)"><textarea className="inp" rows="4" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
-          <Field label="Exclusions (shown on quote after scope)"><textarea className="inp" rows="4" placeholder="e.g. Services disconnection excluded. Replacement cladding not included. Full-time air monitoring excluded." value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
-          <button className="btn btn-primary w-full" onClick={() => { upd({ updatedAt: now() }); notify("Job details saved"); }}><IcCheck size={16} /> Save details</button>
+
+          {kind === "rfq" ? (<>
+            <Field label="Title / package (what you're pricing)"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Subcontractor company"><input className="inp" value={project.subCompany || ""} onChange={e => upd({ subCompany: e.target.value })} /></Field>
+              <Field label="Contact name"><input className="inp" value={project.subName || ""} onChange={e => upd({ subName: e.target.value })} /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Email"><input className="inp" type="email" value={project.subEmail || ""} onChange={e => upd({ subEmail: e.target.value })} /></Field>
+              <Field label="Phone"><input className="inp" type="tel" value={project.subPhone || ""} onChange={e => upd({ subPhone: e.target.value })} /></Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Trade"><input className="inp" value={project.trade || ""} onChange={e => upd({ trade: e.target.value })} /></Field>
+              <Field label="Price required by"><input type="date" className="inp" value={project.dueDate ? new Date(project.dueDate).toISOString().slice(0,10) : ""} onChange={e => upd({ dueDate: e.target.value ? new Date(e.target.value).getTime() : null })} /></Field>
+            </div>
+            <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
+            <Field label="Works to price / scope"><textarea className="inp" rows="4" placeholder="Describe the works for the subcontractor to price. Attach marked-up photos, takeoffs and floor plans in the other tabs." value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
+          </>) : kind === "variation" ? (<>
+            <Field label="Variation title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
+            <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
+            <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
+            <Field label="Original job / contract reference"><input className="inp" placeholder="e.g. RJG-Q0042 / contract no." value={project.contractRef || ""} onChange={e => upd({ contractRef: e.target.value })} /></Field>
+            <Field label="Variation description (shown on the variation)"><textarea className="inp" rows="4" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
+            <Field label="Reason for variation"><textarea className="inp" rows="3" placeholder="e.g. Additional works requested by client / unforeseen site condition." value={project.reason || ""} onChange={e => upd({ reason: e.target.value })} /></Field>
+            <Field label="Exclusions"><textarea className="inp" rows="3" value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
+          </>) : (<>
+            <Field label="Job / project title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
+            <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
+            <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
+            <Field label="Scope / notes (shown on quote)"><textarea className="inp" rows="4" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
+            <Field label="Exclusions (shown on quote after scope)"><textarea className="inp" rows="4" placeholder="e.g. Services disconnection excluded. Replacement cladding not included. Full-time air monitoring excluded." value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
+          </>)}
+
+          <button className="btn btn-primary w-full" onClick={() => { upd({ updatedAt: now() }); notify("Details saved"); }}><IcCheck size={16} /> Save details</button>
           <p className="text-xs text-center" style={{ color: "var(--muted)" }}>Changes save automatically as you type — this just confirms it.</p>
-          <button className="btn btn-danger w-full" onClick={onDelete}><IcTrash size={16} /> Delete job</button>
+          <button className="btn btn-danger w-full" onClick={onDelete}><IcTrash size={16} /> Delete</button>
         </div>
       )}
 
@@ -2413,7 +2505,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
         </div>
       )}
 
-      {tab === "quote" && <QuoteEditor project={project} onChange={onChange} />}
+      {tab === "quote" && <QuoteEditor project={project} onChange={onChange} priced={kv.priced} />}
       {tab === "report" && <ReportView project={project} onChange={onChange} />}
     </div>
   );
@@ -2425,15 +2517,17 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
 function JobsScreen({ onOpen }){
   const { projects, upsertProject, settings } = useStore();
   const [q, setQ] = useState("");
-  const create = async () => {
-    const seq = settings.quoteSeq || 1;
-    const p = await upsertProject({ title: "", client: "", site: "", date: now(), quoteNo: "RJG-Q" + String(seq).padStart(4, "0"), margin: settings.defaultMargin, terms: settings.terms, drawings: [], floorplans: [], quoteLines: [] });
-    await (async () => { await dbPut("kv", { ...settings, quoteSeq: seq + 1 }, "settings"); })();
+  const [chooser, setChooser] = useState(false);
+  const createKind = async (kind) => {
+    setChooser(false);
+    const k = JOB_KINDS[kind]; const seqKey = k.seq; const seq = settings[seqKey] || 1;
+    const p = await upsertProject({ kind, title: "", client: "", site: "", date: now(), quoteNo: k.prefix + String(seq).padStart(4, "0"), margin: settings.defaultMargin, terms: settings.terms, drawings: [], floorplans: [], quoteLines: [] });
+    await dbPut("kv", { ...settings, [seqKey]: seq + 1 }, "settings");
     onOpen(p.id);
   };
   const s = q.trim().toLowerCase();
   const filtered = s ? projects.filter(p => ((p.title||"") + " " + (p.client||"") + " " + (p.site||"") + " " + (p.quoteNo||"")).toLowerCase().includes(s)) : projects;
-  const pipeline = projects.reduce((sum, p) => sum + totalsFor(p, settings).totalInc, 0);
+  const pipeline = projects.reduce((sum, p) => sum + (JOB_KINDS[jobKind(p)].priced ? totalsFor(p, settings).totalInc : 0), 0);
   return (
     <div className="max-w-4xl mx-auto p-4 pb-28">
       {/* hero banner */}
@@ -2442,8 +2536,18 @@ function JobsScreen({ onOpen }){
           <div className="wordmark" style={{ fontSize: 30, lineHeight: 1 }}>JOBS</div>
           <div className="text-xs mt-1.5" style={{ opacity: .85 }}>{projects.length} job{projects.length === 1 ? "" : "s"}{pipeline > 0 ? " · " + money(pipeline) + " inc GST" : ""}</div>
         </div>
-        <button className="btn font-bold" onClick={create} style={{ background: "#fff", color: "var(--brand)", boxShadow: "0 2px 8px rgba(0,0,0,.12)" }}><IcPlus size={16} /> New job</button>
+        <button className="btn font-bold" onClick={() => setChooser(true)} style={{ background: "#fff", color: "var(--brand)", boxShadow: "0 2px 8px rgba(0,0,0,.12)" }}><IcPlus size={16} /> New</button>
       </div>
+      <Modal open={chooser} onClose={() => setChooser(false)} title="What are you creating?">
+        <div className="space-y-2">
+          {Object.entries(JOB_KINDS).map(([k, v]) => (
+            <button key={k} className="w-full text-left card p-3 hover:brightness-95" onClick={() => createKind(k)} style={{ borderLeft: "5px solid " + v.badge }}>
+              <div className="flex items-center gap-2"><span className="chip" style={{ background: v.badge, color: "#fff" }}>{v.short}</span><span className="font-bold">{v.label}</span></div>
+              <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{k === "new" ? "Full quote to a client — client details, priced items, RJG quotation." : k === "rfq" ? "Send scope + marked-up photos, takeoffs & plans to a subbie to price. No prices shown — they send a price back to you." : "Priced variation on an existing job — client + original job reference, on the variation letterhead."}</div>
+            </button>
+          ))}
+        </div>
+      </Modal>
       {projects.length > 0 && (
         <div className="relative mb-4">
           <span className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }}><IcSearch size={16} /></span>
@@ -2454,20 +2558,21 @@ function JobsScreen({ onOpen }){
        filtered.length === 0 ? <Empty icon={<IcSearch size={44} />} title="No matches" sub="No jobs match your search." /> : (
         <div className="grid sm:grid-cols-2 gap-3">
           {filtered.map(p => {
-            const t = totalsFor(p, settings);
-            const bits = [(p.drawings||[]).length && ((p.drawings||[]).length + " dwg"), (p.floorplans||[]).length && ((p.floorplans||[]).length + " plan"), (p.photos||[]).length && ((p.photos||[]).length + " photo"), (p.quoteLines||[]).length && ((p.quoteLines||[]).length + " line")].filter(Boolean).join(" · ");
+            const t = totalsFor(p, settings); const kd = jobKind(p), kv = JOB_KINDS[kd];
+            const who = kd === "rfq" ? (p.subCompany || p.subName || "No subcontractor") : (p.client || "No client");
+            const bits = [(p.drawings||[]).length && ((p.drawings||[]).length + " dwg"), (p.floorplans||[]).length && ((p.floorplans||[]).length + " plan"), (p.photos||[]).length && ((p.photos||[]).length + " photo"), (p.quoteLines||[]).length && ((p.quoteLines||[]).length + (kd === "rfq" ? " item" : " line"))].filter(Boolean).join(" · ");
             return (
               <button key={p.id} className="text-left transition" onClick={() => onOpen(p.id)}
-                style={{ background: "var(--paper)", border: "1px solid var(--line)", borderLeft: "5px solid var(--brand)", borderRadius: 14, padding: 16, boxShadow: "0 1px 3px rgba(2,34,75,.06)" }}>
+                style={{ background: "var(--paper)", border: "1px solid var(--line)", borderLeft: "5px solid " + kv.badge, borderRadius: 14, padding: 16, boxShadow: "0 1px 3px rgba(2,34,75,.06)" }}>
                 <div className="flex justify-between items-start gap-2">
-                  <div className="min-w-0"><div className="font-bold truncate">{p.title || "Untitled job"}</div><div className="text-sm truncate" style={{ color: "var(--muted)" }}>{p.client || "No client"}</div></div>
-                  <span className="chip" style={{ flex: "0 0 auto" }}>{p.quoteNo}</span>
+                  <div className="min-w-0"><div className="font-bold truncate">{p.title || (kd === "rfq" ? "Untitled request" : kd === "variation" ? "Untitled variation" : "Untitled job")}</div><div className="text-sm truncate" style={{ color: "var(--muted)" }}>{who}</div></div>
+                  <div className="flex flex-col items-end gap-1" style={{ flex: "0 0 auto" }}><span className="chip" style={{ background: kv.badge, color: "#fff" }}>{kv.short}</span><span className="chip">{p.quoteNo}</span></div>
                 </div>
                 <div className="text-xs mt-2 truncate flex items-center gap-1" style={{ color: "var(--muted)" }}><IcPin size={12} /> {p.site || "—"}</div>
                 {bits && <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{bits}</div>}
                 <div className="flex justify-between items-end mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
                   <span className="text-xs" style={{ color: "var(--muted)" }}>{fmtDate(p.date || p.createdAt)}</span>
-                  <span className="font-extrabold brand-text text-lg">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span>
+                  {kv.priced ? <span className="font-extrabold brand-text text-lg">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span> : <span className="text-xs font-semibold" style={{ color: kv.badge }}>Price request</span>}
                 </div>
               </button>
             );
