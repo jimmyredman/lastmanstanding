@@ -1,7 +1,7 @@
 /* RJG Pricing — offline service worker.
    Network-first for same-origin requests so updates always arrive when there is
    signal; falls back to the cache when offline so the app still works on-site. */
-const CACHE = "rjg-pricing-v30";
+const CACHE = "rjg-pricing-v31";
 const PRECACHE = [
   "./index.html",
   "./rjg-pricing.html",

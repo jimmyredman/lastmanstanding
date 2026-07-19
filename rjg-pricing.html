@@ -132,7 +132,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v30 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v31 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -1943,9 +1943,9 @@ function QuoteEditor({ project, onChange, priced = true }){
         <button className="btn btn-ghost flex-1" onClick={addManual}><IcPlus size={16} /> Manual line</button>
       </div>
 
-      {!priced && <div className="text-xs" style={{ color: "var(--muted)" }}>This is a subcontractor price request — list the works/quantities to price (no rates). The subbie prices it from your attached photos, takeoffs and plans.</div>}
+      {!priced && <div className="text-xs" style={{ color: "var(--muted)" }}>Known quantities / measurements for the subcontractor to price from — description, qty and unit (no rates). Push measurements across from Takeoff / Floor plan, or add them by hand. These appear on the price request.</div>}
 
-      {lines.length === 0 ? <Empty icon={<IcDoc size={44} />} title={priced ? "No quote lines yet" : "No items to price yet"} sub="Add items from your pricing database, add manual lines, or push measurements across from the Takeoff / Floor plan tabs." /> : (
+      {lines.length === 0 ? <Empty icon={<IcDoc size={44} />} title={priced ? "No quote lines yet" : "No quantities yet"} sub="Add items from your pricing database, add manual lines, or push measurements across from the Takeoff / Floor plan tabs." /> : (
         <div className="card overflow-hidden">
           <div className="scroll-x">
             <table className="w-full text-sm min-w-[620px]">
@@ -2078,7 +2078,13 @@ function buildWordHtml(project, settings, t, logo, attachments){
 
   // RFQ / Variation — matches the RJG "Request for Quotation / Variation Request" form
   const numLabel = kind === "rfq" ? "RFQ #" : "Variation #";
-  const priceCell = (v) => priced ? money(v) : "________________";
+  const qtyRows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td></tr>`).join("");
+  const knownQty = (kind === "rfq" && (project.quoteLines||[]).length) ? `<div style="font-weight:bold;margin-bottom:4px">Known quantities / measurements:</div><table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:4px"><tr style="background:${b};color:#fff"><th align="left" style="padding:6px 10px">Description</th><th style="padding:6px">Qty</th><th style="padding:6px">Unit</th></tr>${qtyRows}</table><div style="font-size:11px;color:#5b6472;margin-bottom:10px">Quantities are for reference only — please verify on site and from the attached before pricing.</div>` : "";
+  const marginRows = (kind === "variation" && project.showMargin && t.margin > 0) ? `<tr><td style="padding-right:24px;color:#5b6472">Subtotal:</td><td style="color:#5b6472">${money(t.subEx)}</td></tr><tr><td style="padding-right:24px;color:#5b6472">Margin (${t.margin}%):</td><td style="color:#5b6472">${money(t.totalEx - t.subEx)}</td></tr>` : "";
+  const priceAndTerms = priced ? `<div style="margin:10px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> is needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
+    <table style="font-size:13px;margin-bottom:8px">${marginRows}<tr><td style="padding-right:24px">Total price ex GST:</td><td><b>${money(t.totalEx)}</b></td></tr>
+      <tr><td style="padding-right:24px">GST component:</td><td>${money(t.gstAmt)}</td></tr>
+      <tr><td style="padding-right:24px;font-weight:bold">Total price inc GST:</td><td style="font-weight:bold">${money(t.totalInc)}</td></tr></table>` : "";
   return wrap(kind === "variation" ? "VARIATION REQUEST" : "REQUEST FOR QUOTATION", `
     <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:12px"><tr>
       <td style="font-size:24px;font-weight:bold;color:${b}">${kind==="variation"?"VARIATION REQUEST":"REQUEST FOR QUOTATION"}</td>
@@ -2093,11 +2099,9 @@ function buildWordHtml(project, settings, t, logo, attachments){
     ${block("Exclusions / notes related to this:", project.exclusions)}
     ${block("Description of scope / works "+(kind==="rfq"?"to be priced:":":"), project.notes)}
     ${block("Documents / mark-ups / drawings to reference:", project.refs)}
+    ${knownQty}
     ${atts?`<div style="font-weight:bold">Attached photos / mark-ups / plans</div>${atts}`:""}
-    <div style="margin:10px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> is needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
-    <table style="font-size:13px;margin-bottom:8px"><tr><td style="padding-right:24px">Total price ex GST:</td><td><b>${priceCell(t.totalEx)}</b></td></tr>
-      <tr><td style="padding-right:24px">GST component:</td><td>${priceCell(t.gstAmt)}</td></tr>
-      <tr><td style="padding-right:24px;font-weight:bold">Total price inc GST:</td><td style="font-weight:bold">${priceCell(t.totalInc)}</td></tr></table>
+    ${priceAndTerms}
     ${kind==="rfq"?`<div style="background:#e7f2f0;padding:10px;border-radius:4px;margin-bottom:8px">Please review the attached and provide your price for the above works${dueStr?" by "+esc(dueStr):""}. Return to ${esc(settings.email||settings.company)}.</div>`:""}
     <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Request for Quotation / Variation Request</b><br/>Document No.: ${esc(settings.formDocNo)||"—"} &nbsp;&nbsp; Version No.: ${esc(settings.formDocVer)||"—"} &nbsp;&nbsp; Release Date: ${esc(settings.formDocRelease)||"—"}<br/>Uncontrolled if printed</div>`);
 }
@@ -2132,7 +2136,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
@@ -2283,22 +2287,43 @@ function ReportView({ project, onChange }){
           {project.exclusions && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Exclusions / notes related to this:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.exclusions}</div></div>}
           {project.notes && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Description of scope / works {kind === "rfq" ? "to be priced" : ""}:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.notes}</div></div>}
           {project.refs && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Documents / mark-ups / drawings to reference:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.refs}</div></div>}
+
+          {/* known quantities / measurements (RFQ) — from takeoffs, floor plans or manual */}
+          {kind === "rfq" && lines.length > 0 && (
+            <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
+              <div className="font-bold mb-1 text-sm">Known quantities / measurements:</div>
+              <table className="w-full text-sm" style={{ borderCollapse: "collapse" }}>
+                <thead><tr style={{ background: "var(--brand)", color: "#fff" }}><th className="text-left px-3 py-2">Description</th><th className="px-2 py-2 w-16 text-center">Qty</th><th className="px-2 py-2 w-16 text-center">Unit</th></tr></thead>
+                <tbody>{lines.map((l, i) => (<tr key={l.id} style={{ background: i % 2 ? "#f4f6f9" : "#fff" }}><td className="px-3 py-2" style={{ borderBottom: "1px solid var(--line)" }}>{l.desc}</td><td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{round2(num(l.qty))}</td><td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{l.unit}</td></tr>))}</tbody>
+              </table>
+              <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Quantities are for reference only — please verify on site and from the attached before pricing.</div>
+            </div>
+          )}
+
           {attachments.length > 0 && (
             <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
               <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Attached photos / mark-ups / plans</div>
               <div className="grid grid-cols-2 gap-3">{attachments.map((a, i) => <div key={i} style={{ pageBreakInside: "avoid" }}><img src={a.src} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{a.caption}</div></div>)}</div>
             </div>
           )}
+
+          {/* validity / notice / payment + price — priced kinds only (not on a subbie price request) */}
+          {priced && (<>
           <div className="text-sm space-y-0.5 mb-3" style={{ pageBreakInside: "avoid" }}>
             <div>Price is valid for <b>{settings.validity}</b>.</div>
             {settings.noticeToStart && <div><b>{settings.noticeToStart}</b> is needed to start.</div>}
             {settings.paymentTerms && <div>Payment terms are <b>{settings.paymentTerms}</b>.</div>}
           </div>
           <div className="text-sm mb-2" style={{ pageBreakInside: "avoid" }}>
-            <div className="flex justify-between" style={{ maxWidth: 320 }}><span>Total price ex GST:</span><span className="font-semibold">{priced ? money(t.totalEx) : "________________"}</span></div>
-            <div className="flex justify-between" style={{ maxWidth: 320 }}><span>GST component:</span><span>{priced ? money(t.gstAmt) : "________________"}</span></div>
-            <div className="flex justify-between font-bold" style={{ maxWidth: 320 }}><span>Total price inc GST:</span><span>{priced ? money(t.totalInc) : "________________"}</span></div>
+            {kind === "variation" && project.showMargin && t.margin > 0 && <>
+              <div className="flex justify-between" style={{ maxWidth: 320, color: "var(--muted)" }}><span>Subtotal:</span><span>{money(t.subEx)}</span></div>
+              <div className="flex justify-between" style={{ maxWidth: 320, color: "var(--muted)" }}><span>Margin ({t.margin}%):</span><span>{money(t.totalEx - t.subEx)}</span></div>
+            </>}
+            <div className="flex justify-between" style={{ maxWidth: 320 }}><span>Total price ex GST:</span><span className="font-semibold">{money(t.totalEx)}</span></div>
+            <div className="flex justify-between" style={{ maxWidth: 320 }}><span>GST component:</span><span>{money(t.gstAmt)}</span></div>
+            <div className="flex justify-between font-bold" style={{ maxWidth: 320 }}><span>Total price inc GST:</span><span>{money(t.totalInc)}</span></div>
           </div>
+          </>)}
           {kind === "rfq" && <div className="text-xs mt-2 p-2 rounded" style={{ background: "rgba(15,118,110,.08)" }}>Please review the attached and provide your price for the above works{dueStr ? " by " + dueStr : ""}. Return to {settings.email || settings.company}.</div>}
           {/* doc-control block (matches form footer) */}
           <div className="text-xs pt-3 mt-4" style={{ borderTop: "1px solid var(--line)", color: "var(--muted)" }}>
@@ -2390,7 +2415,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
   const curDrawing = drawings.find(d => d.id === openDrawing);
   const curPlan = plans.find(p => p.id === openPlan);
   const kind = jobKind(project), kv = JOB_KINDS[kind];
-  const quoteTabLabel = kind === "rfq" ? "Scope / items" : kind === "variation" ? "Variation items" : "Quote";
+  const quoteTabLabel = kind === "rfq" ? "Known quantities" : kind === "variation" ? "Variation items" : "Quote";
   const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["photos", "Photos"], ["quote", quoteTabLabel], ["report", "Report"]];
   const t = totalsFor(project, useStore().settings);
 
@@ -2446,6 +2471,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
             <Field label="Exclusions / notes related to this"><textarea className="inp" rows="4" value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
             <Field label="Description of scope / works"><textarea className="inp" rows="5" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
             <Field label="Documents / mark-ups / drawings to reference"><textarea className="inp" rows="2" value={project.refs || ""} onChange={e => upd({ refs: e.target.value })} /></Field>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!project.showMargin} onChange={e => upd({ showMargin: e.target.checked })} /> Show margin breakdown to the client on the variation (subtotal + margin lines)</label>
           </>) : (<>
             <Field label="Job / project title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
             <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
