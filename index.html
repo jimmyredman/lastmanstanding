@@ -120,14 +120,22 @@
      dust + rock chips scattering from its base (see ImpactBurst) — timed with its own
      thump sound so each word lands like it's actually cracking the ground. */
   @keyframes wordSlamDown {
-    0%   { transform: translateY(-90px) scale(1.2); opacity: 0; }
-    50%  { transform: translateY(6px) scale(0.92); opacity: 1; }
-    68%  { transform: translateY(-4px) scale(1.04); }
-    84%  { transform: translateY(1px) scale(0.99); }
+    0%   { transform: translateY(-130px) scaleY(1.28) scaleX(0.88); opacity: 0; }
+    45%  { opacity: 1; }
+    56%  { transform: translateY(0) scaleY(0.80) scaleX(1.14); }   /* impact squash */
+    70%  { transform: translateY(0) scaleY(1.07) scaleX(0.97); }
+    85%  { transform: translateY(0) scaleY(0.98) scaleX(1.01); }
     100% { transform: translateY(0) scale(1); opacity: 1; }
   }
-  .word-slam { animation: wordSlamDown 0.5s cubic-bezier(.3,1.3,.4,1) both; text-shadow: 0 0 22px rgba(255,90,60,0.85), 0 0 50px rgba(255,50,30,0.5); line-height: 1; }
-  .word-slam-big { animation: wordSlamDown 0.6s cubic-bezier(.3,1.4,.4,1) both; text-shadow: 0 0 30px rgba(255,110,70,0.95), 0 0 70px rgba(255,60,40,0.6); line-height: 1; }
+  .word-slam { animation: wordSlamDown 0.5s cubic-bezier(.25,.9,.3,1) both; line-height: 1; }
+  .word-slam-big { animation: wordSlamDown 0.6s cubic-bezier(.25,.95,.3,1) both; line-height: 1; }
+  /* Carved-into-stone treatment: bright top edge, deep drop shadow, faint warm rim. */
+  .word-carved { color: #f3ece1; text-shadow: 0 1px 0 rgba(255,255,255,0.16), 0 -1px 0 rgba(0,0,0,0.55), 0 3px 5px rgba(0,0,0,0.85), 0 8px 20px rgba(0,0,0,0.55), 0 0 34px rgba(255,120,60,0.20); }
+  .splash-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 90% at 50% 52%, transparent 42%, rgba(0,0,0,0.66) 100%); }
+  @keyframes shockRing { 0% { transform: translateX(-50%) scale(0.15); opacity: 0.5; } 100% { transform: translateX(-50%) scale(2.7); opacity: 0; } }
+  .shock-ring { position: absolute; left: 50%; bottom: -6px; width: 220px; height: 56px; border-radius: 50%; border: 2px solid rgba(220,210,195,0.5); animation: shockRing 0.75s cubic-bezier(.2,.7,.3,1) both; }
+  @keyframes crackIn { 0% { stroke-dashoffset: 130; opacity: 0; } 25% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0.85; } }
+  .crack-line { stroke-dasharray: 130; animation: crackIn 0.4s ease-out both; }
 
   @keyframes groundShake1 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
   @keyframes groundShake2 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
@@ -573,34 +581,89 @@ function getSharedAudioCtx() {
   return window.__lmsAudioCtx;
 }
 
+// Heavy "concrete smash" impact — a Hulk-style crumbling thud, built from four layered
+// parts: a deep sub that drops in pitch for weight, a gritty (distorted) body, a sharp
+// filtered "crack" as it hits, and a longer band-limited noise tail that crumbles away
+// like settling rubble. `boom` makes it bigger (used for the final word).
 function playThumpSound(freq, boom) {
   try {
     const ctx = getSharedAudioCtx();
     if (!ctx) return;
     const now = ctx.currentTime;
-    const dur = boom ? 0.55 : 0.32;
+    const master = ctx.createGain();
+    master.gain.value = boom ? 1.0 : 0.72;
+    master.connect(ctx.destination);
+    const dur = boom ? 0.5 : 0.32;
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(freq * 1.7, now);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.3, 18), now + dur);
-    gain.gain.setValueAtTime(boom ? 1.0 : 0.75, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.start(now); osc.stop(now + dur + 0.05);
+    // Filtered-noise buffer helper.
+    const noiseBuf = (len) => {
+      const n = Math.max(1, Math.floor(ctx.sampleRate * len));
+      const b = ctx.createBuffer(1, n, ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      return b;
+    };
 
-    const clickLen = Math.floor(ctx.sampleRate * 0.06);
-    const buffer = ctx.createBuffer(1, clickLen, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < clickLen; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / clickLen);
-    const click = ctx.createBufferSource();
-    click.buffer = buffer;
-    const clickGain = ctx.createGain();
-    clickGain.gain.setValueAtTime(boom ? 0.55 : 0.4, now);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-    click.connect(clickGain); clickGain.connect(ctx.destination);
-    click.start(now);
+    // 1) Deep sub — pitch collapses fast for weight/impact.
+    const sub = ctx.createOscillator();
+    const subGain = ctx.createGain();
+    sub.type = "sine";
+    sub.frequency.setValueAtTime(freq * 2.2, now);
+    sub.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.22, 22), now + dur);
+    subGain.gain.setValueAtTime(0.0001, now);
+    subGain.gain.exponentialRampToValueAtTime(boom ? 1.1 : 0.82, now + 0.006);
+    subGain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+    sub.connect(subGain); subGain.connect(master);
+    sub.start(now); sub.stop(now + dur + 0.05);
+
+    // 2) Gritty body — triangle through a soft-clip waveshaper for concrete crunch.
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(256);
+    for (let i = 0; i < 256; i++) { const x = (i / 255) * 2 - 1; curve[i] = Math.tanh(x * 3); }
+    shaper.curve = curve;
+    const body = ctx.createOscillator();
+    const bodyGain = ctx.createGain();
+    body.type = "triangle";
+    body.frequency.setValueAtTime(freq * 1.3, now);
+    body.frequency.exponentialRampToValueAtTime(Math.max(freq * 0.4, 40), now + dur * 0.7);
+    bodyGain.gain.setValueAtTime(0.0001, now);
+    bodyGain.gain.exponentialRampToValueAtTime(boom ? 0.5 : 0.32, now + 0.006);
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, now + dur * 0.85);
+    body.connect(shaper); shaper.connect(bodyGain); bodyGain.connect(master);
+    body.start(now); body.stop(now + dur);
+
+    // 3) Crack — noise through a lowpass that sweeps down; the sharp hit.
+    const crackLen = boom ? 0.16 : 0.11;
+    const crack = ctx.createBufferSource(); crack.buffer = noiseBuf(crackLen);
+    const crackLp = ctx.createBiquadFilter(); crackLp.type = "lowpass";
+    crackLp.frequency.setValueAtTime(1700, now);
+    crackLp.frequency.exponentialRampToValueAtTime(160, now + crackLen);
+    crackLp.Q.value = 1.0;
+    const crackGain = ctx.createGain();
+    crackGain.gain.setValueAtTime(boom ? 0.85 : 0.55, now);
+    crackGain.gain.exponentialRampToValueAtTime(0.001, now + crackLen);
+    crack.connect(crackLp); crackLp.connect(crackGain); crackGain.connect(master);
+    crack.start(now);
+
+    // 4) Crumbling rubble tail — band-limited noise settling with a granular flicker.
+    const tailLen = boom ? 0.8 : 0.5;
+    const tail = ctx.createBufferSource(); tail.buffer = noiseBuf(tailLen);
+    const tailBp = ctx.createBiquadFilter(); tailBp.type = "bandpass";
+    tailBp.frequency.setValueAtTime(720, now + 0.02);
+    tailBp.frequency.exponentialRampToValueAtTime(300, now + tailLen);
+    tailBp.Q.value = 0.6;
+    const tailGain = ctx.createGain();
+    const peak = boom ? 0.28 : 0.18;
+    tailGain.gain.setValueAtTime(0.0001, now);
+    tailGain.gain.linearRampToValueAtTime(peak, now + 0.03);
+    const steps = 6;
+    for (let i = 1; i <= steps; i++) {
+      const t = now + (tailLen * i) / steps;
+      tailGain.gain.linearRampToValueAtTime(peak * (1 - i / steps) * (0.55 + Math.random() * 0.45), t);
+    }
+    tailGain.gain.exponentialRampToValueAtTime(0.0001, now + tailLen + 0.05);
+    tail.connect(tailBp); tailBp.connect(tailGain); tailGain.connect(master);
+    tail.start(now + 0.01);
   } catch (e) { /* audio blocked or unavailable — visuals still carry the moment */ }
 }
 
@@ -865,30 +928,26 @@ function AuthScreen() {
   );
 }
 
-const AU_STATES = ["NSW", "VIC", "QLD", "WA", "SA", "TAS", "ACT", "NT"];
-
 function IDCheckScreen({ initialName, onVerified }) {
-  const [fullName, setFullName] = useState(initialName || "");
   const [dob, setDob] = useState("");
-  const [licenceNumber, setLicenceNumber] = useState("");
-  const [licenceState, setLicenceState] = useState("NSW");
+  const [confirm18, setConfirm18] = useState(false);
   const [checked, setChecked] = useState(false);
   const [denied, setDenied] = useState(false);
-  const canSubmit = fullName && dob && licenceNumber;
+  const canSubmit = dob && confirm18;
   const submit = () => {
     const age = calcAge(dob); setChecked(true);
     if (age === null || age < 18) setDenied(true);
-    else { setDenied(false); onVerified({ fullName, dob, licenceNumber, licenceState, age }); }
+    else { setDenied(false); onVerified({ dob, age }); }
   };
-  const tryAgain = () => { setChecked(false); setDenied(false); setDob(""); setLicenceNumber(""); };
+  const tryAgain = () => { setChecked(false); setDenied(false); setDob(""); setConfirm18(false); };
 
   if (checked && denied) {
     return (
       <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG, color: "var(--app-text)" }}>
         <div className="max-w-sm mx-auto w-full text-center">
           <div className="mx-auto mb-4 h-14 w-14 rounded-full bg-rose-500/10 flex items-center justify-center"><ShieldAlert size={26} className="text-rose-400" /></div>
-          <h2 className="font-scoreboard text-2xl tracking-wide text-rose-400">ACCESS DENIED</h2>
-          <p className="text-sm text-neutral-400 mt-2 leading-relaxed">Our records show you're under 18. You must be 18 or older to use this app.</p>
+          <h2 className="font-scoreboard text-2xl tracking-wide text-rose-400">SORRY, NOT YET</h2>
+          <p className="text-sm text-neutral-400 mt-2 leading-relaxed">You need to be 18 or older to use Last Man Standing.</p>
           <button onClick={tryAgain} className="mt-6 w-full rounded-xl bg-neutral-800 border adapt-border-10 text-slate-200 font-semibold py-3 text-sm">Go back</button>
         </div>
       </div>
@@ -897,21 +956,15 @@ function IDCheckScreen({ initialName, onVerified }) {
   return (
     <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6" style={{ backgroundColor: BG, color: "var(--app-text)" }}>
       <div className="max-w-sm mx-auto w-full">
-        <h2 className="font-scoreboard text-3xl tracking-wide mb-1">VERIFY YOUR DETAILS</h2>
-        <p className="text-sm text-neutral-500 mb-6">Quick licence check — required to confirm you're 18+.</p>
-        <div className="space-y-3">
-          <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Full legal name"
-            className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
-          <div><label className="text-[11px] text-neutral-500 mb-1 block">Date of birth</label>
-            <input value={dob} onChange={(e) => setDob(e.target.value)} type="date" className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-400`} /></div>
-          <input value={licenceNumber} onChange={(e) => setLicenceNumber(e.target.value)} placeholder="Driver licence number"
-            className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 placeholder:text-neutral-500 outline-none focus:border-teal-400`} />
-          <div><label className="text-[11px] text-neutral-500 mb-1 block">Licence state</label>
-            <select value={licenceState} onChange={(e) => setLicenceState(e.target.value)} className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-400`}>
-              {AU_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select></div>
-        </div>
-        <button disabled={!canSubmit} onClick={submit} className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm">Verify my details</button>
+        <h2 className="font-scoreboard text-3xl tracking-wide mb-1">CONFIRM YOUR AGE</h2>
+        <p className="text-sm text-neutral-500 mb-6">You must be 18 or older to use Last Man Standing.</p>
+        <div><label className="text-[11px] text-neutral-500 mb-1 block">Date of birth</label>
+          <input value={dob} onChange={(e) => setDob(e.target.value)} type="date" className={`w-full rounded-xl bg-neutral-800 border ${PANEL_BORDER} px-4 py-3 text-sm text-slate-100 outline-none focus:border-teal-400`} /></div>
+        <label className="flex items-start gap-3 mt-4 rounded-xl border adapt-border-10 bg-neutral-800 p-4 cursor-pointer">
+          <input type="checkbox" checked={confirm18} onChange={(e) => setConfirm18(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
+          <span className="text-xs text-neutral-300">I confirm I am 18 years of age or older.</span>
+        </label>
+        <button disabled={!canSubmit} onClick={submit} className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm">Continue</button>
       </div>
     </div>
   );
@@ -922,22 +975,27 @@ function HowToPlayScreen({ onAccept }) {
   return (
     <div className="min-h-screen text-slate-100 px-6 pt-14 pb-10" style={{ backgroundColor: BG, color: "var(--app-text)" }}>
       <div className="max-w-sm mx-auto">
-        <h2 className="font-scoreboard text-3xl tracking-wide mb-4">HOW TO PLAY</h2>
+        <h2 className="font-scoreboard text-3xl tracking-wide mb-4">HOW IT WORKS</h2>
         <div className="space-y-3 text-sm text-neutral-300">
-          <p>• Each round, choose one NRL team. You can't choose the same team twice.</p>
-          <p>• If you don't submit a pick in time, you'll automatically be given a random team.</p>
-          <p>• Picks lock 24 hours before the first game of the round — no changes after that.</p>
-          <p>• If your team loses, or draws, you're eliminated that round.</p>
-          <p>• Once you're out, you're out — no buy-backs.</p>
-          <p>• If literally everyone loses in the same round, nobody is eliminated and the competition continues — as per the rules.</p>
-          <p>• Any buy-in and prize pool are organised by your host outside the app — the app just tracks picks and standings.</p>
+          <p>• Each round, choose one team. Depending on the competition's rules, you may not be able to reuse the same team.</p>
+          <p>• Get your pick in before lockout (at least 24 hours before the round's first game). Miss it and you're given a random team.</p>
+          <p>• If your team loses, you lose a life. Run out of lives and you're out.</p>
+          <p>• If everyone still in loses the same round, nobody is eliminated and the round replays.</p>
+          <p>• The host runs the competition and can add co-hosts to help.</p>
         </div>
-        <label className="flex items-start gap-3 mt-6 rounded-xl border adapt-border-10 bg-neutral-800 p-4 cursor-pointer">
+
+        <div className={`mt-6 rounded-xl border adapt-border-10 bg-neutral-800 p-4`}>
+          <h4 className="text-sm font-semibold text-slate-100 mb-2">Before you continue</h4>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            Last Man Standing is a free service that only hosts and tracks tipping competitions. It does not run, collect, hold or pay out any entry fees, money or prizes. Any buy-in, prize pool or payment is arranged privately between you and your competition's host — outside this app, entirely at your own cost and risk. Last Man Standing accepts no responsibility for any money, prizes or arrangements between players or hosts. You use this app for entertainment only.
+          </p>
+        </div>
+        <label className="flex items-start gap-3 mt-4 rounded-xl border adapt-border-10 bg-neutral-800 p-4 cursor-pointer">
           <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0" />
-          <span className="text-xs text-neutral-300">I understand how to play.</span>
+          <span className="text-xs text-neutral-300">I've read and agree to the above.</span>
         </label>
         <button disabled={!checked} onClick={onAccept} className="mt-5 w-full rounded-xl bg-teal-400 hover:bg-teal-300 disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm">
-          Continue
+          Agree &amp; continue
         </button>
       </div>
     </div>
@@ -2412,6 +2470,7 @@ function ImpactBurst({ big = false }) {
   return (
     <div className="absolute left-1/2 bottom-0 pointer-events-none" style={{ transform: "translateX(-50%)" }}>
       <div className={big ? "dust-puff dust-puff-big" : "dust-puff"} />
+      <div className={big ? "dust-puff dust-puff-big" : "dust-puff"} style={{ animationDelay: "0.05s", opacity: 0.5, transform: "scale(1.4)" }} />
       {chips.map((c, i) => (
         <span key={i} className="debris-chip" style={{ "--dx": `${c.dx}px`, "--dy": `${c.dy}px`, "--rot": `${c.rot}deg`, width: c.size, height: c.size, animationDelay: `${c.delay}s` }} />
       ))}
@@ -2439,27 +2498,39 @@ function SplashScreen({ onFinish }) {
   }, []);
 
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden transition-all duration-[600ms] ${phase === "out" ? "opacity-0 scale-150" : "opacity-100 scale-100"}`} style={{ backgroundColor: "#050506" }}>
-      <div className={`flex flex-col items-center gap-0.5 relative ${revealCount > 0 ? `ground-shake-${revealCount}` : ""}`}>
+    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden transition-all duration-[700ms] ease-out ${phase === "out" ? "opacity-0 scale-105" : "opacity-100 scale-100"}`} style={{ backgroundColor: "#08080a" }}>
+      <div className="smoke-layer-a" style={{ opacity: 0.35, filter: "blur(34px) grayscale(1)" }} />
+      <div className="smoke-layer-b" style={{ opacity: 0.28, filter: "blur(40px) grayscale(1)" }} />
+      <div className="splash-vignette" />
+      <div className={`flex flex-col items-center gap-1 relative z-10 ${revealCount > 0 ? `ground-shake-${revealCount}` : ""}`}>
         {revealCount >= 1 && (
           <div className="relative">
-            <div className="word-slam font-scoreboard text-5xl tracking-wide" style={{ color: "#fff1e0" }}>LAST.</div>
+            <div className="word-slam word-carved font-scoreboard text-5xl tracking-wide">LAST.</div>
             <ImpactBurst />
           </div>
         )}
         {revealCount >= 2 && (
           <div className="relative">
-            <div className="word-slam font-scoreboard text-5xl tracking-wide" style={{ color: "#fff1e0" }}>MAN.</div>
+            <div className="word-slam word-carved font-scoreboard text-5xl tracking-wide">MAN.</div>
             <ImpactBurst />
           </div>
         )}
         {revealCount >= 3 && (
           <div className="relative">
-            <div className="word-slam-big font-scoreboard text-6xl tracking-wide" style={{ color: "#fff1e0" }}>STANDING!</div>
+            <div className="word-slam-big word-carved font-scoreboard text-6xl tracking-wide">STANDING!</div>
+            <div className="shock-ring" />
+            <svg className="absolute left-1/2 bottom-0 pointer-events-none" width="280" height="44" viewBox="0 0 280 44" style={{ transform: "translateX(-50%)" }}>
+              <g stroke="rgba(205,195,180,0.55)" strokeWidth="1.4" fill="none" strokeLinecap="round">
+                <polyline className="crack-line" points="140,5 126,18 100,25 74,38" />
+                <polyline className="crack-line" style={{ animationDelay: "0.03s" }} points="140,5 156,16 186,22 214,36" />
+                <polyline className="crack-line" style={{ animationDelay: "0.06s" }} points="140,5 137,22 128,40" />
+                <polyline className="crack-line" style={{ animationDelay: "0.05s" }} points="140,5 146,24 162,41" />
+              </g>
+            </svg>
             <ImpactBurst big />
           </div>
         )}
-        {showSub && <p className="splash-sub text-[11px] tracking-[0.4em] uppercase text-neutral-400 mt-4 text-center relative">Beta</p>}
+        {showSub && <p className="splash-sub text-[11px] tracking-[0.45em] uppercase text-neutral-500 mt-5 text-center relative">Beta</p>}
       </div>
     </div>
   );
