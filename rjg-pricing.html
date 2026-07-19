@@ -128,11 +128,30 @@ async function dbAll(store){ const db = await openDb(); return new Promise((res,
 async function dbPut(store, val, key){ const db = await openDb(); return new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); const os = t.objectStore(store); (key !== undefined ? os.put(val, key) : os.put(val)); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
 async function dbGet(store, key){ const db = await openDb(); return new Promise((res, rej) => { const r = db.transaction(store).objectStore(store).get(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
 async function dbDel(store, key){ const db = await openDb(); return new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); t.objectStore(store).delete(key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+// Bulk-write many records into a store in one transaction (used for seeding).
+async function dbBulkPut(store, records){ const db = await openDb(); return new Promise((res, rej) => { const t = db.transaction(store, "readwrite"); const os = t.objectStore(store); records.forEach(r => os.put(r)); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+// Pre-load the RJG price register (vendor/seed-items.json) on a fresh device so
+// the pricing DB is populated by default. Returns the seeded items, or [] if the
+// seed file can't be fetched (e.g. first run offline) — leaving the flag unset so
+// it retries next launch.
+async function seedDefaultItems(){
+  try {
+    const res = await fetch("./vendor/seed-items.json", { cache: "no-cache" });
+    if (!res.ok) return [];
+    const raw = await res.json();
+    if (!Array.isArray(raw) || !raw.length) return [];
+    const t0 = now();
+    const items = raw.map((a, i) => ({ ...a, rate: num(a.rate), id: uid() + "-" + i, updatedAt: t0 }));
+    await dbBulkPut("items", items);
+    await dbPut("kv", true, "seeded");
+    return items;
+  } catch (_) { return []; }
+}
 
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v31 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v32 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -182,7 +201,11 @@ function StoreProvider({ children }){
 
   useEffect(() => {
     (async () => {
-      const [it, pr, kv] = await Promise.all([dbAll("items"), dbAll("projects"), dbGet("kv", "settings")]);
+      let [it, pr, kv, seeded] = await Promise.all([dbAll("items"), dbAll("projects"), dbGet("kv", "settings"), dbGet("kv", "seeded")]);
+      // First run on a fresh device: pre-load the RJG price register so it's there
+      // by default — no manual import needed. The "seeded" flag means we only ever
+      // do this once, so clearing items on purpose won't bring them back.
+      if (!it.length && !seeded) { it = await seedDefaultItems(); }
       setItems(it);
       setProjects(pr.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
       if (kv) setSettings({ ...DEFAULT_SETTINGS, ...kv });
@@ -315,6 +338,19 @@ function SettingsScreen(){
   const save = () => { saveSettings(f); notify("Settings saved"); };
 
   const backup = () => download("rjg-backup-" + new Date().toISOString().slice(0,10) + ".json", new Blob([JSON.stringify({ settings, items, projects }, null, 2)], { type: "application/json" }));
+  // Re-load the built-in RJG price register. Merge-by-code refreshes rates on
+  // existing items and adds any that are missing — no duplicates.
+  const restoreDefaults = async () => {
+    if (items.length && !confirm("Load the built-in RJG price list? Existing items with matching codes are refreshed; nothing is deleted.")) return;
+    try {
+      const res = await fetch("./vendor/seed-items.json", { cache: "no-cache" });
+      if (!res.ok) throw new Error("fetch");
+      const raw = await res.json();
+      const r = await bulkUpsertItems(raw.map(a => ({ ...a, rate: num(a.rate) })));
+      await dbPut("kv", true, "seeded");
+      notify("Default price list loaded — " + r.created + " added, " + r.updated + " updated");
+    } catch (e) { alert("Couldn't load the default price list."); }
+  };
   // Clear the offline cache + service worker and reload the newest build.
   // Only wipes caches/SW — your price items and jobs (IndexedDB) are untouched.
   const forceUpdate = async () => {
@@ -403,6 +439,7 @@ function SettingsScreen(){
         <div className="flex gap-2 flex-wrap">
           <button className="btn btn-ghost" onClick={backup}><IcUpload size={16} /> Export backup</button>
           <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} style={{ transform: "rotate(180deg)" }} /> Restore backup<input type="file" accept="application/json" className="hidden" onChange={restore} /></label>
+          <button className="btn btn-ghost" onClick={restoreDefaults}><IcPrice size={16} /> Load default price list</button>
         </div>
         <div className="text-xs" style={{ color: "var(--muted)" }}>{items.length} price items · {projects.length} jobs stored.</div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
