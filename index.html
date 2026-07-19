@@ -2420,11 +2420,22 @@ function AppShell({ user }) {
   };
 
   // A player can forfeit (concede — marked out but stays listed) or leave entirely.
-  const forfeitEntry = (tierId) => db.collection("entries").doc(`${tierId}_${user.uid}`).update({ status: "forfeited" });
+  const forfeitEntry = async (tierId) => {
+    try {
+      await db.collection("entries").doc(`${tierId}_${user.uid}`).update({ status: "forfeited" });
+      setTab("standings");
+    } catch (e) {
+      alert("Couldn't forfeit: " + (e.message || "please try again.") + (String(e.message || "").toLowerCase().includes("permission") ? "\n\n(Your host needs to publish the latest Firestore rules.)" : ""));
+    }
+  };
   const leaveEntry = async (tierId) => {
-    await db.collection("entries").doc(`${tierId}_${user.uid}`).delete();
-    if (viewingTierId === tierId) setViewingTierId(null);
-    setTab("compete");
+    try {
+      await db.collection("entries").doc(`${tierId}_${user.uid}`).delete();
+      if (viewingTierId === tierId) setViewingTierId(null);
+      setTab("compete");
+    } catch (e) {
+      alert("Couldn't leave: " + (e.message || "please try again.") + (String(e.message || "").toLowerCase().includes("permission") ? "\n\n(Your host needs to publish the latest Firestore rules.)" : ""));
+    }
   };
 
   const submitPick = async () => {
