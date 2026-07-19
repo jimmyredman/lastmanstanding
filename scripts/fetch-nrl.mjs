@@ -1,65 +1,89 @@
-// Dry-run NRL results ingestion.
-// Fetches ESPN's public (unofficial) scoreboard and logs what it returns, so we can confirm
-// the data shape + team names BEFORE wiring it to Firestore. No writes, no secrets.
+// NRL results ingestion — writes a static nrl-results.json the app reads to pre-fill
+// the host results panel. Free, no secrets: the workflow commits this file back to the
+// repo and Vercel serves it at /nrl-results.json.
 //
-// Usage: node scripts/fetch-nrl.mjs [YYYYMMDD]   (optional date, else today's slate)
+// Source: ESPN's public (unofficial) scoreboard feed.
+// Usage: node scripts/fetch-nrl.mjs [YYYYMMDD | YYYYMMDD-YYYYMMDD]
+//   (optional date/range; default = current week's slate)
 
-const CANDIDATES = [
-  "https://site.api.espn.com/apis/site/v2/sports/rugby-league/3/scoreboard",
-  "https://site.api.espn.com/apis/site/v2/sports/rugby/3/scoreboard",
-  "https://site.api.espn.com/apis/site/v2/sports/rugby-league/nrl/scoreboard",
-];
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
-async function tryFetch(url) {
-  try {
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (LMS results bot)" } });
-    return { url, status: res.status, ok: res.ok, json: res.ok ? await res.json() : null };
-  } catch (e) {
-    return { url, error: String(e && e.message ? e.message : e) };
+const ENDPOINT = "https://site.api.espn.com/apis/site/v2/sports/rugby-league/3/scoreboard";
+const OUT_FILE = new URL("../nrl-results.json", import.meta.url);
+
+// ESPN team names → the short names this app uses. Anything not listed passes through
+// unchanged (Panthers, Broncos, Storm, etc. already match).
+const TEAM_MAP = {
+  "Wests Tigers": "Tigers",
+  "Sea Eagles": "Manly",
+  "Manly Sea Eagles": "Manly",
+  "Parramatta Eels": "Eels",
+};
+const KNOWN = new Set([
+  "Storm", "Broncos", "Knights", "Sharks", "Eels", "Bulldogs", "Panthers", "Warriors",
+  "Roosters", "Cowboys", "Tigers", "Manly", "Raiders", "Rabbitohs", "Titans", "Dragons", "Dolphins",
+]);
+function normTeam(c) {
+  const candidates = [c.team?.shortDisplayName, c.team?.displayName, c.team?.name];
+  for (const raw of candidates) {
+    if (!raw) continue;
+    if (TEAM_MAP[raw]) return TEAM_MAP[raw];
+    if (KNOWN.has(raw)) return raw;
+    // last word (e.g. "North Queensland Cowboys" → "Cowboys")
+    const last = String(raw).split(" ").pop();
+    if (KNOWN.has(last)) return last;
   }
+  return c.team?.shortDisplayName || c.team?.displayName || "?";
 }
 
-function summarise(json) {
-  const evs = json?.events || [];
-  return {
-    leagueName: json?.leagues?.[0]?.name,
-    leagueSlug: json?.leagues?.[0]?.slug,
-    season: json?.season,
-    week: json?.week,
-    eventCount: evs.length,
-    events: evs.map((ev) => {
-      const comp = ev.competitions?.[0] || {};
-      return {
-        date: ev.date,
-        name: ev.name,
-        state: ev.status?.type?.state,
-        completed: !!ev.status?.type?.completed,
-        competitors: (comp.competitors || []).map((c) => ({
-          team: c.team?.displayName,
-          short: c.team?.shortDisplayName,
-          abbr: c.team?.abbreviation,
-          homeAway: c.homeAway,
-          score: c.score,
-          winner: c.winner,
-        })),
-      };
-    }),
-  };
+async function fetchScoreboard(dates) {
+  const url = dates ? `${ENDPOINT}?dates=${dates}` : ENDPOINT;
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (LMS results bot)" } });
+  if (!res.ok) throw new Error(`ESPN ${res.status} for ${url}`);
+  return res.json();
 }
 
-const dates = (process.argv[2] || "").trim();
-console.log("NRL dry-run ingestion", dates ? `for dates=${dates}` : "(today's slate)");
-
-let anyOk = false;
-for (const base of CANDIDATES) {
-  const url = dates ? `${base}?dates=${dates}` : base;
-  const r = await tryFetch(url);
-  console.log("\n===== " + url + " =====");
-  if (r.error) { console.log("ERROR:", r.error); continue; }
-  console.log("HTTP", r.status);
-  if (r.json) {
-    anyOk = true;
-    console.log(JSON.stringify(summarise(r.json), null, 2));
-  }
+function buildRound(json) {
+  const week = json?.week?.number;
+  const year = json?.season?.year;
+  if (!week) return null;
+  const games = (json.events || []).map((ev) => {
+    const comp = ev.competitions?.[0] || {};
+    const cs = comp.competitors || [];
+    const home = cs.find((c) => c.homeAway === "home") || cs[0];
+    const away = cs.find((c) => c.homeAway === "away") || cs[1];
+    if (!home || !away) return null;
+    const winner = home.winner ? normTeam(home) : away.winner ? normTeam(away) : null;
+    return {
+      home: normTeam(home),
+      away: normTeam(away),
+      homeScore: home.score != null ? Number(home.score) : null,
+      awayScore: away.score != null ? Number(away.score) : null,
+      winner,
+      completed: !!ev.status?.type?.completed,
+    };
+  }).filter(Boolean);
+  return { roundId: `r${week}`, week, year, games };
 }
-if (!anyOk) console.log("\nNo candidate endpoint returned data — we'll adjust the URL/params.");
+
+const arg = (process.argv[2] || "").trim();
+console.log("NRL ingestion", arg ? `for dates=${arg}` : "(current week)");
+
+const json = await fetchScoreboard(arg);
+const round = buildRound(json);
+if (!round) { console.log("No week/round in feed — nothing to write."); process.exit(0); }
+
+// Merge into the existing file so earlier rounds are preserved across the season.
+let store = { updatedAt: null, rounds: {} };
+if (existsSync(OUT_FILE)) {
+  try { store = JSON.parse(readFileSync(OUT_FILE, "utf8")); store.rounds = store.rounds || {}; }
+  catch { store = { updatedAt: null, rounds: {} }; }
+}
+store.rounds[round.roundId] = { week: round.week, year: round.year, games: round.games };
+// ISO stamp without Date.now(): use the newest game date if present, else leave prior stamp.
+store.updatedAt = json?.events?.[0]?.date || store.updatedAt;
+
+writeFileSync(OUT_FILE, JSON.stringify(store, null, 2) + "\n");
+const done = round.games.filter((g) => g.completed).length;
+console.log(`Wrote ${round.roundId}: ${round.games.length} games (${done} completed).`);
+console.log(round.games.map((g) => `  ${g.home} ${g.homeScore ?? "-"} - ${g.awayScore ?? "-"} ${g.away}${g.winner ? `  → ${g.winner}` : ""}`).join("\n"));
