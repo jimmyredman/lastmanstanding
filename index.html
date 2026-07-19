@@ -1171,7 +1171,7 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
       <div className="inline-flex items-center gap-1 mb-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-950" style={{ backgroundColor: preset.color }}><Crown size={12} /> {preset.name}</div>
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
       <p className="text-sm text-neutral-400 mt-1">{preset.name} tier · {tierCapacityLabel(preset)} · prize pool run by your host</p>
-      <p className="text-[11px] text-neutral-500 mt-0.5">{tierLives(tier)} {tierLives(tier) === 1 ? "life" : "lives"} · {reusePolicyLabel(tierReusePolicy(tier))}</p>
+      <p className="text-[11px] text-neutral-500 mt-0.5">{tierLives(tier)} {tierLives(tier) === 1 ? "life" : "lives"} · {reusePolicyLabel(tierReusePolicy(tier))}{tier.marginsMode ? " · margins mode" : ""}</p>
       <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : isUrgent ? "bg-rose-500/15 text-rose-300 animate-pulse" : "bg-amber-400/10 text-amber-300"}`}>
         <Clock size={13} />{isFull && msToClose > 0 ? "Competition full — no spots left" : entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : isUrgent ? `Locking in ${countdown} — last chance to join!` : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
       </div>
@@ -1249,7 +1249,8 @@ function LeaveCompetition({ active, onForfeit, onLeave }) {
   );
 }
 
-function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving, stamping }) {
+function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving, stamping, marginsMode, margin, onMargin }) {
+  const marginOk = !marginsMode || (margin !== "" && margin != null && Number(margin) >= 1);
   if (eliminated) {
     const copy = {
       eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who's last standing." },
@@ -1273,6 +1274,9 @@ function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown,
               {myPick}
             </div>
           </div>
+          {marginsMode && margin !== "" && margin != null && (
+            <p className="text-sm text-neutral-400 mb-2">Winning margin: <span className={`font-semibold ${theme.text}`}>{margin} pts</span></p>
+          )}
           {locked ? (
             <p className="text-xs text-neutral-500 mt-2 flex items-center gap-1"><Check size={13} className="text-neutral-500" /> Locked in — no more changes this round.</p>
           ) : (
@@ -1304,9 +1308,20 @@ function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown,
           {round.byes.length > 0 && (
             <p className="text-[11px] text-neutral-600 px-1">Bye this round: {round.byes.join(", ")}</p>
           )}
+          {marginsMode && (
+            <div className="rounded-xl border adapt-border-10 bg-black/20 p-3">
+              <label className="text-xs font-medium text-slate-200 block mb-1">Winning margin (tiebreaker)</label>
+              <p className="text-[11px] text-neutral-500 mb-2">How many points will your team win by? If it comes down to the wire, the closest margin takes out the whole comp.</p>
+              <div className="flex items-center gap-2">
+                <input type="number" inputMode="numeric" min={1} max={100} value={margin ?? ""} onChange={(e) => onMargin(e.target.value)} placeholder="e.g. 6"
+                  className={`w-24 rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none`} />
+                <span className="text-xs text-neutral-500">points</span>
+              </div>
+            </div>
+          )}
           <div className="fixed bottom-16 inset-x-0 px-5">
             <div className="max-w-md mx-auto">
-              <button onClick={onSubmit} disabled={!myPick || saving} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm`}>{saving ? "Submitting…" : myPick ? `Submit pick — ${myPick}` : "Select a team to submit"}</button>
+              <button onClick={onSubmit} disabled={!myPick || !marginOk || saving} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 disabled:cursor-not-allowed text-neutral-950 font-semibold py-3 text-sm`}>{saving ? "Submitting…" : !myPick ? "Select a team to submit" : !marginOk ? "Enter a winning margin" : `Submit pick — ${myPick}${marginsMode ? ` by ${margin}` : ""}`}</button>
             </div>
           </div>
         </>
@@ -1651,6 +1666,7 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
   const [rules, setRules] = useState(initial ? (initial.rules || "") : DEFAULT_RULES);
   const [lives, setLives] = useState(initial?.lives ?? 1);
   const [reusePolicy, setReusePolicy] = useState(initial?.reusePolicy || "nextRound");
+  const [marginsMode, setMarginsMode] = useState(initial?.marginsMode || false);
   const canSave = name && tierLevel && roundId && lockAt && lives >= 1;
   const selectedRound = getRound(roundId);
   const roundAlreadyStarted = selectedRound.firstKickoff.getTime() <= Date.now();
@@ -1712,12 +1728,23 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
           </select>
           <p className="text-[10px] text-neutral-500 mt-1">{(REUSE_POLICIES.find((r) => r.id === reusePolicy) || REUSE_POLICIES[0]).blurb}</p>
         </div>
-        <p className="text-[10px] text-neutral-500 leading-relaxed">Locked rules (can't be changed): lose and you're out (once lives run out), pick before lockout or get a random team, and the reuse rule above applies. Margin tiebreaks arrive with live NRL scores.</p>
+        <div>
+          <button type="button" onClick={() => setMarginsMode((m) => !m)} className="w-full flex items-center justify-between gap-3 text-left">
+            <span>
+              <span className="text-[11px] font-medium text-neutral-300 block">Margins mode (tiebreaker — no draws)</span>
+              <span className="text-[10px] text-neutral-500 block mt-0.5">Players also pick a winning margin. If it comes down to the final two, or the grand final with players still in and no games left, the closest margin wins the comp.</span>
+            </span>
+            <span className={`shrink-0 h-6 w-11 rounded-full p-0.5 transition-colors ${marginsMode ? theme.bg : "bg-neutral-600"}`}>
+              <span className={`block h-5 w-5 rounded-full bg-white transition-transform ${marginsMode ? "translate-x-5" : ""}`} />
+            </span>
+          </button>
+        </div>
+        <p className="text-[10px] text-neutral-500 leading-relaxed">Locked rules (can't be changed): lose and you're out (once lives run out), pick before lockout or get a random team, and the reuse rule above applies.</p>
       </div>
       <div><label className="text-[11px] text-neutral-500 mb-1 block">Rules / description</label><textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={4} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none`} /></div>
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel} className="flex-1 rounded-lg border adapt-border-10 text-neutral-300 py-2 text-sm">Cancel</button>
-        <button disabled={!canSave} onClick={() => onSave({ name, tierLevel, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules, lives, reusePolicy })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
+        <button disabled={!canSave} onClick={() => onSave({ name, tierLevel, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules, lives, reusePolicy, marginsMode })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
       </div>
     </div>
   );
@@ -1821,6 +1848,54 @@ function HostResultsPanel({ tier, now, theme }) {
   const pickedUids = new Set(picks.map((p) => p.uid));
   const noPick = entries.filter((e) => e.status === "active" && !pickedUids.has(e.uid));
   const roundTeams = [...new Set(effectiveFixtures.flatMap((f) => [f.home, f.away]))].sort();
+
+  // ---- Margins mode decider (tiebreaker — guarantees a single winner, no draws) ----
+  const activeEntries = entries.filter((e) => e.status === "active");
+  const roundIdx = NRL_ROUNDS.findIndex((r) => r.id === tier.roundId);
+  const isFinalRound = roundIdx === NRL_ROUNDS.length - 1;
+  // Show the decider when margins mode is on, more than one player is still standing, and it's
+  // either down to the final two or the last round with no games left to separate them.
+  const marginDeciderRelevant = !!tier.marginsMode && activeEntries.length > 1 && (activeEntries.length <= 2 || isFinalRound);
+  const [marginRank, setMarginRank] = useState(null);
+  const [marginMsg, setMarginMsg] = useState("");
+  const decideByMargin = async () => {
+    setMarginMsg("Working out the closest margin…"); setMarginRank(null);
+    const scoresByTeam = {};
+    try {
+      const res = await fetch("nrl-results.json?t=" + tier.roundId, { cache: "no-store" });
+      if (res.ok) {
+        const store = await res.json();
+        const rd = (store.rounds || {})[tier.roundId];
+        (rd?.games || []).forEach((g) => {
+          if (g.homeScore == null || g.awayScore == null) return;
+          const m = Math.abs(Number(g.homeScore) - Number(g.awayScore));
+          scoresByTeam[g.home] = m; scoresByTeam[g.away] = m;
+        });
+      }
+    } catch (e) {}
+    const picksByUid = {}; picks.forEach((p) => { picksByUid[p.uid] = p; });
+    const rows = activeEntries.map((e) => {
+      const p = picksByUid[e.uid];
+      const predicted = p && p.margin != null ? Number(p.margin) : null;
+      const actual = p && p.team != null && scoresByTeam[p.team] != null ? scoresByTeam[p.team] : null;
+      const diff = predicted != null && actual != null ? Math.abs(actual - predicted) : null;
+      const submittedMs = p && p.submittedAt && p.submittedAt.toMillis ? p.submittedAt.toMillis() : Infinity;
+      return { uid: e.uid, name: e.name, team: p ? p.team : null, predicted, actual, diff, submittedMs };
+    });
+    // Closest wins; exact ties broken by whoever locked their pick in first — so it never draws.
+    const scored = rows.filter((r) => r.diff != null).sort((a, b) => a.diff - b.diff || a.submittedMs - b.submittedMs);
+    if (scored.length === 0) { setMarginMsg("No scores available yet for the picked games — auto-fill or enter this round's results first, then try again."); return; }
+    setMarginRank({ scored, unscored: rows.filter((r) => r.diff == null) }); setMarginMsg("");
+  };
+  const crownMarginWinner = async (uid, name) => {
+    if (!confirm(`Crown ${name} as the winner of "${tier.name}" on the closest margin? This records them as the last one standing. The prize pool is settled by you outside the app.`)) return;
+    try {
+      await db.collection("tiers").doc(tier.id).update({ winnerUid: uid, winnerName: name, winnerAt: FieldValue.serverTimestamp() });
+      setMarginMsg(`${name} crowned as the winner.`);
+    } catch (e) {
+      setMarginMsg("Couldn't save the winner: " + (e.message || "try again") + (String(e.message || "").toLowerCase().includes("permission") ? " (publish the latest Firestore rules)." : "."));
+    }
+  };
 
   // Re-runnable on purpose: hosts can correct a result any time. Rather than incrementally
   // toggling status (which can't be undone cleanly), we recompute each player's status from
@@ -1950,6 +2025,31 @@ function HostResultsPanel({ tier, now, theme }) {
             {finalized ? "Update results & re-apply" : "Confirm round results"}
           </button>
           <p className="text-[10px] text-neutral-500">Confirming applies eliminations and moves survivors to the next round. If a result was wrong, fix the affected player directly in Manage entrants (Mark lost / Restore) — those overrides stick.</p>
+
+          {marginDeciderRelevant && (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3 mt-1">
+              <p className="text-[11px] text-amber-300 font-semibold flex items-center gap-1.5"><Crown size={13} /> Margin decider</p>
+              <p className="text-[10px] text-neutral-400 mt-1 mb-2">{isFinalRound ? "Last round with no games left to separate them" : "Down to the final two"} — settle it on the closest winning margin. Uses each player's picked team's actual margin (auto-fill or enter results above first).</p>
+              <button onClick={decideByMargin} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>Work out the closest margin</button>
+              {marginMsg && <p className="text-[11px] text-neutral-400 mt-2">{marginMsg}</p>}
+              {marginRank && (
+                <div className="mt-2 space-y-1.5">
+                  {marginRank.scored.map((r, i) => (
+                    <div key={r.uid} className={`flex items-center justify-between gap-2 rounded-lg px-2.5 py-2 ${i === 0 ? "bg-amber-400/10 border border-amber-400/30" : "bg-black/30"}`}>
+                      <div className="min-w-0">
+                        <span className="text-xs text-slate-100 font-medium truncate">{i === 0 ? "🏆 " : `${i + 1}. `}{r.name}</span>
+                        <span className="block text-[10px] text-neutral-500">{r.team} · picked {r.predicted} · actual {r.actual} · off by {r.diff}</span>
+                      </div>
+                      {i === 0 && <button onClick={() => crownMarginWinner(r.uid, r.name)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold bg-amber-400/20 text-amber-200 hover:bg-amber-400/30">Crown winner</button>}
+                    </div>
+                  ))}
+                  {marginRank.unscored.length > 0 && (
+                    <p className="text-[10px] text-neutral-500 mt-1">No score/margin for: {marginRank.unscored.map((r) => r.name).join(", ")}. Enter their game's result above, then re-run.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2206,6 +2306,7 @@ function AppShell({ user }) {
 
   const [allPicks, setAllPicks] = useState([]);
   const [myPick, setMyPick] = useState(null);
+  const [myMargin, setMyMargin] = useState("");
   const [pickSubmitted, setPickSubmitted] = useState(false);
   const [pickStamp, setPickStamp] = useState(null); // team name while the confirmation stamp shows
   const [pickSaving, setPickSaving] = useState(false);
@@ -2286,11 +2387,11 @@ function AppShell({ user }) {
 
   useEffect(() => {
     setPicksLoaded(false);
-    if (!joinedTierId || !currentTier) { setAllPicks([]); setMyPick(null); setPickSubmitted(false); return; }
+    if (!joinedTierId || !currentTier) { setAllPicks([]); setMyPick(null); setMyMargin(""); setPickSubmitted(false); return; }
     const unsubPicks = db.collection("picks").where("tierId", "==", joinedTierId).where("roundId", "==", effectiveRoundId).onSnapshot((snap) => {
       const list = snap.docs.map((d) => d.data()); setAllPicks(list);
       const mine = list.find((p) => p.uid === user.uid);
-      if (mine) { setMyPick(mine.team); setPickSubmitted(true); } else { setMyPick(null); setPickSubmitted(false); }
+      if (mine) { setMyPick(mine.team); setMyMargin(mine.margin != null ? String(mine.margin) : ""); setPickSubmitted(true); } else { setMyPick(null); setMyMargin(""); setPickSubmitted(false); }
       setPicksLoaded(true);
     });
     const unsubResults = db.collection("results").doc(`${joinedTierId}_${effectiveRoundId}`).onSnapshot((doc) => {
@@ -2370,14 +2471,17 @@ function AppShell({ user }) {
       const existing = await tx.get(pickRef);
       if (existing.exists) return existing.data().team; // a real pick is already there server-side — never touch it
       const randomTeam = available[Math.floor(Math.random() * available.length)];
-      tx.set(pickRef, {
+      const autoPick = {
         tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: randomTeam,
         submittedAt: FieldValue.serverTimestamp(), autoAssigned: true,
-      });
-      return randomTeam;
-    }).then((team) => {
-      if (cancelled || !team) return;
-      setMyPick(team);
+      };
+      if (currentTier && currentTier.marginsMode) autoPick.margin = 1 + Math.floor(Math.random() * 12); // random 1–12 pts for no-shows
+      tx.set(pickRef, autoPick);
+      return { team: randomTeam, margin: autoPick.margin };
+    }).then((res) => {
+      if (cancelled || !res) return;
+      setMyPick(res.team);
+      if (res.margin != null) setMyMargin(String(res.margin));
       setPickSubmitted(true);
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -2445,6 +2549,7 @@ function AppShell({ user }) {
 
   const submitPick = async () => {
     if (!myPick || !joinedTierId || !currentTier) return;
+    if (currentTier.marginsMode && !(Number(myMargin) >= 1)) return; // margin required in margins mode
     const chosenTeam = myPick;
     setPickSubmitted(true); // show confirmation instantly, don't wait on the network
     setPickSaving(false);
@@ -2452,7 +2557,9 @@ function AppShell({ user }) {
     playThumpSound(74, false); // firm stamp thud, not the full smash
     setTimeout(() => { setPickStamp(null); setTab("standings"); }, 1700);
     try {
-      await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: myPick, submittedAt: FieldValue.serverTimestamp() });
+      const pick = { tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: myPick, submittedAt: FieldValue.serverTimestamp() };
+      if (currentTier.marginsMode) pick.margin = Math.max(1, Math.min(100, Math.round(Number(myMargin))));
+      await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set(pick);
     } catch (e) {
       setPickSubmitted(false); // roll back if it genuinely failed to save
     }
@@ -2460,7 +2567,7 @@ function AppShell({ user }) {
 
   // Whoever creates a competition owns it. ownerUid = full control; adminUids = co-hosts the
   // owner has authorised to help run it. hostUids covers both for quick permission checks.
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, code: genCode(), ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, marginsMode: !!data.marginsMode, code: genCode(), ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const addAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayUnion(uid) });
   const removeAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayRemove(uid) });
 
@@ -2478,7 +2585,7 @@ function AppShell({ user }) {
     await createTier(data);
     if (!profile.hasCreatedComp) db.collection("users").doc(user.uid).set({ hasCreatedComp: true }, { merge: true });
   };
-  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy }, { merge: true });
+  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, marginsMode: !!data.marginsMode }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
   const kickEntrant = (tierId, uid, name) => {
     if (!confirm(`Kick ${name || "this entrant"} from the competition? They'll be marked as kicked and won't be able to submit further picks. You can restore them afterward if needed.`)) return;
@@ -2575,6 +2682,7 @@ function AppShell({ user }) {
           <>
             <PickTab round={currentRound} myPick={myPick} lockedTeams={lockedTeams} submitted={pickSubmitted} locked={tipsLocked} stamping={!!pickStamp}
               lockCountdown={lockCountdown} lockUrgent={lockUrgent} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
+              marginsMode={!!currentTier.marginsMode} margin={myMargin} onMargin={(v) => { setMyMargin(v); setPickSubmitted(false); }}
               onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
             {myEntryStatus && myEntryStatus !== "cancelled" && (
               <LeaveCompetition active={myEntryStatus === "active"} onForfeit={() => forfeitEntry(currentTier.id)} onLeave={() => leaveEntry(currentTier.id)} />
