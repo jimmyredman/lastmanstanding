@@ -106,30 +106,6 @@
   .smoke-noise { position:absolute; inset:-10%; mix-blend-mode: screen; opacity: 0.5; }
   .neon-title { animation: glowPulse 3.5s ease-in-out infinite; }
 
-  @keyframes splashPop { 0% { transform: scale(0.4); opacity: 0; } 55% { transform: scale(1.15); opacity: 1; } 75% { transform: scale(0.96); } 100% { transform: scale(1); opacity: 1; } }
-  @keyframes splashRing { 0% { transform: scale(0.2); opacity: 0; border-width: 10px; } 45% { opacity: 0.85; } 100% { transform: scale(2.2); opacity: 0; border-width: 1px; } }
-  @keyframes splashRing2 { 0% { transform: scale(0.2); opacity: 0; border-width: 6px; } 55% { opacity: 0.5; } 100% { transform: scale(2.6); opacity: 0; border-width: 1px; } }
-  @keyframes splashSub { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
-  .splash-logo { animation: splashPop 1.4s cubic-bezier(.2,1.4,.4,1) both; text-shadow: 0 0 20px rgba(255,90,60,0.7), 0 0 50px rgba(255,60,40,0.4); }
-  .splash-ring { position: absolute; width: 160px; height: 160px; border-radius: 9999px; border: 2px solid rgba(255,90,60,0.6); animation: splashRing 2.2s ease-out both; }
-  .splash-ring2 { position: absolute; width: 160px; height: 160px; border-radius: 9999px; border: 2px solid rgba(255,140,90,0.5); animation: splashRing2 2.2s ease-out 0.3s both; }
-  .splash-sub { animation: splashSub 1s ease-out 1.1s both; }
-
-  /* Each word slams down from above and hits hard: a heavy scale/position overshoot-
-     and-settle for the impact, a brief shake through the whole stack, and a burst of
-     dust + rock chips scattering from its base (see ImpactBurst) — timed with its own
-     thump sound so each word lands like it's actually cracking the ground. */
-  @keyframes wordSlamDown {
-    0%   { transform: translateY(-110px) scaleY(1.12) scaleX(0.94); opacity: 0; }
-    45%  { opacity: 1; }
-    58%  { transform: translateY(0) scaleY(0.90) scaleX(1.06); }   /* subtle, heavy impact */
-    74%  { transform: translateY(0) scaleY(1.02) scaleX(0.99); }
-    100% { transform: translateY(0) scale(1); opacity: 1; }
-  }
-  .word-slam { animation: wordSlamDown 0.5s cubic-bezier(.25,.9,.3,1) both; line-height: 1; }
-  .word-slam-big { animation: wordSlamDown 0.6s cubic-bezier(.25,.95,.3,1) both; line-height: 1; }
-  /* Carved-into-stone treatment: bright top edge, deep drop shadow, faint warm rim. */
-  .word-carved { color: #f3ece1; text-shadow: 0 1px 0 rgba(255,255,255,0.16), 0 -1px 0 rgba(0,0,0,0.55), 0 3px 5px rgba(0,0,0,0.85), 0 8px 20px rgba(0,0,0,0.55), 0 0 34px rgba(255,120,60,0.20); }
   .splash-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 90% at 50% 52%, transparent 42%, rgba(0,0,0,0.66) 100%); }
   /* Clean logo reveal */
   @keyframes lmsCrown { 0% { opacity: 0; transform: scale(0.55) translateY(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
@@ -155,38 +131,7 @@
   /* Crown blooms in — translate baked into the keyframe so it stays centred through the anim. */
   @keyframes crownBloom { 0% { opacity: 0; transform: translate(-50%,-50%) scale(0.5); } 100% { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
   .crown-bloom { animation: crownBloom 0.85s cubic-bezier(.2,.8,.3,1) both; }
-  @keyframes shockRing { 0% { transform: translateX(-50%) scale(0.15); opacity: 0.5; } 100% { transform: translateX(-50%) scale(2.7); opacity: 0; } }
-  .shock-ring { position: absolute; left: 50%; bottom: -6px; width: 220px; height: 56px; border-radius: 50%; border: 2px solid rgba(220,210,195,0.5); animation: shockRing 0.75s cubic-bezier(.2,.7,.3,1) both; }
-  @keyframes crackIn { 0% { stroke-dashoffset: 130; opacity: 0; } 25% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0.85; } }
-  .crack-line { stroke-dasharray: 130; animation: crackIn 0.4s ease-out both; }
-  /* Heavy 3D stone-block lettering — extruded edges + cast shadow so words read as solid
-     concrete raised out of the cracked slab, not flat glowing text. */
-  .stone-word { color: #9a9184; -webkit-text-stroke: 0.6px rgba(20,17,13,0.5);
-    text-shadow: 0 2px 0 #4c473f, 0 4px 0 #3a362e, 0 6px 1px rgba(0,0,0,0.4), 0 12px 22px rgba(0,0,0,0.78); }
-  @keyframes crackGrow { 0% { stroke-dashoffset: var(--len); opacity: 0.12; } 100% { stroke-dashoffset: 0; opacity: 1; } }
-  .crack { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: crackGrow 0.5s cubic-bezier(.15,.85,.3,1) both; }
-  .concrete-base { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 42%, #34302a 0%, #24211b 45%, #16130e 100%); }
-  /* Baked concrete grain — rasterised ONCE as a background image (not a live filter), so it
-     can't cause the per-frame repaint jank the animated feTurbulence overlays did. */
-  .concrete-grain { position: absolute; inset: 0; opacity: 0.22; background-size: cover;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.02' numOctaves='3' seed='9'/%3E%3CfeColorMatrix type='matrix' values='0.34 0.34 0.34 0 0 0.34 0.34 0.34 0 0 0.34 0.34 0.34 0 0 0 0 0 0 1'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
-  @keyframes groundShake1 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
-  @keyframes groundShake2 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
-  @keyframes groundShake3 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
-  .ground-shake-1 { animation: groundShake1 0.32s ease-out; }
-  .ground-shake-2 { animation: groundShake2 0.32s ease-out; }
-  .ground-shake-3 { animation: groundShake3 0.32s ease-out; }
-
-  @keyframes debrisFly {
-    0%   { transform: translate(0, 0) rotate(0deg); opacity: 1; }
-    100% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 0; }
-  }
-  .debris-chip { position: absolute; left: 0; top: 0; background: #cbbfae; border-radius: 1px; animation: debrisFly 0.6s cubic-bezier(.2,.7,.4,1) both; }
-
-  @keyframes dustPuff { 0% { transform: scale(0.35); opacity: 0.65; } 100% { transform: scale(2.3); opacity: 0; } }
-  .dust-puff { position: absolute; left: -20px; top: -10px; width: 40px; height: 20px; background: radial-gradient(ellipse, rgba(210,200,185,0.55), transparent 70%); border-radius: 50%; animation: dustPuff 0.5s ease-out both; }
-  .dust-puff-big { left: -30px; top: -14px; width: 60px; height: 28px; }
 
   .crown-glow { filter: drop-shadow(0 0 10px #ffd24a); }
 
@@ -1190,11 +1135,7 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
   return (
     <div className={`relative overflow-hidden rounded-2xl border ${isHigh ? "border-violet-500/40 bg-gradient-to-b from-violet-950/30 to-neutral-800" : `${theme.borderSoft} bg-neutral-800`} p-5`}>
       {joined && (
-        <div className="stamp-pop absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-          <div className="border-4 border-teal-400 text-teal-300 font-scoreboard text-4xl tracking-widest px-6 py-1 -rotate-[18deg]" style={{ textShadow: "0 0 18px rgba(45,212,191,0.7)", boxShadow: "0 0 24px rgba(45,212,191,0.35)" }}>
-            YOU'RE IN
-          </div>
-        </div>
+        <div className={`absolute top-3 right-3 inline-flex items-center gap-1 rounded-full ${theme.bgSoft} ${theme.text} px-2 py-0.5 text-[10px] font-semibold`}><Check size={11} /> Joined</div>
       )}
       <div className="inline-flex items-center gap-1 mb-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-950" style={{ backgroundColor: preset.color }}><Crown size={12} /> {preset.name}</div>
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
@@ -1233,24 +1174,6 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
           {isFull && msToClose > 0 ? "Competition full" : entriesClosed ? "Entries closed" : "Join competition"}
         </button>
       )}
-    </div>
-  );
-}
-
-function EntryConfirmModal({ tier, onClose, onConfirm, theme, error }) {
-  const preset = getTierPreset(tier.tierLevel);
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
-      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
-        <div className="flex items-center justify-between mb-4"><h4 className="text-slate-100 font-semibold">Join this competition?</h4><button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button></div>
-        <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-4 mb-3`}>
-          <div className="flex items-center justify-between"><span className="text-neutral-300 text-sm">{tier.name}</span><span className="text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 text-neutral-950" style={{ backgroundColor: preset.color }}>{preset.name}</span></div>
-          <p className="text-xs text-neutral-500 mt-2">{tierCapacityLabel(preset)} · {tier.entries} entered so far</p>
-        </div>
-        <p className="text-xs text-neutral-400 mb-4">Any buy-in and prize pool for this competition are organised by your host outside the app. The app just tracks your picks and standings.</p>
-        {error && <p className="text-xs text-rose-400 mb-3">{error}</p>}
-        <button onClick={onConfirm} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>Confirm — I'm in</button>
-      </div>
     </div>
   );
 }
@@ -1859,13 +1782,26 @@ function HostResultsPanel({ tier, now, theme }) {
       resByRound[rid] = { fixtureResults: d.fixtureResults || {}, fixtures: d.fixtures || getRound(rid).fixtures, wipeoutSurvived: !!d.wipeoutSurvived };
     }));
 
-    const lostRound = (rid, uid) => {
+    const roundLockMs = (rid) => {
+      if (rid === tier.roundId && tier.lockTime) return tier.lockTime.getTime();
+      return getRound(rid).firstKickoff.getTime() - 1000 * 60 * 60 * 24;
+    };
+    // Did this player lose a life in round `rid`? A played round (results entered, not a
+    // wipeout) counts a loss if their team lost OR they had no pick at all (missed lockout).
+    // Players are only judged on rounds they were actually in (joined before that round's lock),
+    // so late joiners aren't penalised for earlier rounds.
+    const lostRound = (rid, joinedMs, uid) => {
       const rr = resByRound[rid]; if (!rr || rr.wipeoutSurvived) return false;
-      const team = (picksByRound[rid] || {})[uid]; if (!team) return false;
+      const hasResults = Object.keys(rr.fixtureResults || {}).length > 0;
+      if (!hasResults) return false;
+      if (joinedMs > roundLockMs(rid)) return false;
+      const team = (picksByRound[rid] || {})[uid];
+      if (!team) return true; // in a played round with no pick = a loss
       const fi = (rr.fixtures || []).findIndex((f) => f.home === team || f.away === team);
       const w = rr.fixtureResults[fi];
       return !!w && w !== team;
     };
+    const joinedMsOf = (e) => (e.joinedAt && e.joinedAt.toDate ? e.joinedAt.toDate().getTime() : 0);
 
     // Never touch kicked/cancelled entrants — only players still in the running or eliminated.
     const eligible = entries.filter((e) => e.status === "active" || e.status === "eliminated");
@@ -1883,25 +1819,26 @@ function HostResultsPanel({ tier, now, theme }) {
 
     const batch = db.batch();
     eligible.forEach((e) => {
+      if (e.manual) return; // host set this player's status by hand — never override it
+      const joinedMs = joinedMsOf(e);
       let losses = 0;
-      roundList.forEach((rid) => { if (lostRound(rid, e.uid)) losses++; });
+      roundList.forEach((rid) => { if (lostRound(rid, joinedMs, e.uid)) losses++; });
       const target = losses >= lives ? "eliminated" : "active";
       if (e.status !== target) batch.update(db.collection("entries").doc(`${tier.id}_${e.uid}`), { status: target });
     });
     batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: allLost, fixtures: effectiveFixtures }, { merge: true });
 
-    // Advance to the next round unless it was a wipeout (nobody survived to move forward).
-    if (!allLost) {
-      const idx = NRL_ROUNDS.findIndex((r) => r.id === tier.roundId);
-      const next = NRL_ROUNDS[idx + 1];
-      if (next) {
-        batch.set(db.collection("tiers").doc(tier.id), {
-          roundId: next.id, previousRoundId: tier.roundId,
-          startTime: Timestamp.fromDate(next.firstKickoff),
-          lockTime: Timestamp.fromDate(new Date(next.firstKickoff.getTime() - 1000 * 60 * 60 * 24)),
-          fixtureOverrides: FieldValue.delete(),
-        }, { merge: true });
-      }
+    // Always move on to the next round. Survivors carry forward; on a wipeout nobody was
+    // eliminated but the competition still continues (this prevents a locked round deadlock).
+    const idx = NRL_ROUNDS.findIndex((r) => r.id === tier.roundId);
+    const next = NRL_ROUNDS[idx + 1];
+    if (next) {
+      batch.set(db.collection("tiers").doc(tier.id), {
+        roundId: next.id, previousRoundId: tier.roundId,
+        startTime: Timestamp.fromDate(next.firstKickoff),
+        lockTime: Timestamp.fromDate(new Date(next.firstKickoff.getTime() - 1000 * 60 * 60 * 24)),
+        fixtureOverrides: FieldValue.delete(),
+      }, { merge: true });
     }
     await batch.commit();
   };
@@ -1927,12 +1864,12 @@ function HostResultsPanel({ tier, now, theme }) {
             </div>
           ))}
           {finalized && (
-            <p className="text-[11px] text-teal-300 flex items-start gap-1"><Check size={12} className="mt-0.5 shrink-0" /> Last confirmed — eliminations applied{wipeoutSurvived ? "." : " and the competition has moved to the next round."}{wipeoutSurvived ? " Everyone lost this round, so nobody was eliminated — same round repeats (as per the rules)." : ""}</p>
+            <p className="text-[11px] text-teal-300 flex items-start gap-1"><Check size={12} className="mt-0.5 shrink-0" /> Results confirmed{wipeoutSurvived ? " — everyone lost this round, so nobody was eliminated" : ""}. Survivors carry through to the next round.</p>
           )}
           <button onClick={applyResults} className={`w-full rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2 text-sm`}>
             {finalized ? "Update results & re-apply" : "Confirm round results"}
           </button>
-          <p className="text-[10px] text-neutral-500">Confirming applies eliminations and automatically moves survivors to the next round — no manual step needed. You can come back and correct a result any time if a mistake was made.</p>
+          <p className="text-[10px] text-neutral-500">Confirming applies eliminations and moves survivors to the next round. If a result was wrong, fix the affected player directly in Manage entrants (Mark lost / Restore) — those overrides stick.</p>
         </div>
       )}
     </div>
@@ -2191,9 +2128,7 @@ function AppShell({ user }) {
   const [entryCounts, setEntryCounts] = useState({});
   const [myEntries, setMyEntries] = useState({});
   const [viewingTierId, setViewingTierId] = useState(null);
-  const [entryTarget, setEntryTarget] = useState(null);
   const [invitingTier, setInvitingTier] = useState(null);
-  const [entryError, setEntryError] = useState("");
 
   const [allPicks, setAllPicks] = useState([]);
   const [myPick, setMyPick] = useState(null);
@@ -2239,7 +2174,12 @@ function AppShell({ user }) {
 
   useEffect(() => {
     const unsub = db.collection("tiers").onSnapshot((snap) => {
-      setRawTiers(snap.docs.map((d) => { const data = d.data(); return { id: d.id, ...data, startTime: data.startTime.toDate(), lockTime: data.lockTime ? data.lockTime.toDate() : null }; }));
+      // Guard every date field — one malformed/legacy tier doc without startTime would otherwise
+      // throw inside this map and blank the whole app for everyone on every snapshot.
+      setRawTiers(snap.docs.map((d) => {
+        const data = d.data();
+        return { id: d.id, ...data, startTime: data.startTime ? data.startTime.toDate() : new Date(), lockTime: data.lockTime ? data.lockTime.toDate() : null };
+      }));
     });
     return unsub;
   }, []);
@@ -2257,14 +2197,18 @@ function AppShell({ user }) {
   const isOwnerOf = (t) => !!t && (t.ownerUid ? t.ownerUid === user.uid : t.createdBy === user.uid);
   const isHostOf = (t) => !!t && (isOwnerOf(t) || (t.adminUids || []).includes(user.uid));
   const hostedTiers = useMemo(() => tiers.filter(isHostOf), [tiers, user.uid]);
-  // viewingTierId is which joined competition you're actively looking at on My Pick / Standings —
-  // falls back to whichever joined competition comes first if nothing's been explicitly chosen yet.
-  const joinedTierId = (viewingTierId && myEntries[viewingTierId]) ? viewingTierId : (joinedTierIds[0] || null);
+  // viewingTierId is which joined competition you're actively looking at on My Pick / Standings.
+  // Default to one you're still active in (and not cancelled), not just the first by id.
+  const activeJoinedIds = joinedTierIds.filter((id) => { const e = myEntries[id]; const t = tiers.find((x) => x.id === id); return e && e.status === "active" && t && !t.cancelled; });
+  const defaultJoinedId = activeJoinedIds[0] || joinedTierIds.find((id) => { const t = tiers.find((x) => x.id === id); return t && !t.cancelled; }) || joinedTierIds[0] || null;
+  const joinedTierId = (viewingTierId && myEntries[viewingTierId]) ? viewingTierId : defaultJoinedId;
   const currentTier = tiers.find((t) => t.id === joinedTierId);
   // Older competitions created before round selection existed won't have a roundId yet —
   // fall back to the first known round so they still work instead of crashing.
   const effectiveRoundId = currentTier?.roundId || NRL_ROUNDS[0].id;
-  const currentRound = currentTier ? { ...getRound(effectiveRoundId), fixtures: currentTier.fixtureOverrides || getRound(effectiveRoundId).fixtures } : null;
+  // Memoised so its object identity is stable — otherwise the auto-pick effect (which depends on
+  // it) tears down and re-runs on every render/tick.
+  const currentRound = useMemo(() => currentTier ? { ...getRound(effectiveRoundId), fixtures: currentTier.fixtureOverrides || getRound(effectiveRoundId).fixtures } : null, [currentTier?.id, effectiveRoundId, currentTier?.fixtureOverrides]);
 
   useEffect(() => {
     setPicksLoaded(false);
@@ -2367,22 +2311,6 @@ function AppShell({ user }) {
 
   const updateProfile = (patch) => db.collection("users").doc(user.uid).set(patch, { merge: true });
 
-  const confirmEntry = async () => {
-    const tier = entryTarget; setEntryError("");
-    const preset = getTierPreset(tier.tierLevel);
-    // Capacity gate. Not already joined + a hard player cap that's already full → block.
-    if (!myEntries[tier.id] && preset.maxPlayers !== null && (entryCounts[tier.id] || 0) >= preset.maxPlayers) {
-      setEntryError("This competition is full — no spots left.");
-      return;
-    }
-    try {
-      await db.collection("entries").doc(`${tier.id}_${user.uid}`).set({ tierId: tier.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
-      playDingSound();
-      setViewingTierId(tier.id);
-      setEntryTarget(null); setTab("pick");
-    } catch (e) { setEntryError(e.message); }
-  };
-
   // Join a private competition using the invite code the host shared. Returns { ok, tierId }
   // or { error }. Used by onboarding and the "Join with a code" action on Compete.
   const joinByCode = async (rawCode) => {
@@ -2393,18 +2321,21 @@ function AppShell({ user }) {
     catch (e) { return { error: "Couldn't check that code — try again." }; }
     if (snap.empty) return { error: "No competition found with that code." };
     const doc = snap.docs[0]; const data = doc.data();
+    // Already a member? Go straight in (even if it was later cancelled — you can see that state).
+    let already = false;
+    try { already = (await db.collection("entries").doc(`${doc.id}_${user.uid}`).get()).exists; }
+    catch (e) { return { error: "Couldn't join — try again." }; }
+    if (already) { playDingSound(); return { ok: true, tierId: doc.id }; }
     if (data.cancelled) return { error: "That competition has been cancelled." };
-    const already = (await db.collection("entries").doc(`${doc.id}_${user.uid}`).get()).exists;
-    if (!already) {
-      const preset = getTierPreset(data.tierLevel);
-      const lockTime = data.lockTime ? data.lockTime.toDate() : null;
-      if (lockTime && Date.now() >= lockTime.getTime()) return { error: "Entries have closed for that competition." };
-      const count = (await db.collection("entries").where("tierId", "==", doc.id).get()).size;
-      if (preset.maxPlayers !== null && count >= preset.maxPlayers) return { error: "That competition is full." };
-      try {
-        await db.collection("entries").doc(`${doc.id}_${user.uid}`).set({ tierId: doc.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
-      } catch (e) { return { error: "Couldn't join — try again." }; }
-    }
+    const preset = getTierPreset(data.tierLevel);
+    const lockTime = data.lockTime ? data.lockTime.toDate() : null;
+    if (lockTime && Date.now() >= lockTime.getTime()) return { error: "Entries have closed for that competition." };
+    let count = 0;
+    try { count = (await db.collection("entries").where("tierId", "==", doc.id).get()).size; } catch (e) { /* fall through — capacity is a soft check */ }
+    if (preset.maxPlayers !== null && count >= preset.maxPlayers) return { error: "That competition is full." };
+    try {
+      await db.collection("entries").doc(`${doc.id}_${user.uid}`).set({ tierId: doc.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
+    } catch (e) { return { error: "Couldn't join — try again." }; }
     playDingSound();
     return { ok: true, tierId: doc.id };
   };
@@ -2444,7 +2375,7 @@ function AppShell({ user }) {
     setPickSubmitted(true); // show confirmation instantly, don't wait on the network
     setPickSaving(false);
     setPickStamp(chosenTeam);
-    playThumpSound(60, true);
+    playThumpSound(74, false); // firm stamp thud, not the full smash
     setTimeout(() => { setPickStamp(null); setTab("standings"); }, 1700);
     try {
       await db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`).set({ tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: myPick, submittedAt: FieldValue.serverTimestamp() });
@@ -2479,8 +2410,9 @@ function AppShell({ user }) {
     if (!confirm(`Kick ${name || "this entrant"} from the competition? They'll be marked as kicked and won't be able to submit further picks. You can restore them afterward if needed.`)) return;
     return db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "kicked" });
   };
-  const restoreEntrant = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "active" });
-  const markEliminated = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "eliminated" });
+  // manual: true tells the results recompute to leave this player's status alone (host override).
+  const restoreEntrant = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "active", manual: true });
+  const markEliminated = (tierId, uid) => db.collection("entries").doc(`${tierId}_${uid}`).update({ status: "eliminated", manual: true });
 
   const markWinner = async (tierId, uid, name) => {
     const tier = tiers.find((t) => t.id === tierId);
@@ -2535,11 +2467,11 @@ function AppShell({ user }) {
       </header>
 
       <main className="px-5 py-5 max-w-md mx-auto">
-        {(tab === "pick" || tab === "standings") && joinedTierIds.length > 1 && (
+        {(tab === "pick" || tab === "standings") && joinedTierIds.filter((id) => { const t = tiers.find((x) => x.id === id); return t && !t.cancelled; }).length > 1 && (
           <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
             {joinedTierIds.map((id) => {
               const t = tiers.find((x) => x.id === id);
-              if (!t) return null;
+              if (!t || t.cancelled) return null;
               const active = id === joinedTierId;
               return (
                 <button key={id} onClick={() => setViewingTierId(id)}
@@ -2559,7 +2491,7 @@ function AppShell({ user }) {
                 <p className={`text-center text-sm text-neutral-500 py-8 rounded-2xl border ${PANEL_BORDER} bg-neutral-800`}>You haven't joined any competitions yet.<br />Enter an invite code above to jump into one.</p>
               ) : (
                 <div className="space-y-4">
-                  {tiers.filter((t) => myEntries[t.id] && !t.cancelled).map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} onInvite={setInvitingTier} joined theme={theme} />)}
+                  {tiers.filter((t) => myEntries[t.id] && !t.cancelled).map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={() => { setViewingTierId(tier.id); setTab("pick"); }} onInvite={setInvitingTier} joined theme={theme} />)}
                 </div>
               )}
             </div>
@@ -2595,7 +2527,6 @@ function AppShell({ user }) {
         </div>
       </nav>
 
-      {entryTarget && (<EntryConfirmModal tier={entryTarget} onClose={() => { setEntryTarget(null); setEntryError(""); }} onConfirm={confirmEntry} theme={theme} error={entryError} />)}
       {invitingTier && (<InviteModal tier={invitingTier} theme={theme} onClose={() => setInvitingTier(null)} />)}
       {pickStamp && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
@@ -2607,42 +2538,6 @@ function AppShell({ user }) {
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-function ImpactBurst({ big = false }) {
-  // A burst of dust and rock chips at the base of a word the instant it slams down —
-  // fixed, hand-tuned trajectories (not random) so it looks the same and reads clean
-  // every time, just scattering outward and falling as it fades.
-  const chips = big
-    ? [
-        { dx: -42, dy: -16, rot: -150, delay: 0.00, size: 7 },
-        { dx: 38, dy: -20, rot: 130, delay: 0.02, size: 6 },
-        { dx: -24, dy: 12, rot: -85, delay: 0.05, size: 5 },
-        { dx: 28, dy: 15, rot: 105, delay: 0.01, size: 6 },
-        { dx: -50, dy: 8, rot: -170, delay: 0.06, size: 5 },
-        { dx: 48, dy: 4, rot: 160, delay: 0.03, size: 7 },
-        { dx: -12, dy: -32, rot: -65, delay: 0.07, size: 4 },
-        { dx: 14, dy: -30, rot: 75, delay: 0.02, size: 4 },
-        { dx: -34, dy: 20, rot: -120, delay: 0.04, size: 4 },
-        { dx: 32, dy: 22, rot: 115, delay: 0.05, size: 4 },
-      ]
-    : [
-        { dx: -28, dy: -12, rot: -110, delay: 0.00, size: 5 },
-        { dx: 26, dy: -14, rot: 100, delay: 0.02, size: 5 },
-        { dx: -17, dy: 9, rot: -70, delay: 0.03, size: 4 },
-        { dx: 19, dy: 10, rot: 90, delay: 0.01, size: 4 },
-        { dx: -34, dy: 5, rot: -130, delay: 0.04, size: 4 },
-        { dx: 32, dy: 3, rot: 120, delay: 0.02, size: 5 },
-      ];
-  return (
-    <div className="absolute left-1/2 bottom-0 pointer-events-none" style={{ transform: "translateX(-50%)" }}>
-      <div className={big ? "dust-puff dust-puff-big" : "dust-puff"} />
-      <div className={big ? "dust-puff dust-puff-big" : "dust-puff"} style={{ animationDelay: "0.05s", opacity: 0.5, transform: "scale(1.4)" }} />
-      {chips.map((c, i) => (
-        <span key={i} className="debris-chip" style={{ "--dx": `${c.dx}px`, "--dy": `${c.dy}px`, "--rot": `${c.rot}deg`, width: c.size, height: c.size, animationDelay: `${c.delay}s` }} />
-      ))}
     </div>
   );
 }
