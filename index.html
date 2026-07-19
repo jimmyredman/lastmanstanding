@@ -1354,7 +1354,7 @@ function ConfettiBurst() {
   );
 }
 
-function StandingsTab({ players, locked, lockCountdown, lockUrgent, entryCount, winnerUid, winnerName, myUid }) {
+function StandingsTab({ players, locked, lockCountdown, lockUrgent, entryCount, winnerUid, winnerName, myUid, marginsMode }) {
   const grouped = useMemo(() => {
     const withPick = players.filter((p) => p.pick);
     const noPick = players.filter((p) => !p.pick);
@@ -1428,6 +1428,7 @@ function StandingsTab({ players, locked, lockCountdown, lockUrgent, entryCount, 
                       <span className="text-slate-200">{p.name}{p.isYou ? " (you)" : ""}</span>
                     </div>
                     <div className="flex items-center gap-2">
+                      {marginsMode && p.margin != null && (<span className="text-[10px] text-neutral-400 tabular-nums">by {p.margin}</span>)}
                       <TeamBadge team={p.pick} size={18} />
                       {p.status && (<span className={`inline-flex h-5 w-5 items-center justify-center rounded ${p.status === "W" ? "bg-teal-400/20 text-teal-300" : "bg-rose-500/20 text-rose-400"}`}>{p.status === "W" ? <Check size={12} /> : <X size={12} />}</span>)}
                     </div>
@@ -2416,7 +2417,7 @@ function AppShell({ user }) {
       const winner = results[fixtureIndex];
       const status = winner ? (winner === p.team ? "W" : "L") : null;
       const live = standingsProfiles[p.uid];
-      return { uid: p.uid, name: live?.name || p.name, avatarPreset: live ? (live.avatarPreset || null) : (p.avatarPreset || null), pick: p.team, isYou: p.uid === user.uid, status };
+      return { uid: p.uid, name: live?.name || p.name, avatarPreset: live ? (live.avatarPreset || null) : (p.avatarPreset || null), pick: p.team, margin: p.margin != null ? p.margin : null, isYou: p.uid === user.uid, status };
     });
   }, [allPicks, results, user.uid, currentRound, standingsProfiles]);
 
@@ -2690,7 +2691,7 @@ function AppShell({ user }) {
           </>
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
-        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} />}
+        {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} marginsMode={!!currentTier.marginsMode} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
         {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isHostMode={isHostMode} isOwnerOf={isOwnerOf} onCreate={handleCreateTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} onEnsureCode={ensureCode} now={now} theme={theme} />}
         {tab === "settings" && (
