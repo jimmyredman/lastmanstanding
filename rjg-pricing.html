@@ -88,7 +88,7 @@
 <div id="root"></div>
 
 <script type="text/plain" id="app-source">
-const { useState, useMemo, useEffect, useRef, useCallback, createContext, useContext } = React;
+const { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback, createContext, useContext } = React;
 
 /* =========================================================================
    Helpers
@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v21 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v22 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -737,6 +737,29 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     measure(); window.addEventListener("resize", measure); return () => window.removeEventListener("resize", measure);
   }, []);
 
+  // Mouse-wheel / trackpad zoom that keeps the point under the cursor fixed.
+  const zoomAnchor = useRef(null);
+  useEffect(() => {
+    const wrap = wrapRef.current; if (!wrap) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = wrap.getBoundingClientRect();
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+      const cw = wrap.scrollWidth || 1, ch = wrap.scrollHeight || 1;
+      const fx = (wrap.scrollLeft + sx) / cw, fy = (wrap.scrollTop + sy) / ch;   // content fraction under cursor
+      zoomAnchor.current = { fx, fy, sx, sy };
+      setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.5, 8));
+    };
+    wrap.addEventListener("wheel", onWheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", onWheel);
+  }, []);
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current, a = zoomAnchor.current; if (!wrap || !a) return;
+    wrap.scrollLeft = a.fx * wrap.scrollWidth - a.sx;
+    wrap.scrollTop = a.fy * wrap.scrollHeight - a.sy;
+    zoomAnchor.current = null;
+  }, [zoom]);
+
   const natW = drawing.natW || 1000, natH = drawing.natH || 700;
   const baseScale = wrapW / natW;              // fit width
   const displayScale = baseScale * zoom;       // image-space px -> screen px
@@ -885,15 +908,22 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     notify("Marked-up copy attached to quote");
   };
 
+  // Send measurements to the quote. Linked ones carry their rate; unlinked ones
+  // come through with the measured qty + a blank rate to fill in on the quote.
   const addToQuote = () => {
     if (!mpp) { alert("Set the scale first (Set scale tool)."); return; }
-    const lines = anns.filter(a => MEASURE_TOOLS.includes(a.tool) && a.priceItemId).map(a => {
-      const it = items.find(i => i.id === a.priceItemId); if (!it) return null;
-      return { id: uid(), desc: a.name ? a.name + " — " + it.description : it.description, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(measureVal(a)), source: "Takeoff: " + drawing.name };
-    }).filter(Boolean);
-    if (!lines.length) { alert("Link a price item to at least one measurement first."); return; }
+    const measuredAnns = anns.filter(a => MEASURE_TOOLS.includes(a.tool));
+    if (!measuredAnns.length) { alert("No measurements yet — measure a length, area or count first."); return; }
+    const unitFor = (t) => t === "area" ? "m2" : t === "count" ? "ea" : "m";
+    const lines = measuredAnns.map(a => {
+      const it = a.priceItemId ? items.find(i => i.id === a.priceItemId) : null;
+      const desc = it ? (a.name ? a.name + " — " + it.description : it.description) : (a.name || (TOOL_LABELS[a.tool] + " — " + drawing.name));
+      return { id: uid(), desc, unit: it ? it.unit : unitFor(a.tool), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(measureVal(a)), source: "Takeoff: " + drawing.name };
+    });
     saveSnapshot();
     onAddToQuote(lines);
+    const priced = lines.filter(l => l.rateEx > 0).length;
+    notify(lines.length + " sent to quote" + (priced < lines.length ? " · " + (lines.length - priced) + " need a rate" : ""));
   };
 
   const measured = anns.filter(a => MEASURE_TOOLS.includes(a.tool));
@@ -916,7 +946,8 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       )}
 
       <div className="flex items-center gap-3 flex-wrap text-sm">
-        <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="4" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /></label>
+        <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="8" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /> <span style={{ color: "var(--muted)" }}>{Math.round(zoom*100)}%</span></label>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>scroll wheel zooms to cursor</span>
         {tool !== "calibrate" && (
           <div className="flex items-center gap-1">
             {MARKUP_COLORS.map(c => <button key={c} onClick={() => setColor(c)} title={c} style={{ width: 20, height: 20, borderRadius: 6, background: c, border: color === c ? "2px solid var(--ink)" : "1px solid var(--line)" }} />)}
@@ -926,13 +957,14 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
         {draft && !draft.dragging && (draft.tool === "area" || draft.tool === "count") && <><button className="btn btn-accent !py-1" onClick={finishShape}><IcCheck size={14} /> Finish</button><button className="btn btn-ghost !py-1" onClick={undoPoint}>Undo pt</button></>}
       </div>
 
-      <div ref={wrapRef} className="card overflow-hidden" style={{ maxHeight: "62vh", overflowY: "auto" }}>
+      <div ref={wrapRef} className="card" style={{ maxHeight: "62vh", overflow: "auto" }}>
         <canvas ref={canvasRef} className="editor" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />
       </div>
 
       {measured.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="font-semibold text-sm brand-text">Attach each measurement to a rate → quote</div>
+          <div className="font-semibold text-sm brand-text">Measurements → quote</div>
+          <div className="text-xs" style={{ color: "var(--muted)" }}>Attaching a rate is optional — send measurements straight through and enter values on the quote if you prefer.</div>
           {measured.map((a, mi) => {
             const it = items.find(i => i.id === a.priceItemId);
             const qty = mpp ? measureVal(a) : 0;
@@ -946,7 +978,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
-                    <option value="">— attach a rate from the database —</option>
+                    <option value="">— no rate (enter on quote) —</option>
                     {items.map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}
                   </select>
                   {it && <span className="text-xs whitespace-nowrap" style={{ color: "var(--muted)" }}>= <b style={{ color: "var(--ink)" }}>{money(qty * it.rate)}</b></span>}
@@ -954,8 +986,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
               </div>
             );
           })}
-          {items.length === 0 && <div className="text-xs" style={{ color: "var(--muted)" }}>No rates in the database yet — add items under the Prices tab first.</div>}
-          <button className="btn btn-primary w-full" onClick={addToQuote}><IcPlus size={16} /> Send priced measurements to quote</button>
+          <button className="btn btn-primary w-full" onClick={addToQuote}><IcPlus size={16} /> Send measurements to quote</button>
         </div>
       )}
       <button className="btn btn-primary w-full" onClick={addCopyToQuote}><IcPlus size={16} /> Add marked-up copy to quote</button>
@@ -975,19 +1006,35 @@ function smoothPath(ctx, pts){
   for (let i = 1; i < pts.length - 1; i++){ const xc = (pts[i].x + pts[i+1].x) / 2, yc = (pts[i].y + pts[i+1].y) / 2; ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
   ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
 }
-const STAMP_DEFAULT_M = { door: 0.9, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, sink: 0.6, toilet: 0.4, car: 4.8, tree: 4.0, fence: 3.0, pool: 6.0 };
-const STAMP_TYPES = [["door","Door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["sink","Sink"],["toilet","Toilet"],["car","Car"],["tree","Tree"],["fence","Fence"],["pool","Pool"]];
+const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, pool: 6.0 };
+const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["car","Car"],["tree","Tree"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["pool","Pool"]];
 const STAMP_LABEL = Object.fromEntries(STAMP_TYPES);
-const STAMP_CATEGORIES = [["Openings", ["door","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Fixtures", ["sink","toilet"]], ["Outdoor / site", ["car","tree","fence","pool"]]];
+const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","sink","toilet","shower","bath"]], ["Outdoor / site", ["car","tree","fence","fence_black","fence_glass","pool"]]];
+// depth ÷ width ratio for each object (defines its footprint when first dropped)
+const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, pool: 0.6 };
+const STAMP_LINEAR = new Set(["door","doubledoor","slidingdoor","window","opening","fence","fence_black","fence_glass"]);   // resize length only
+const STAMP_ROUND  = new Set(["tree"]);                                                                                    // uniform resize
+const STAMP_OPENINGS = new Set(["door","doubledoor","slidingdoor","window","opening"]);                                    // cut into 3D walls
+const stampAspect = (t) => STAMP_ASPECT[t] != null ? STAMP_ASPECT[t] : 1;
+const stampW = (s) => s.w != null ? s.w : s.size;                                                                          // local width (world px)
+const stampD = (s) => s.d != null ? s.d : (STAMP_ROUND.has(s.type) ? (s.w != null ? s.w : s.size) : (s.size * stampAspect(s.type)));  // local depth
 function rrect(ctx, x, y, w, h, r){ r = Math.min(r, w/2, h/2); ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function drawStamp(ctx, s, brand){
-  const w = s.size, half = w / 2;
+  const w = stampW(s), h = stampD(s), half = w / 2, hh = h / 2;
   ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((s.angle || 0) * Math.PI / 180);
   ctx.strokeStyle = brand; ctx.fillStyle = brand; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.setLineDash([]);
   if (s.type === "door"){
     ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -6); ctx.moveTo(half, 0); ctx.lineTo(half, -6); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -w); ctx.stroke();
     ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(-half, 0, w, -Math.PI/2, 0); ctx.stroke();
+  } else if (s.type === "doubledoor"){
+    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -6); ctx.moveTo(half, 0); ctx.lineTo(half, -6); ctx.stroke();  // jambs
+    ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(-half, -w/2); ctx.moveTo(half, 0); ctx.lineTo(half, -w/2); ctx.stroke();  // two leaves
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(-half, 0, w/2, -Math.PI/2, 0); ctx.stroke(); ctx.beginPath(); ctx.arc(half, 0, w/2, -Math.PI, -Math.PI/2); ctx.stroke();
+  } else if (s.type === "slidingdoor"){
+    ctx.lineWidth = 2.4; ctx.beginPath(); ctx.moveTo(-half, -3); ctx.lineTo(half, -3); ctx.moveTo(-half, 3); ctx.lineTo(half, 3); ctx.stroke();  // track
+    ctx.lineWidth = 3.4; ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(2, 0); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-2, 3); ctx.lineTo(half, 3); ctx.stroke();  // overlapping panels
+    ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(half-8, -3); ctx.lineTo(half, 0); ctx.stroke();  // arrow hint
   } else if (s.type === "window"){
     ctx.lineWidth = 2.4;
     ctx.beginPath(); ctx.moveTo(-half, -3); ctx.lineTo(half, -3); ctx.moveTo(-half, 3); ctx.lineTo(half, 3); ctx.stroke();
@@ -996,42 +1043,58 @@ function drawStamp(ctx, s, brand){
     ctx.beginPath(); ctx.moveTo(-half, -7); ctx.lineTo(-half, 7); ctx.moveTo(half, -7); ctx.lineTo(half, 7); ctx.stroke();
     ctx.strokeStyle = "#9aa3b2"; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke();
   } else if (s.type === "table"){
-    const h = w * 0.62; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, 4); ctx.stroke();
+    ctx.lineWidth = 2.5; rrect(ctx, -half, -hh, w, h, 4); ctx.stroke();
   } else if (s.type === "bench"){
-    const h = w * 0.34; ctx.lineWidth = 2.2;
-    rrect(ctx, -half, -h/2 + 3, w, h - 3, 3); ctx.stroke();                                   // seat
-    ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(-half, -h/2); ctx.lineTo(half, -h/2); ctx.stroke();  // backrest
-    ctx.lineWidth = 1; const nb = Math.max(3, Math.round(w / 11)); for (let i = 1; i < nb; i++){ const x = -half + w*i/nb; ctx.beginPath(); ctx.moveTo(x, -h/2 + 4); ctx.lineTo(x, h/2 - 1); ctx.stroke(); }
+    ctx.lineWidth = 2.2;
+    rrect(ctx, -half, -hh + 3, w, h - 3, 3); ctx.stroke();                                    // seat
+    ctx.lineWidth = 3.2; ctx.beginPath(); ctx.moveTo(-half, -hh); ctx.lineTo(half, -hh); ctx.stroke();  // backrest
+    ctx.lineWidth = 1; const nb = Math.max(3, Math.round(w / 11)); for (let i = 1; i < nb; i++){ const x = -half + w*i/nb; ctx.beginPath(); ctx.moveTo(x, -hh + 4); ctx.lineTo(x, hh - 1); ctx.stroke(); }
+  } else if (s.type === "kitchen"){
+    ctx.fillStyle = "rgba(2,34,75,.04)"; ctx.lineWidth = 2.4; rrect(ctx, -half, -hh, w, h, 2); ctx.fill(); ctx.stroke();       // benchtop
+    ctx.lineWidth = 1; ctx.strokeStyle = "#9aa3b2"; const cells = Math.max(1, Math.round(w / Math.max(24, h*0.9)));
+    for (let i = 1; i < cells; i++){ const x = -half + w*i/cells; ctx.beginPath(); ctx.moveTo(x, -hh+2); ctx.lineTo(x, hh-2); ctx.stroke(); }  // cupboard divisions
+    ctx.strokeStyle = brand; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-half, -hh+3); ctx.lineTo(half, -hh+3); ctx.stroke();  // front edge
   } else if (s.type === "car"){
-    const h = w * 0.44, bl = brand;
+    const bl = brand;
     ctx.fillStyle = "rgba(2,34,75,.05)"; ctx.strokeStyle = bl; ctx.lineWidth = 2.6;
-    rrect(ctx, -half, -h/2, w, h, h*0.42); ctx.fill(); ctx.stroke();                          // body
-    ctx.lineWidth = 1.7; rrect(ctx, -w*0.16, -h*0.34, w*0.44, h*0.68, h*0.22); ctx.stroke();   // cabin
+    rrect(ctx, -half, -hh, w, h, hh*0.42); ctx.fill(); ctx.stroke();                          // body
+    ctx.lineWidth = 1.7; rrect(ctx, -w*0.16, -h*0.34, w*0.44, h*0.68, hh*0.22); ctx.stroke();  // cabin
     ctx.beginPath(); ctx.moveTo(w*0.28, -h*0.30); ctx.lineTo(w*0.40, -h*0.16); ctx.moveTo(w*0.28, h*0.30); ctx.lineTo(w*0.40, h*0.16); ctx.stroke(); // windscreen
     ctx.beginPath(); ctx.moveTo(-w*0.20, -h*0.30); ctx.lineTo(-w*0.30, -h*0.15); ctx.moveTo(-w*0.20, h*0.30); ctx.lineTo(-w*0.30, h*0.15); ctx.stroke(); // rear window
     ctx.fillStyle = bl; const ww = w*0.12, wh = Math.max(3, h*0.16);                            // wheels
-    [[-w*0.32, -h/2 - wh*0.3], [-w*0.32, h/2 - wh*0.7], [w*0.20, -h/2 - wh*0.3], [w*0.20, h/2 - wh*0.7]].forEach(([wx, wy]) => { rrect(ctx, wx, wy, ww, wh, 2); ctx.fill(); });
+    [[-w*0.32, -hh - wh*0.3], [-w*0.32, hh - wh*0.7], [w*0.20, -hh - wh*0.3], [w*0.20, hh - wh*0.7]].forEach(([wx, wy]) => { rrect(ctx, wx, wy, ww, wh, 2); ctx.fill(); });
   } else if (s.type === "tree"){
     ctx.fillStyle = "rgba(34,139,60,.20)"; ctx.strokeStyle = "#228b3c"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(0, 0, half, 0, 7); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#7a5230"; ctx.beginPath(); ctx.arc(0, 0, Math.max(3, w*0.08), 0, 7); ctx.fill();
-  } else if (s.type === "fence"){
-    ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke();
-    const n = Math.max(2, Math.round(w / 14)); for (let i = 0; i <= n; i++){ const x = -half + (w * i / n); ctx.beginPath(); ctx.moveTo(x, -5); ctx.lineTo(x, 5); ctx.stroke(); }
+  } else if (s.type === "fence" || s.type === "fence_black" || s.type === "fence_glass"){
+    const col = s.type === "fence_black" ? "#2a2f36" : s.type === "fence_glass" ? "#5fa9d6" : brand;
+    ctx.strokeStyle = col; ctx.fillStyle = col;
+    if (s.type === "fence_glass"){ ctx.globalAlpha = 0.5; ctx.fillRect(-half, -3, w, 6); ctx.globalAlpha = 1; ctx.lineWidth = 2; ctx.strokeRect(-half, -3, w, 6); }
+    else { ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke();
+      const n = Math.max(2, Math.round(w / 14)); for (let i = 0; i <= n; i++){ const x = -half + (w * i / n); ctx.beginPath(); ctx.moveTo(x, -5); ctx.lineTo(x, 5); ctx.stroke(); } }
   } else if (s.type === "pool"){
-    const h = w * 0.6; ctx.fillStyle = "rgba(56,150,220,.25)"; ctx.strokeStyle = "#2f6fb0"; ctx.lineWidth = 3; rrect(ctx, -half, -h/2, w, h, Math.min(w,h)*0.28); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "rgba(56,150,220,.25)"; ctx.strokeStyle = "#2f6fb0"; ctx.lineWidth = 3; rrect(ctx, -half, -hh, w, h, Math.min(w,h)*0.28); ctx.fill(); ctx.stroke();
     ctx.fillStyle = "#2f6fb0"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; ctx.fillText("POOL", 0, 4);
   } else if (s.type === "chair"){
-    ctx.lineWidth = 2.2; rrect(ctx, -half, -half*0.7, w, w*0.9, 3); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-half, -half*0.7); ctx.lineTo(half, -half*0.7); ctx.stroke();
+    ctx.lineWidth = 2.2; rrect(ctx, -half, -hh, w, h, 3); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-half, -hh); ctx.lineTo(half, -hh); ctx.stroke();
   } else if (s.type === "bed"){
-    const h = w * 1.3; ctx.lineWidth = 2.5; rrect(ctx, -half, -h/2, w, h, 4); ctx.stroke();
-    ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-half, -h/2 + h*0.28); ctx.lineTo(half, -h/2 + h*0.28); ctx.stroke();       // pillow line
-    rrect(ctx, -half + w*0.12, -h/2 + h*0.05, w*0.34, h*0.16, 3); ctx.stroke(); rrect(ctx, half - w*0.46, -h/2 + h*0.05, w*0.34, h*0.16, 3); ctx.stroke();
+    ctx.lineWidth = 2.5; rrect(ctx, -half, -hh, w, h, 4); ctx.stroke();
+    ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-half, -hh + h*0.28); ctx.lineTo(half, -hh + h*0.28); ctx.stroke();       // pillow line
+    rrect(ctx, -half + w*0.12, -hh + h*0.05, w*0.34, h*0.16, 3); ctx.stroke(); rrect(ctx, half - w*0.46, -hh + h*0.05, w*0.34, h*0.16, 3); ctx.stroke();
   } else if (s.type === "sink"){
-    const h = w * 0.75; ctx.lineWidth = 2.2; rrect(ctx, -half, -h/2, w, h, 4); ctx.stroke(); ctx.beginPath(); ctx.arc(0, h*0.05, Math.max(2, w*0.1), 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -h*0.32, Math.max(1.5, w*0.05), 0, 7); ctx.stroke();
+    ctx.lineWidth = 2.2; rrect(ctx, -half, -hh, w, h, 4); ctx.stroke(); ctx.beginPath(); ctx.arc(0, h*0.05, Math.max(2, w*0.18), 0, 7); ctx.stroke(); ctx.beginPath(); ctx.arc(0, -hh*0.6, Math.max(1.5, w*0.06), 0, 7); ctx.stroke();
   } else if (s.type === "toilet"){
-    const bw = w, bh = w * 1.4; ctx.lineWidth = 2.2; rrect(ctx, -bw*0.42, -bh/2, bw*0.84, bh*0.34, 3); ctx.stroke();              // cistern
-    ctx.beginPath(); ctx.ellipse(0, bh*0.12, bw*0.42, bh*0.4, 0, 0, 7); ctx.stroke();                                             // bowl
+    ctx.lineWidth = 2.2; rrect(ctx, -half*0.84, -hh, w*0.84, h*0.28, 3); ctx.stroke();                                        // cistern
+    ctx.beginPath(); ctx.ellipse(0, hh*0.3, half*0.82, hh*0.5, 0, 0, 7); ctx.stroke();                                        // bowl
+  } else if (s.type === "shower"){
+    ctx.fillStyle = "rgba(95,169,214,.15)"; ctx.lineWidth = 2.4; rrect(ctx, -half, -hh, w, h, 3); ctx.fill(); ctx.stroke();   // tray
+    ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(-half, -hh); ctx.lineTo(half, hh); ctx.moveTo(half, -hh); ctx.lineTo(-half, hh); ctx.stroke();  // glass cross
+    ctx.beginPath(); ctx.arc(0, 0, Math.max(2, w*0.08), 0, 7); ctx.stroke();                                                  // drain
+  } else if (s.type === "bath"){
+    ctx.lineWidth = 2.5; rrect(ctx, -half, -hh, w, h, hh*0.4); ctx.stroke();                                                  // outer
+    ctx.lineWidth = 1.6; rrect(ctx, -half + w*0.06, -hh + h*0.14, w*0.72, h*0.72, hh*0.35); ctx.stroke();                     // inner tub
+    ctx.beginPath(); ctx.arc(half - w*0.12, 0, Math.max(1.5, w*0.04), 0, 7); ctx.stroke();                                    // plug
   }
   ctx.restore();
 }
@@ -1081,7 +1144,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     const box = (w, h, d, m, x, y, z, ry) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x, y, z); if (ry) me.rotation.y = ry; return me; };
 
     // ---- walls with door/window openings ----
-    const openings = stamps.filter(s => s.type === "door" || s.type === "window" || s.type === "opening").map(s => ({ type: s.type, c: toM({ x: s.x, y: s.y }), w: s.size * mpp }));
+    const openings = stamps.filter(s => STAMP_OPENINGS.has(s.type)).map(s => ({ type: s.type, c: toM({ x: s.x, y: s.y }), w: stampW(s) * mpp }));
     const piece = (A, ux, uz, s0, s1, y0, y1, m) => { const len = s1 - s0, hgt = y1 - y0; if (len < 0.06 || hgt < 0.03) return; const mx = A.x + ux*((s0+s1)/2), mz = A.z + uz*((s0+s1)/2); scene.add(box(len, hgt, 0.1, m || wallMat, mx, (y0+y1)/2, mz, -Math.atan2(uz, ux))); };
     const wallEdge = (a, b, h) => {
       const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const L = Math.hypot(dx, dz); if (L < 0.02) return;
@@ -1090,7 +1153,11 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       openings.forEach(o => { const rx = o.c.x-A.x, rz = o.c.z-A.z; const t = rx*ux + rz*uz, perp = Math.abs(rx*nx + rz*nz); if (t > -o.w/2 && t < L + o.w/2 && perp < 0.6) ops.push({ type: o.type, s0: Math.max(0, t-o.w/2), s1: Math.min(L, t+o.w/2) }); });
       ops.sort((p, q) => p.s0 - q.s0);
       let cur = 0; ops.forEach(o => { if (o.s0 > cur + 0.01) piece(A, ux, uz, cur, o.s0, 0, h); cur = Math.max(cur, o.s1); }); if (cur < L - 0.01) piece(A, ux, uz, cur, L, 0, h);
-      ops.forEach(o => { if (o.type === "window"){ const sill = Math.min(0.9, h*0.35), hdr = Math.max(h-0.35, sill+0.1); piece(A, ux, uz, o.s0, o.s1, 0, sill); piece(A, ux, uz, o.s0, o.s1, hdr, h); piece(A, ux, uz, o.s0, o.s1, sill, hdr, glassMat); } else if (o.type === "door"){ piece(A, ux, uz, o.s0, o.s1, Math.min(2.04, h*0.85), h); } });
+      ops.forEach(o => {
+        if (o.type === "window"){ const sill = Math.min(0.9, h*0.35), hdr = Math.max(h-0.35, sill+0.1); piece(A, ux, uz, o.s0, o.s1, 0, sill); piece(A, ux, uz, o.s0, o.s1, hdr, h); piece(A, ux, uz, o.s0, o.s1, sill, hdr, glassMat); }
+        else if (o.type === "door" || o.type === "doubledoor"){ const top = Math.min(2.04, h*0.85); piece(A, ux, uz, o.s0, o.s1, top, h); }         // header above door
+        else if (o.type === "slidingdoor"){ const top = Math.min(2.1, h*0.88); piece(A, ux, uz, o.s0, o.s1, top, h); piece(A, ux, uz, o.s0, o.s1, 0, top, glassMat); }  // sliding = glass
+      });
     };
 
     // ---- footprints (closed rooms + closed wall loops) for floor + roof ----
@@ -1121,73 +1188,104 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
 
     // ---- detailed objects ----
     stamps.forEach(s => {
-      if (s.type === "door" || s.type === "window" || s.type === "opening") return;
-      const M = toM({ x: s.x, y: s.y }), w = s.size * mpp, ang = -(s.angle||0)*Math.PI/180;
+      if (STAMP_OPENINGS.has(s.type)) return;
+      const M = toM({ x: s.x, y: s.y }), w = stampW(s) * mpp, d = stampD(s) * mpp, ang = -(s.angle||0)*Math.PI/180;
       const grp = new THREE.Group(); grp.position.set(M.x, 0, M.z); grp.rotation.y = ang;
       // shared little builders
       const leg = (x, z, hgt, m, r) => { const g = new THREE.Mesh(new THREE.BoxGeometry(r||0.06, hgt, r||0.06), m); g.position.set(x, hgt/2, z); grp.add(g); };
       const cyl = (rt, rb, h, m, x, y, z, seg) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg||16), m); g.position.set(x, y, z); grp.add(g); return g; };
-      const cushion = (bw, bh, bd, m, x, y, z) => { const g = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), m); g.position.set(x, y, z); grp.add(g); return g; };  // soft-ish block
+      const ball = (r, m, x, y, z) => { const g = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), m); g.position.set(x, y, z); grp.add(g); return g; };
       // faint contact shadow so objects sit on the floor
-      const sh = new THREE.Mesh(new THREE.CircleGeometry(w*0.6, 20), mat(0x9aa6b3, { transparent: true, opacity: 0.18 })); sh.rotateX(-Math.PI/2); sh.position.y = 0.015; grp.add(sh);
+      const sh = new THREE.Mesh(new THREE.CircleGeometry(Math.max(w,d)*0.55, 20), mat(0x9aa6b3, { transparent: true, opacity: 0.18 })); sh.rotateX(-Math.PI/2); sh.position.y = 0.015; grp.add(sh);
 
       if (s.type === "tree"){
-        cyl(w*0.045, w*0.09, w*0.6, glossy(0x6b4a2a, 8), 0, w*0.3, 0, 8);                     // trunk
-        [0,1,2,3].forEach(i => { const c = new THREE.Mesh(new THREE.ConeGeometry(w*(0.6-i*0.12), w*0.5, 14), mat(i%2?0x389049:0x43a95b)); c.position.y = w*0.6 + i*w*0.26; grp.add(c); });  // layered canopy
+        const R = w * 0.5;                                                                      // bushy, rounded canopy (overlapping spheres)
+        cyl(w*0.05, w*0.09, R*1.1, glossy(0x6b4a2a, 8), 0, R*0.55, 0, 8);                        // trunk
+        const foliage = mat(0x4aa459), foliage2 = mat(0x3c9450);
+        ball(R*0.72, foliage, 0, R*1.35, 0);
+        [[R*0.5,0],[-R*0.5,0],[0,R*0.5],[0,-R*0.5]].forEach(([bx,bz],i) => ball(R*0.5, i%2?foliage2:foliage, bx, R*1.15, bz));
+        ball(R*0.55, foliage2, 0, R*1.75, 0);
       }
       else if (s.type === "pool"){
-        const d = w*0.6; grp.add(box(w+0.3, 0.34, 0.3, mat(0xdfe4ea), 0, 0.34, -d/2-0.05)); grp.add(box(w+0.3, 0.34, 0.3, mat(0xdfe4ea), 0, 0.34, d/2+0.05)); grp.add(box(0.3, 0.34, d, mat(0xdfe4ea), -w/2-0.05, 0.34, 0)); grp.add(box(0.3, 0.34, d, mat(0xdfe4ea), w/2+0.05, 0.34, 0));  // coping
-        grp.add(box(w, 0.3, d, mat(0x1f7fb8), 0, 0.16, 0));                                    // shell
-        const water = box(w*0.98, 0.02, d*0.98, glossy(0x37a9e0, 120, { transparent: true, opacity: 0.85 }), 0, 0.31, 0); grp.add(water);  // shiny water surface
-        cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.3, 0.5, d/2, 8); cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.2, 0.5, d/2, 8);   // ladder rails
+        grp.add(box(w+0.3, 0.34, 0.3, mat(0xdfe4ea), 0, 0.34, -d/2-0.05)); grp.add(box(w+0.3, 0.34, 0.3, mat(0xdfe4ea), 0, 0.34, d/2+0.05)); grp.add(box(0.3, 0.34, d, mat(0xdfe4ea), -w/2-0.05, 0.34, 0)); grp.add(box(0.3, 0.34, d, mat(0xdfe4ea), w/2+0.05, 0.34, 0));  // coping
+        grp.add(box(w, 0.3, d, mat(0x1f7fb8), 0, 0.16, 0));                                      // shell
+        grp.add(box(w*0.98, 0.02, d*0.98, glossy(0x37a9e0, 120, { transparent: true, opacity: 0.85 }), 0, 0.31, 0));  // water
+        cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.3, 0.5, d/2, 8); cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.2, 0.5, d/2, 8);
       }
       else if (s.type === "car"){
-        const d = w*0.42, body = glossy(0x2f6ea5, 60);
-        grp.add(box(w*0.98, 0.42, d, body, 0, 0.5, 0));                                        // lower body
-        const cabin = new THREE.Mesh(new THREE.BoxGeometry(w*0.62, 0.42, d*0.9), body); cabin.position.set(-w*0.02, 0.86, 0); grp.add(cabin);  // cabin
-        grp.add(box(w*0.6, 0.34, d*0.82, glassMat, -w*0.02, 0.9, 0));                          // glass greenhouse
-        grp.add(box(w*0.06, 0.12, d*0.7, glossy(0xfff2c0, 100), w*0.49, 0.5, 0));              // headlights
-        grp.add(box(w*0.05, 0.1, d*0.7, glossy(0xc42b2b, 100), -w*0.49, 0.5, 0));              // tail lights
-        [[-w*0.3,-d/2],[w*0.3,-d/2],[-w*0.3,d/2],[w*0.3,d/2]].forEach(([wx,wz])=>{ const t = new THREE.Mesh(new THREE.CylinderGeometry(0.33,0.33,0.22,18), mat(0x1b1e23)); t.rotation.z = Math.PI/2; t.position.set(wx, 0.33, wz); grp.add(t); const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.24,10), glossy(0xc9ced6, 90)); hub.rotation.z = Math.PI/2; hub.position.set(wx, 0.33, wz); grp.add(hub); });
+        const body = glossy(0x2f6ea5, 80), tyre = mat(0x14171b), rim = glossy(0xc9ced6, 100);
+        grp.add(box(w*0.99, 0.34, d, body, 0, 0.42, 0));                                         // sills / lower body
+        grp.add(box(w*0.9, 0.26, d*0.98, body, 0, 0.66, 0));                                     // bonnet + boot deck
+        grp.add(box(w*0.5, 0.36, d*0.94, body, -w*0.03, 0.9, 0));                                // cabin
+        grp.add(box(w*0.46, 0.3, d*0.8, glassMat, -w*0.03, 0.94, 0));                            // windscreen/rear glass
+        grp.add(box(w*0.47, 0.26, d*1.0, glassMat, -w*0.03, 0.9, 0));                            // side windows
+        grp.add(box(0.05, 0.12, d*0.66, glossy(0xfff6cf, 130), w*0.49, 0.44, 0));                // headlights
+        grp.add(box(0.05, 0.1, d*0.66, glossy(0xd23b3b, 130), -w*0.49, 0.44, 0));                // tail lights
+        const wr = Math.min(0.34, d*0.4);
+        [[-w*0.3,-d/2],[w*0.3,-d/2],[-w*0.3,d/2],[w*0.3,d/2]].forEach(([wx,wz])=>{ const t = new THREE.Mesh(new THREE.CylinderGeometry(wr,wr,0.2,18), tyre); t.rotation.z = Math.PI/2; t.position.set(wx, wr, wz); grp.add(t); const hub = new THREE.Mesh(new THREE.CylinderGeometry(wr*0.5,wr*0.5,0.22,10), rim); hub.rotation.z = Math.PI/2; hub.position.set(wx, wr, wz); grp.add(hub); });
       }
       else if (s.type === "table"){
-        const d = w*0.62; grp.add(box(w, 0.06, d, glossy(0xc79a6b, 25), 0, 0.75, 0)); grp.add(box(w*0.94, 0.03, d*0.9, mat(0xd9b489), 0, 0.79, 0));  // top + placemat sheen
+        grp.add(box(w, 0.06, d, glossy(0xc79a6b, 25), 0, 0.75, 0)); grp.add(box(w*0.94, 0.03, d*0.9, mat(0xd9b489), 0, 0.79, 0));
         [[-w/2+0.08,-d/2+0.08],[w/2-0.08,-d/2+0.08],[-w/2+0.08,d/2-0.08],[w/2-0.08,d/2-0.08]].forEach(([x,z])=>leg(x,z,0.72,mat(0x8f6f4c),0.07));
       }
       else if (s.type === "chair"){
-        const d = w; grp.add(box(w, 0.09, d, mat(0xd3d9e0), 0, 0.45, 0)); cushion(w*0.9, 0.06, d*0.9, mat(0xeef1f5), 0, 0.5, 0);  // seat + cushion
-        grp.add(box(w, w*0.85, 0.08, mat(0xc4ccd6), 0, 0.45+w*0.42, -d/2+0.05)); grp.add(box(w*0.86, w*0.6, 0.04, mat(0xeef1f5), 0, 0.45+w*0.4, -d/2+0.09));  // backrest + pad
+        grp.add(box(w, 0.09, d, mat(0xd3d9e0), 0, 0.45, 0)); grp.add(box(w*0.9, 0.06, d*0.9, mat(0xeef1f5), 0, 0.5, 0));  // seat + cushion
+        grp.add(box(w, Math.max(0.4,d*0.85), 0.08, mat(0xc4ccd6), 0, 0.45+d*0.42, -d/2+0.05));   // backrest
         [[-w/2+0.06,-d/2+0.06],[w/2-0.06,-d/2+0.06],[-w/2+0.06,d/2-0.06],[w/2-0.06,d/2-0.06]].forEach(([x,z])=>leg(x,z,0.44,glossy(0x8a929c,60),0.05));
       }
       else if (s.type === "bench"){
-        const d = w*0.36; [-0.11,0,0.11].forEach(off => grp.add(box(w, 0.05, d*0.28, glossy(0xb5885e, 20), 0, 0.45, off*d*2)));  // seat slats
-        [-0.05,0.09].forEach(off => grp.add(box(w, 0.06, d*0.3, glossy(0xb5885e, 20), 0, 0.62+off, -d/2)));                      // back slats
+        [-0.11,0,0.11].forEach(off => grp.add(box(w, 0.05, d*0.28, glossy(0xb5885e, 20), 0, 0.45, off*d*2)));  // seat slats
+        [-0.05,0.09].forEach(off => grp.add(box(w, 0.06, d*0.3, glossy(0xb5885e, 20), 0, 0.62+off, -d/2)));    // back slats
         leg(-w/2+0.1,-d/2+0.05,0.44,mat(0x6f5638)); leg(w/2-0.1,-d/2+0.05,0.44,mat(0x6f5638)); leg(-w/2+0.1,d/2-0.05,0.44,mat(0x6f5638)); leg(w/2-0.1,d/2-0.05,0.44,mat(0x6f5638));
       }
       else if (s.type === "bed"){
-        const d = w*1.35; grp.add(box(w, 0.28, d, mat(0x8f6f4c), 0, 0.16, 0));                  // base
-        grp.add(box(w*0.97, 0.2, d*0.97, mat(0xf1f4f8), 0, 0.4, 0));                            // mattress
-        grp.add(box(w*0.97, 0.12, d*0.6, glossy(0xcfe0ef, 15), 0, 0.5, d*0.16));                // folded blanket
+        grp.add(box(w, 0.28, d, mat(0x8f6f4c), 0, 0.16, 0));                                     // base
+        grp.add(box(w*0.97, 0.2, d*0.97, mat(0xf1f4f8), 0, 0.4, 0));                             // mattress
+        grp.add(box(w*0.97, 0.12, d*0.6, glossy(0xcfe0ef, 15), 0, 0.5, d*0.16));                 // blanket
         grp.add(box(w*0.4, 0.16, d*0.2, mat(0xffffff), -w*0.24, 0.56, -d*0.36)); grp.add(box(w*0.4, 0.16, d*0.2, mat(0xffffff), w*0.24, 0.56, -d*0.36));  // pillows
-        grp.add(box(w*1.02, 0.62, 0.12, mat(0x7c6141), 0, 0.55, -d/2));                         // headboard
+        grp.add(box(w*1.02, 0.62, 0.12, mat(0x7c6141), 0, 0.55, -d/2));                          // headboard
+      }
+      else if (s.type === "kitchen"){
+        grp.add(box(w*0.96, 0.12, d*0.86, mat(0x5b636e), 0, 0.06, 0.02));                        // recessed toe-kick
+        grp.add(box(w, 0.78, d, glossy(0xeef1f5, 15), 0, 0.52, 0));                              // cabinet body
+        grp.add(box(w*1.04, 0.06, d*1.1, glossy(0x333941, 30), 0, 0.94, 0));                     // stone benchtop overhang
+        const nc = Math.max(1, Math.round(w / Math.max(0.55, d)));                               // cupboard doors
+        for (let i = 0; i < nc; i++){ const cx = -w/2 + w*(i+0.5)/nc; grp.add(box(w/nc*0.92, 0.66, 0.03, glossy(0xffffff, 20), cx, 0.5, d/2)); grp.add(box(0.04, 0.12, 0.03, glossy(0xb7bec7, 90), cx + w/nc*0.32, 0.62, d/2+0.02)); }
       }
       else if (s.type === "toilet"){
-        cyl(w*0.4, w*0.32, 0.44, glossy(0xffffff, 30), 0, 0.22, w*0.18, 20);                    // bowl
-        grp.add(new THREE.Mesh(new THREE.TorusGeometry(w*0.36, w*0.09, 8, 20), glossy(0xf4f6f9, 30)).translateY(0.44).translateZ(w*0.18));  // seat ring
-        grp.add(box(w*0.86, 0.5, w*0.26, glossy(0xffffff, 30), 0, 0.5, -w*0.45));               // cistern
-        grp.add(box(w*0.2, 0.06, 0.12, mat(0xd8dde3), w*0.3, 0.78, -w*0.45));                   // flush button
+        cyl(w*0.4, w*0.32, 0.44, glossy(0xffffff, 30), 0, 0.22, d*0.14, 20);                     // bowl
+        grp.add(new THREE.Mesh(new THREE.TorusGeometry(w*0.34, w*0.08, 8, 20), glossy(0xf4f6f9, 30)).translateY(0.44).translateZ(d*0.14));  // seat ring
+        grp.add(box(w*0.82, 0.5, d*0.24, glossy(0xffffff, 30), 0, 0.5, -d*0.36));                // cistern
       }
       else if (s.type === "sink"){
-        grp.add(box(w, 0.86, w*0.62, glossy(0xeef1f5, 20), 0, 0.43, 0));                        // vanity cabinet
-        grp.add(box(w*1.04, 0.08, w*0.66, glossy(0xdfe4ea, 40), 0, 0.9, 0));                    // benchtop
-        const basin = new THREE.Mesh(new THREE.CylinderGeometry(w*0.28, w*0.2, 0.16, 20), glossy(0xffffff, 60)); basin.position.set(0, 0.9, 0); grp.add(basin);  // basin
-        cyl(0.028, 0.028, 0.26, glossy(0xb7bec7, 110), 0, 1.06, -w*0.2, 10); grp.add(box(0.03, 0.03, 0.14, glossy(0xb7bec7, 110), 0, 1.18, -w*0.13));  // tap + spout
+        grp.add(box(w, 0.86, d, glossy(0xeef1f5, 20), 0, 0.43, 0));                              // vanity cabinet
+        grp.add(box(w*1.04, 0.08, d*1.06, glossy(0xdfe4ea, 40), 0, 0.9, 0));                     // benchtop
+        const basin = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.34, Math.min(w,d)*0.24, 0.16, 20), glossy(0xffffff, 60)); basin.position.set(0, 0.9, 0); grp.add(basin);
+        cyl(0.028, 0.028, 0.26, glossy(0xb7bec7, 110), 0, 1.06, -d*0.28, 10); grp.add(box(0.03, 0.03, 0.14, glossy(0xb7bec7, 110), 0, 1.18, -d*0.2));  // tap + spout
       }
-      else if (s.type === "fence"){
-        grp.add(box(w, 0.05, 0.05, glossy(0x9c7b56, 15), 0, 1.35, 0)); grp.add(box(w, 0.05, 0.05, glossy(0x9c7b56, 15), 0, 0.8, 0));  // rails
-        const n = Math.max(3, Math.round(w/0.6)); for (let i = 0; i <= n; i++){ const x = -w/2 + w*i/n; grp.add(box(0.08, 1.5, 0.04, mat(0x8a6c49), x, 0.75, 0)); const cap = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.13, 4), mat(0x7c6144)); cap.position.set(x, 1.56, 0); cap.rotation.y = Math.PI/4; grp.add(cap); }  // pickets + caps
+      else if (s.type === "shower"){
+        grp.add(box(w, 0.08, d, glossy(0xdfe4ea, 40), 0, 0.04, 0));                              // tray
+        grp.add(box(w, 2.0, 0.03, glassMat, 0, 1.0, d/2)); grp.add(box(0.03, 2.0, d, glassMat, w/2, 1.0, 0));  // glass panels
+        grp.add(box(0.16, 0.05, 0.16, glossy(0xc9ced6, 100), -w/2+0.22, 2.0, -d/2+0.22));         // rose
+        grp.add(box(0.05, 0.9, 0.05, glossy(0xc9ced6, 100), -w/2+0.16, 1.4, -d/2+0.1));           // riser
       }
-      else { grp.add(box(w, 0.8, w*0.7, mat(0xc2cad4), 0, 0.4, 0)); grp.add(box(w*0.9, 0.05, w*0.6, mat(0xa9b3bf), 0, 0.82, 0)); }
+      else if (s.type === "bath"){
+        grp.add(box(w, 0.6, d, glossy(0xffffff, 40), 0, 0.3, 0));                                // outer tub
+        grp.add(box(w*0.86, 0.42, d*0.7, glossy(0xeaf3fb, 70), 0, 0.44, 0));                     // inner (water)
+        cyl(0.03, 0.03, 0.2, glossy(0xb7bec7, 110), -w/2+0.14, 0.7, 0, 10); grp.add(box(0.03, 0.03, 0.14, glossy(0xb7bec7, 110), -w/2+0.2, 0.78, 0));  // tap
+      }
+      else if (s.type === "fence" || s.type === "fence_black" || s.type === "fence_glass"){
+        if (s.type === "fence_glass"){
+          const nposts = Math.max(2, Math.round(w/1.2)); for (let i = 0; i <= nposts; i++){ grp.add(box(0.06, 1.1, 0.06, glossy(0xb7bec7, 90), -w/2 + w*i/nposts, 0.55, 0)); }
+          grp.add(box(w, 1.0, 0.02, glassMat, 0, 0.58, 0));                                      // glass panel
+        } else {
+          const col = s.type === "fence_black" ? 0x2a2f36 : 0x9c7b56, capCol = s.type === "fence_black" ? 0x1c2026 : 0x7c6144;
+          const rm = s.type === "fence_black" ? glossy(col, 40) : glossy(col, 12);
+          grp.add(box(w, 0.05, 0.05, rm, 0, 1.35, 0)); grp.add(box(w, 0.05, 0.05, rm, 0, 0.8, 0));  // rails
+          const n = Math.max(3, Math.round(w/0.6)); for (let i = 0; i <= n; i++){ const x = -w/2 + w*i/n; grp.add(box(0.07, 1.5, 0.04, mat(col), x, 0.75, 0)); const cap = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), mat(capCol)); cap.position.set(x, 1.56, 0); cap.rotation.y = Math.PI/4; grp.add(cap); }
+        }
+      }
+      else { grp.add(box(w, 0.8, d, mat(0xc2cad4), 0, 0.4, 0)); grp.add(box(w*0.9, 0.05, d*0.86, mat(0xa9b3bf), 0, 0.82, 0)); }
       scene.add(grp);
     });
 
@@ -1258,7 +1356,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const placePoint = (e) => { const praw = toWorld(e, false); return snapVertex(praw) || toWorld(e, true); };
   // rotate/resize handle positions for a selected stamp (world coords)
   const rotv = (vx, vy, a) => ({ x: vx*Math.cos(a) - vy*Math.sin(a), y: vx*Math.sin(a) + vy*Math.cos(a) });
-  const stampHandles = (s) => { const a = (s.angle || 0) * Math.PI / 180; const half = s.size / 2; const rz = rotv(half + 12/S, 0, a); const rt = rotv(0, -(half + 30/S), a); const dl = rotv(-(half + 12/S), 0, a); return { resize: { x: s.x + rz.x, y: s.y + rz.y }, rotate: { x: s.x + rt.x, y: s.y + rt.y }, del: { x: s.x + dl.x, y: s.y + dl.y } }; };
+  const stampHandles = (s) => {
+    const a = (s.angle || 0) * Math.PI / 180; const w = stampW(s), d = stampD(s); const gap = 14 / S;
+    const at = (lx, ly) => { const r = rotv(lx, ly, a); return { x: s.x + r.x, y: s.y + r.y }; };
+    const rotate = at(0, -(d/2 + gap + 16/S));
+    const del = at(-(w/2 + gap), -(d/2 + gap));
+    if (STAMP_ROUND.has(s.type)) return { uniform: at(w/2 + gap, d/2 + gap), rotate, del };
+    const h = { rotate, del, width: at(w/2 + gap, 0) };
+    if (!STAMP_LINEAR.has(s.type)) h.depth = at(0, d/2 + gap);   // linear objects: length only
+    return h;
+  };
   // next corner while chaining a wall: fixed length if locked, else ortho/snap/corner-snap
   const chainNext = (last, e) => {
     if (lockLen > 0){
@@ -1312,7 +1419,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r.points, r.name));
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
-    if (labels){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + s.size/2 + 13); }); }
+    if (labels){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
     // north arrow (top-right)
     (() => { const nx = worldW - 34, ny = 34; ctx.save(); ctx.translate(nx, ny); ctx.fillStyle = brand; ctx.strokeStyle = brand; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(6,8); ctx.lineTo(0,3); ctx.lineTo(-6,8); ctx.closePath(); ctx.fill();
@@ -1327,14 +1434,19 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       ctx.fillStyle = "#fff"; ctx.strokeStyle = "#e8792b"; ctx.lineWidth = 2;
       rooms.forEach(r => r.points.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill(); ctx.stroke(); }));
       stamps.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, 7); ctx.fill(); ctx.stroke(); });
-      // selected stamp: rotate + resize handles
+      // selected stamp: outline + edge-resize / rotate / delete handles
       const s = stamps.find(x => x.id === sel);
-      if (s){ const h = stampHandles(s); ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "#e8792b"; ctx.lineWidth = 1.5;
+      if (s){ const h = stampHandles(s); const w0 = stampW(s), d0 = stampD(s), a = (s.angle||0)*Math.PI/180;
+        // selection outline
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(a); ctx.strokeStyle = "#e8792b"; ctx.setLineDash([5,4]); ctx.lineWidth = 1.5; ctx.strokeRect(-w0/2, -d0/2, w0, d0); ctx.restore();
+        ctx.setLineDash([]); ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "#e8792b"; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.rotate.x, h.rotate.y); ctx.stroke();
         ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, 9, 0, 7); ctx.fill();                                  // rotate knob
         ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, 4, 0, 7); ctx.fill();
-        ctx.fillStyle = "#e8792b"; ctx.fillRect(h.resize.x - 7, h.resize.y - 7, 14, 14);                        // resize square
-        ctx.fillStyle = "#fff"; ctx.fillRect(h.resize.x - 3, h.resize.y - 3, 6, 6);
+        const sq = (pt) => { ctx.fillStyle = "#e8792b"; ctx.fillRect(pt.x - 7, pt.y - 7, 14, 14); ctx.fillStyle = "#fff"; ctx.fillRect(pt.x - 3, pt.y - 3, 6, 6); };
+        if (h.width) sq(h.width);                                                                               // width (drag the side)
+        if (h.depth) sq(h.depth);                                                                               // depth
+        if (h.uniform) sq(h.uniform);                                                                           // round objects
         ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, 9, 0, 7); ctx.fill();             // delete
         ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(h.del.x-3.5, h.del.y-3.5); ctx.lineTo(h.del.x+3.5, h.del.y+3.5); ctx.moveTo(h.del.x+3.5, h.del.y-3.5); ctx.lineTo(h.del.x-3.5, h.del.y+3.5); ctx.stroke();
       }
@@ -1352,12 +1464,17 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     }
   }, [rooms, stamps, draft, tool, sel, labels, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
 
-  const commitStamp = (p, type) => onChange({ ...plan, stamps: [...stamps, { id: uid(), type, x: p.x, y: p.y, size: STAMP_DEFAULT_M[type] * pxPerM, angle: 0 }] });
+  const commitStamp = (p, type) => {
+    const size = STAMP_DEFAULT_M[type] * pxPerM;
+    const id = uid();
+    onChange({ ...plan, stamps: [...stamps, { id, type, x: p.x, y: p.y, size, w: size, d: STAMP_ROUND.has(type) ? size : size * stampAspect(type), angle: 0 }] });
+    setTool("move"); setSel(id);   // drop then immediately edit — no duplicate taps
+  };
 
   const hitTest = (p) => {
     const thr = 16 / S;
-    for (let i = stamps.length - 1; i >= 0; i--){ if (dist(p, { x: stamps[i].x, y: stamps[i].y }) < Math.max(thr, stamps[i].size / 2)) return { kind: "stamp", id: stamps[i].id }; }
     for (let i = rooms.length - 1; i >= 0; i--){ const r = rooms[i]; for (let j = 0; j < r.points.length; j++){ if (dist(p, r.points[j]) < thr) return { kind: "vertex", id: r.id, idx: j }; } }
+    for (let i = stamps.length - 1; i >= 0; i--){ if (dist(p, { x: stamps[i].x, y: stamps[i].y }) < Math.max(thr, Math.max(stampW(stamps[i]), stampD(stamps[i])) / 2)) return { kind: "stamp", id: stamps[i].id }; }
     return null;
   };
 
@@ -1367,10 +1484,12 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (tool === "move"){
       const praw = toWorld(e, false);
       const s = stamps.find(x => x.id === sel);
-      if (s){ const h = stampHandles(s);
-        if (dist(praw, h.del) < 20/S){ delStamp(s.id); setSel(null); return; }
-        if (dist(praw, h.rotate) < 20/S){ setDrag({ kind: "rotate", id: s.id }); setPreview(base); return; }
-        if (dist(praw, h.resize) < 20/S){ setDrag({ kind: "resize", id: s.id }); setPreview(base); return; }
+      if (s){ const h = stampHandles(s); const a = (s.angle||0)*Math.PI/180; const ex = { x: Math.cos(a), y: Math.sin(a) }, ey = { x: -Math.sin(a), y: Math.cos(a) }; const w = stampW(s), d = stampD(s); const R = 20/S;
+        if (dist(praw, h.del) < R){ delStamp(s.id); setSel(null); return; }
+        if (dist(praw, h.rotate) < R){ setDrag({ kind: "rotate", id: s.id }); setPreview(base); return; }
+        if (h.uniform && dist(praw, h.uniform) < R){ setDrag({ kind: "resize", id: s.id }); setPreview(base); return; }
+        if (h.width && dist(praw, h.width) < R){ setDrag({ kind: "resizeW", id: s.id, ax: s.x - ex.x*w/2, ay: s.y - ex.y*w/2, ex }); setPreview(base); return; }
+        if (h.depth && dist(praw, h.depth) < R){ setDrag({ kind: "resizeD", id: s.id, ax: s.x - ey.x*d/2, ay: s.y - ey.y*d/2, ey }); setPreview(base); return; }
       }
       const hit = hitTest(praw);
       if (hit && hit.kind === "stamp"){ setSel(hit.id); setDrag(hit); setPreview(base); return; }
@@ -1390,8 +1509,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         if (drag.kind === "vertex"){ const p = toWorld(e, true); return { stamps: base.stamps, rooms: base.rooms.map(r => r.id === drag.id ? { ...r, points: r.points.map((pt, k) => k === drag.idx ? p : pt) } : r) }; }
         const praw = toWorld(e, false); const s = base.stamps.find(x => x.id === drag.id); if (!s) return base;
         if (drag.kind === "rotate"){ let deg = Math.atan2(praw.y - s.y, praw.x - s.x) * 180 / Math.PI + 90; if (snap) deg = Math.round(deg / 15) * 15; deg = ((Math.round(deg) % 360) + 360) % 360; return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, angle: deg } : x) }; }
+        if (drag.kind === "resizeW"){ let proj = (praw.x - drag.ax)*drag.ex.x + (praw.y - drag.ay)*drag.ex.y; if (snap) proj = Math.round(proj / gridPx) * gridPx; const nw = Math.max(0.2 * pxPerM, proj); const cx = drag.ax + drag.ex.x*nw/2, cy = drag.ay + drag.ex.y*nw/2; return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, w: nw, size: nw, x: cx, y: cy } : x) }; }
+        if (drag.kind === "resizeD"){ let proj = (praw.x - drag.ax)*drag.ey.x + (praw.y - drag.ay)*drag.ey.y; if (snap) proj = Math.round(proj / gridPx) * gridPx; const nd = Math.max(0.2 * pxPerM, proj); const cx = drag.ax + drag.ey.x*nd/2, cy = drag.ay + drag.ey.y*nd/2; return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, d: nd, x: cx, y: cy } : x) }; }
         let newSize = Math.max(0.2 * pxPerM, 2 * (dist({ x: s.x, y: s.y }, praw) - 12/S));
-        return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, size: newSize } : x) };
+        return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, size: newSize, w: newSize, d: newSize } : x) };
       });
       return;
     }
@@ -1421,6 +1542,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const rotStamp = (id, delta) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: (((s.angle||0)+delta)%360+360)%360 } : s) });
   const setAngle = (id, deg) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((Math.round(num(deg))%360)+360)%360 } : s) });
   const sizeStamp = (id, m) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, size: Math.max(0.1, num(m)) * pxPerM } : s) });
+  const setStampW = (id, m) => onChange({ ...plan, stamps: stamps.map(s => { if (s.id !== id) return s; const nw = Math.max(0.1, num(m)) * pxPerM; return STAMP_ROUND.has(s.type) ? { ...s, w: nw, d: nw, size: nw } : { ...s, w: nw, size: nw }; }) });
+  const setStampD = (id, m) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, d: Math.max(0.1, num(m)) * pxPerM } : s) });
   const setLink = (id, itemId) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, priceItemId: itemId } : r) });
 
   const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.85) }); };
@@ -1437,7 +1560,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room. Corners snap to nearby corners so rooms close cleanly."
     : tool === "wall" ? "Tap to drop each corner and keep going around bends (drag works too); Finish when done. Set a length below to fix each segment."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
-    : tool === "move" ? "Tap an object to select it: drag it to move, drag the round knob to rotate, the square to resize, the red ✕ to delete. Drag room/wall corners to reshape."
+    : tool === "move" ? "Tap an object to select it: drag it to move, drag a side square to stretch that side (width / depth), the round knob to rotate, the red ✕ to delete. Drag room/wall corners to reshape."
     : "Tap the plan to drop a " + stampLabel + ". Then use Edit to move, rotate, resize or delete it by hand.";
 
   return (
@@ -1492,9 +1615,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
           <div className="font-semibold text-sm brand-text">Symbols & objects</div>
           {stamps.map(s => (
             <div key={s.id} className="flex items-center gap-2 text-sm flex-wrap">
-              <span className="chip capitalize">{s.type}</span>
-              <label className="flex items-center gap-1">size <NumInput value={round2(s.size / pxPerM)} onCommit={v => sizeStamp(s.id, v)} className="inp !py-1 w-16" />m</label>
-              <label className="flex items-center gap-1">angle <NumInput value={s.angle || 0} onCommit={v => setAngle(s.id, v)} className="inp !py-1 w-16" />°</label>
+              <span className="chip">{STAMP_LABEL[s.type] || s.type}</span>
+              <label className="flex items-center gap-1">W <NumInput value={round2(stampW(s) / pxPerM)} onCommit={v => setStampW(s.id, v)} className="inp !py-1 w-14" />m</label>
+              {!STAMP_ROUND.has(s.type) && !STAMP_LINEAR.has(s.type) && <label className="flex items-center gap-1">D <NumInput value={round2(stampD(s) / pxPerM)} onCommit={v => setStampD(s.id, v)} className="inp !py-1 w-14" />m</label>}
+              <label className="flex items-center gap-1">angle <NumInput value={s.angle || 0} onCommit={v => setAngle(s.id, v)} className="inp !py-1 w-14" />°</label>
               <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, -15)}>↺</button>
               <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, 15)}>↻</button>
               <button className="btn btn-ghost !p-1.5 ml-auto" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
