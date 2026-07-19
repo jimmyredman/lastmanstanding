@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v23 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v24 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -705,7 +705,7 @@ function PricingScreen(){
    TAKEOFF CANVAS (PDF / photo measure + markup)
    ========================================================================= */
 const MEASURE_TOOLS = ["length", "area", "count"];
-const TOOL_LABELS = { calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
+const TOOL_LABELS = { pan: "Pan / zoom", calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
 const MARKUP_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#ea580c", "#eab308", "#111827", "#ffffff"];
 
 function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
@@ -713,8 +713,11 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const imgRef = useRef(null);
-  const [tool, setTool] = useState("length");
+  const [tool, setTool] = useState("pan");
   const [zoom, setZoom] = useState(1);
+  const gPointers = useRef(new Map());   // active pointers for pinch / pan gestures
+  const pinch = useRef(null);
+  const panRef = useRef(null);
   const [color, setColor] = useState("#e11d48");
   const [areaMode, setAreaMode] = useState("polygon");   // polygon | box | circle
   const [draft, setDraft] = useState(null); // {tool, points:[]}
@@ -849,13 +852,22 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     setDraft(null);
   };
 
+  // shared pinch-zoom + two-finger / pan-tool panning (fingers, pencil or mouse)
+  const startPinch = () => {
+    const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
+    const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
+    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, fx: (wrap.scrollLeft + mx)/(wrap.scrollWidth || 1), fy: (wrap.scrollTop + my)/(wrap.scrollHeight || 1) };
+    panRef.current = null; setDraft(null);
+  };
   const onDown = (e) => {
+    gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (gPointers.current.size >= 2) { startPinch(); return; }
+    if (tool === "pan") { const wrap = wrapRef.current; panRef.current = { x: e.clientX, y: e.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop }; return; }
     e.preventDefault();
     const p = toImg(e);
     const twoPt = ["calibrate", "length", "arrow", "rect"].includes(tool);
     const multi = ["area", "pen"].includes(tool);
     if (tool === "count") {
-      // append to existing draft count or start
       setDraft(d => d && d.tool === "count" ? { ...d, points: [...d.points, p] } : { tool: "count", points: [p] });
       return;
     }
@@ -873,6 +885,16 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     if (multi) { setDraft(d => d && d.tool === tool ? { ...d, points: [...d.points, p] } : { tool, points: [p] }); return; }
   };
   const onMove = (e) => {
+    if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current && gPointers.current.size >= 2) {
+      const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
+      const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+      const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
+      zoomAnchor.current = { fx: pinch.current.fx, fy: pinch.current.fy, sx: mx, sy: my };   // keep midpoint under fingers
+      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.5, 8));
+      return;
+    }
+    if (panRef.current) { const wrap = wrapRef.current; wrap.scrollLeft = panRef.current.sl - (e.clientX - panRef.current.x); wrap.scrollTop = panRef.current.st - (e.clientY - panRef.current.y); return; }
     if (!draft) return;
     if (draft.dragging && draft.shape) {
       const p = toImg(e), a = draft.start;
@@ -885,6 +907,11 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     } else if (draft.tool === "pen") { const p = toImg(e); setDraft({ ...draft, points: [...draft.points, p] }); }
   };
   const onUp = (e) => {
+    const wasGesture = pinch.current || panRef.current;
+    gPointers.current.delete(e.pointerId);
+    if (gPointers.current.size < 2) pinch.current = null;
+    if (gPointers.current.size === 0) panRef.current = null;
+    if (wasGesture || tool === "pan") return;
     if (!draft) return;
     if (draft.dragging && draft.shape) { const pts = draft.points; setDraft(null); if (pts.length >= 3 && shoelace(pts) * displayScale * displayScale > 60) commit({ tool: "area", points: pts }); return; }
     if (["length", "arrow", "rect", "calibrate"].includes(draft.tool) && draft._preview && draft.points.length === 2 && dist(draft.points[0], draft.points[1]) * displayScale > 6) {
@@ -927,7 +954,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   };
 
   const measured = anns.filter(a => MEASURE_TOOLS.includes(a.tool));
-  const tools = ["calibrate", "length", "area", "count", "arrow", "rect", "pen", "text"];
+  const tools = ["pan", "calibrate", "length", "area", "count", "arrow", "rect", "pen", "text"];
 
   return (
     <div className="space-y-3">
@@ -947,7 +974,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
 
       <div className="flex items-center gap-3 flex-wrap text-sm">
         <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="8" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /> <span style={{ color: "var(--muted)" }}>{Math.round(zoom*100)}%</span></label>
-        <span className="text-xs" style={{ color: "var(--muted)" }}>scroll wheel zooms to cursor</span>
+        <span className="text-xs" style={{ color: "var(--muted)" }}>pinch or scroll to zoom · two-finger or Pan tool to move</span>
         {tool !== "calibrate" && (
           <div className="flex items-center gap-1">
             {MARKUP_COLORS.map(c => <button key={c} onClick={() => setColor(c)} title={c} style={{ width: 20, height: 20, borderRadius: 6, background: c, border: color === c ? "2px solid var(--ink)" : "1px solid var(--line)" }} />)}
@@ -958,7 +985,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       </div>
 
       <div ref={wrapRef} className="card" style={{ maxHeight: "62vh", overflow: "auto" }}>
-        <canvas ref={canvasRef} className="editor" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} />
+        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", cursor: tool === "pan" ? "grab" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
 
       {measured.length > 0 && (
@@ -1242,39 +1269,39 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
         [[L*0.30,1],[L*0.30,-1],[-L*0.30,1],[-L*0.30,-1]].forEach(([wx,sz]) => { const t = new THREE.Mesh(new THREE.CylinderGeometry(wr, wr, 0.18, 20), tyre); t.rotation.x = Math.PI/2; t.position.set(wx, wr, sz*(dd/2 - 0.02)); grp.add(t); const rm = new THREE.Mesh(new THREE.CylinderGeometry(wr*0.55, wr*0.55, 0.2, 12), rim); rm.rotation.x = Math.PI/2; rm.position.set(wx, wr, sz*(dd/2 - 0.01)); grp.add(rm); });
       }
       else if (s.type === "table"){
-        grp.add(box(w, 0.06, d, glossy(0xc79a6b, 25), 0, 0.75, 0)); grp.add(box(w*0.94, 0.03, d*0.9, mat(0xd9b489), 0, 0.79, 0));
-        [[-w/2+0.08,-d/2+0.08],[w/2-0.08,-d/2+0.08],[-w/2+0.08,d/2-0.08],[w/2-0.08,d/2-0.08]].forEach(([x,z])=>leg(x,z,0.72,mat(0x8f6f4c),0.07));
+        grp.add(box(w, 0.06, d, glossy(0x9a6a37, 25), 0, 0.75, 0)); grp.add(box(w*0.94, 0.03, d*0.9, mat(0xac7c48), 0, 0.79, 0));
+        [[-w/2+0.08,-d/2+0.08],[w/2-0.08,-d/2+0.08],[-w/2+0.08,d/2-0.08],[w/2-0.08,d/2-0.08]].forEach(([x,z])=>leg(x,z,0.72,mat(0x63492e),0.07));
       }
       else if (s.type === "chair"){
-        grp.add(box(w, 0.09, d, mat(0xd3d9e0), 0, 0.45, 0)); grp.add(box(w*0.9, 0.06, d*0.9, mat(0xeef1f5), 0, 0.5, 0));  // seat + cushion
-        grp.add(box(w, Math.max(0.4,d*0.85), 0.08, mat(0xc4ccd6), 0, 0.45+d*0.42, -d/2+0.05));   // backrest
-        [[-w/2+0.06,-d/2+0.06],[w/2-0.06,-d/2+0.06],[-w/2+0.06,d/2-0.06],[w/2-0.06,d/2-0.06]].forEach(([x,z])=>leg(x,z,0.44,glossy(0x8a929c,60),0.05));
+        grp.add(box(w, 0.09, d, mat(0x7b8694), 0, 0.45, 0)); grp.add(box(w*0.9, 0.06, d*0.9, mat(0x99a3b1), 0, 0.5, 0));  // seat + cushion
+        grp.add(box(w, Math.max(0.4,d*0.85), 0.08, mat(0x6f7988), 0, 0.45+d*0.42, -d/2+0.05));   // backrest
+        [[-w/2+0.06,-d/2+0.06],[w/2-0.06,-d/2+0.06],[-w/2+0.06,d/2-0.06],[w/2-0.06,d/2-0.06]].forEach(([x,z])=>leg(x,z,0.44,glossy(0x525a66,60),0.05));
       }
       else if (s.type === "bench"){
-        [-0.11,0,0.11].forEach(off => grp.add(box(w, 0.05, d*0.28, glossy(0xb5885e, 20), 0, 0.45, off*d*2)));  // seat slats
-        [-0.05,0.09].forEach(off => grp.add(box(w, 0.06, d*0.3, glossy(0xb5885e, 20), 0, 0.62+off, -d/2)));    // back slats
-        leg(-w/2+0.1,-d/2+0.05,0.44,mat(0x6f5638)); leg(w/2-0.1,-d/2+0.05,0.44,mat(0x6f5638)); leg(-w/2+0.1,d/2-0.05,0.44,mat(0x6f5638)); leg(w/2-0.1,d/2-0.05,0.44,mat(0x6f5638));
+        [-0.11,0,0.11].forEach(off => grp.add(box(w, 0.05, d*0.28, glossy(0x8a6238, 20), 0, 0.45, off*d*2)));  // seat slats
+        [-0.05,0.09].forEach(off => grp.add(box(w, 0.06, d*0.3, glossy(0x8a6238, 20), 0, 0.62+off, -d/2)));    // back slats
+        leg(-w/2+0.1,-d/2+0.05,0.44,mat(0x59431f)); leg(w/2-0.1,-d/2+0.05,0.44,mat(0x59431f)); leg(-w/2+0.1,d/2-0.05,0.44,mat(0x59431f)); leg(w/2-0.1,d/2-0.05,0.44,mat(0x59431f));
       }
       else if (s.type === "bed"){
-        grp.add(box(w, 0.28, d, mat(0x8f6f4c), 0, 0.16, 0));                                     // base
-        grp.add(box(w*0.97, 0.2, d*0.97, mat(0xf1f4f8), 0, 0.4, 0));                             // mattress
-        grp.add(box(w*0.97, 0.12, d*0.6, glossy(0xcfe0ef, 15), 0, 0.5, d*0.16));                 // blanket
-        grp.add(box(w*0.4, 0.16, d*0.2, mat(0xffffff), -w*0.24, 0.56, -d*0.36)); grp.add(box(w*0.4, 0.16, d*0.2, mat(0xffffff), w*0.24, 0.56, -d*0.36));  // pillows
-        grp.add(box(w*1.02, 0.62, 0.12, mat(0x7c6141), 0, 0.55, -d/2));                          // headboard
+        grp.add(box(w, 0.28, d, mat(0x63492e), 0, 0.16, 0));                                     // base
+        grp.add(box(w*0.97, 0.2, d*0.97, mat(0xc3ccd7), 0, 0.4, 0));                             // mattress
+        grp.add(box(w*0.97, 0.12, d*0.6, glossy(0x4f7aa6, 15), 0, 0.5, d*0.16));                 // blanket
+        grp.add(box(w*0.4, 0.16, d*0.2, mat(0xdfe5ec), -w*0.24, 0.56, -d*0.36)); grp.add(box(w*0.4, 0.16, d*0.2, mat(0xdfe5ec), w*0.24, 0.56, -d*0.36));  // pillows
+        grp.add(box(w*1.02, 0.62, 0.12, mat(0x6a5236), 0, 0.55, -d/2));                          // headboard
       }
       else if (s.type === "kitchen"){
-        grp.add(box(w*0.96, 0.12, d*0.86, mat(0x5b636e), 0, 0.06, 0.02));                        // recessed toe-kick
-        grp.add(box(w, 0.78, d, glossy(0xeef1f5, 15), 0, 0.52, 0));                              // cabinet body
-        grp.add(box(w*1.04, 0.06, d*1.1, glossy(0x333941, 30), 0, 0.94, 0));                     // stone benchtop overhang
+        grp.add(box(w*0.96, 0.12, d*0.86, mat(0x474e58), 0, 0.06, 0.02));                        // recessed toe-kick
+        grp.add(box(w, 0.78, d, glossy(0xb3bcc8, 15), 0, 0.52, 0));                              // cabinet body
+        grp.add(box(w*1.04, 0.06, d*1.1, glossy(0x2b3037, 30), 0, 0.94, 0));                     // stone benchtop overhang
         const nc = Math.max(1, Math.round(w / Math.max(0.55, d)));                               // cupboard doors
-        for (let i = 0; i < nc; i++){ const cx = -w/2 + w*(i+0.5)/nc; grp.add(box(w/nc*0.92, 0.66, 0.03, glossy(0xffffff, 20), cx, 0.5, d/2)); grp.add(box(0.04, 0.12, 0.03, glossy(0xb7bec7, 90), cx + w/nc*0.32, 0.62, d/2+0.02)); }
+        for (let i = 0; i < nc; i++){ const cx = -w/2 + w*(i+0.5)/nc; grp.add(box(w/nc*0.92, 0.66, 0.03, glossy(0xc6cdd7, 20), cx, 0.5, d/2)); grp.add(box(0.04, 0.12, 0.03, glossy(0x8b939e, 90), cx + w/nc*0.32, 0.62, d/2+0.02)); }
       }
       else if (s.type === "island"){
-        grp.add(box(w*0.9, 0.86, d*0.9, glossy(0xeef1f5, 15), 0, 0.43, 0));                       // cabinet
-        grp.add(box(w, 0.06, d, glossy(0x2f343b, 35), 0, 0.9, 0));                                // stone benchtop
-        grp.add(box(0.06, 0.9, d, glossy(0x2f343b, 35), -w/2 + 0.03, 0.45, 0)); grp.add(box(0.06, 0.9, d, glossy(0x2f343b, 35), w/2 - 0.03, 0.45, 0));  // waterfall ends
+        grp.add(box(w*0.9, 0.86, d*0.9, glossy(0xb3bcc8, 15), 0, 0.43, 0));                       // cabinet
+        grp.add(box(w, 0.06, d, glossy(0x262b31, 35), 0, 0.9, 0));                                // stone benchtop
+        grp.add(box(0.06, 0.9, d, glossy(0x262b31, 35), -w/2 + 0.03, 0.45, 0)); grp.add(box(0.06, 0.9, d, glossy(0x262b31, 35), w/2 - 0.03, 0.45, 0));  // waterfall ends
         const ni = Math.max(1, Math.round(w / Math.max(0.6, d)));
-        for (let i = 0; i < ni; i++){ const cx = -w/2 + w*(i+0.5)/ni; grp.add(box(w/ni*0.86, 0.66, 0.03, glossy(0xffffff, 20), cx, 0.46, d/2*0.9)); grp.add(box(0.04, 0.1, 0.03, glossy(0xb7bec7, 90), cx, 0.62, d/2*0.9 + 0.02)); }
+        for (let i = 0; i < ni; i++){ const cx = -w/2 + w*(i+0.5)/ni; grp.add(box(w/ni*0.86, 0.66, 0.03, glossy(0xc6cdd7, 20), cx, 0.46, d/2*0.9)); grp.add(box(0.04, 0.1, 0.03, glossy(0x8b939e, 90), cx, 0.62, d/2*0.9 + 0.02)); }
       }
       else if (s.type === "toilet"){
         cyl(w*0.4, w*0.32, 0.44, glossy(0xffffff, 30), 0, 0.22, d*0.14, 20);                     // bowl
@@ -1282,13 +1309,13 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
         grp.add(box(w*0.82, 0.5, d*0.24, glossy(0xffffff, 30), 0, 0.5, -d*0.36));                // cistern
       }
       else if (s.type === "sink"){
-        grp.add(box(w, 0.86, d, glossy(0xeef1f5, 20), 0, 0.43, 0));                              // vanity cabinet
-        grp.add(box(w*1.04, 0.08, d*1.06, glossy(0xdfe4ea, 40), 0, 0.9, 0));                     // benchtop
+        grp.add(box(w, 0.86, d, glossy(0xbcc4cf, 20), 0, 0.43, 0));                              // vanity cabinet
+        grp.add(box(w*1.04, 0.08, d*1.06, glossy(0x9aa3af, 40), 0, 0.9, 0));                     // benchtop
         const basin = new THREE.Mesh(new THREE.CylinderGeometry(Math.min(w,d)*0.34, Math.min(w,d)*0.24, 0.16, 20), glossy(0xffffff, 60)); basin.position.set(0, 0.9, 0); grp.add(basin);
         cyl(0.028, 0.028, 0.26, glossy(0xb7bec7, 110), 0, 1.06, -d*0.28, 10); grp.add(box(0.03, 0.03, 0.14, glossy(0xb7bec7, 110), 0, 1.18, -d*0.2));  // tap + spout
       }
       else if (s.type === "shower"){
-        grp.add(box(w, 0.08, d, glossy(0xdfe4ea, 40), 0, 0.04, 0));                              // tray
+        grp.add(box(w, 0.08, d, glossy(0xaab3bf, 40), 0, 0.04, 0));                              // tray
         grp.add(box(w, 2.0, 0.03, glassMat, 0, 1.0, d/2)); grp.add(box(0.03, 2.0, d, glassMat, w/2, 1.0, 0));  // glass panels
         grp.add(box(0.16, 0.05, 0.16, glossy(0xc9ced6, 100), -w/2+0.22, 2.0, -d/2+0.22));         // rose
         grp.add(box(0.05, 0.9, 0.05, glossy(0xc9ced6, 100), -w/2+0.16, 1.4, -d/2+0.1));           // riser
@@ -1309,7 +1336,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
           const n = Math.max(3, Math.round(w/0.6)); for (let i = 0; i <= n; i++){ const x = -w/2 + w*i/n; grp.add(box(0.07, 1.5, 0.04, mat(col), x, 0.75, 0)); const cap = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.12, 4), mat(capCol)); cap.position.set(x, 1.56, 0); cap.rotation.y = Math.PI/4; grp.add(cap); }
         }
       }
-      else { grp.add(box(w, 0.8, d, mat(0xc2cad4), 0, 0.4, 0)); grp.add(box(w*0.9, 0.05, d*0.86, mat(0xa9b3bf), 0, 0.82, 0)); }
+      else { grp.add(box(w, 0.8, d, mat(0x9aa4b0), 0, 0.4, 0)); grp.add(box(w*0.9, 0.05, d*0.86, mat(0x848f9c), 0, 0.82, 0)); }
       scene.add(grp);
     });
 
@@ -1359,6 +1386,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [sel, setSel] = useState(null);         // selected stamp id (for rotate/resize handles)
   const [labels, setLabels] = useState(true);   // show object labels on the plan
   const [lockLen, setLockLen] = useState(0);    // fixed wall-segment length in metres (0 = off)
+  const [zoom, setZoom] = useState(1);
+  const gPointers = useRef(new Map());          // pinch / pan gesture tracking
+  const pinch = useRef(null);
+  const zoomAnchor = useRef(null);
 
   const gridM = plan.gridMetres || 0.5;   // metres per grid cell
   const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
@@ -1369,8 +1400,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const pxPerM = gridPx / gridM;
 
   useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
-  const S = Math.min(1, wrapW / worldW);
+  const S = Math.min(1, wrapW / worldW) * zoom;
   const cssW = worldW * S, cssH = worldH * S;
+  // wheel zoom-to-cursor (mouse) — pinch is handled in the pointer handlers
+  useEffect(() => {
+    const wrap = wrapRef.current; if (!wrap) return;
+    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 1, 6)); };
+    wrap.addEventListener("wheel", onWheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", onWheel);
+  }, []);
+  useLayoutEffect(() => { const wrap = wrapRef.current, a = zoomAnchor.current; if (!wrap || !a) return; wrap.scrollLeft = a.fx * wrap.scrollWidth - a.sx; wrap.scrollTop = a.fy * wrap.scrollHeight - a.sy; zoomAnchor.current = null; }, [zoom]);
   const mPerPx = gridM / gridPx; // metres per world px
 
   const gridSnap = (v) => Math.round(v / gridPx) * gridPx;
@@ -1502,7 +1541,15 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     return null;
   };
 
+  const startPinch = () => {
+    const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
+    const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
+    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, fx: (wrap.scrollLeft + mx)/(wrap.scrollWidth || 1), fy: (wrap.scrollTop + my)/(wrap.scrollHeight || 1) };
+    setDraft(null); setDrag(null); setPreview(null);
+  };
   const onDown = (e) => {
+    gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (gPointers.current.size >= 2){ startPinch(); return; }   // two fingers → pinch-zoom / pan
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
     const base = { rooms: plan.rooms || [], stamps: plan.stamps || [] };
     if (tool === "move"){
@@ -1526,6 +1573,15 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (tool === "wall"){ if (!draft || draft.tool !== "wall"){ setDraft({ tool: "wall", points: [], chain: true }); } return; }
   };
   const onMove = (e) => {
+    if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current && gPointers.current.size >= 2){
+      const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
+      const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+      const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
+      zoomAnchor.current = { fx: pinch.current.fx, fy: pinch.current.fy, sx: mx, sy: my };
+      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 1, 6));
+      return;
+    }
     if (drag){
       setPreview(prev => {
         const base = prev || { rooms: plan.rooms || [], stamps: plan.stamps || [] };
@@ -1545,6 +1601,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (draft.tool === "curve"){ const p = toWorld(e, false); const last = draft.points[draft.points.length-1]; if (!last || dist(last,p) > 3) setDraft({ ...draft, points: [...draft.points, p] }); }
   };
   const onUp = (e) => {
+    const wasPinch = pinch.current && gPointers.current.size >= 2;
+    gPointers.current.delete(e.pointerId);
+    if (gPointers.current.size < 2) pinch.current = null;
+    if (wasPinch) return;
     if (drag){ if (preview) onChange({ ...plan, rooms: preview.rooms, stamps: preview.stamps }); setDrag(null); setPreview(null); return; }
     if (draft && draft.tool === "wall" && draft.chain){ const last = draft.points[draft.points.length-1]; const pt = draft.points.length ? chainNext(last, e) : placePoint(e); setDraft({ ...draft, points: [...draft.points, pt], preview: null }); return; }
     if (!draft || !draft.dragging) return;
@@ -1612,8 +1672,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={draft.tool === "room" ? finishRoom : finishWall}><IcCheck size={14} /> Finish {draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pt{draft.points.length === 1 ? "" : "s"}</span></div>
         : <div className="text-sm" style={{ color: "var(--muted)" }}>{hint} · 1 cell = {gridM} m</div>}
 
+      <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
+        <span>Zoom</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 1, 6))}>−</button>
+        <span style={{ minWidth: 38, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 1, 6))}>+</button>
+        {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(1)}>Fit</button>}
+        <span className="text-xs">· pinch or scroll to zoom · two fingers to pan</span>
+      </div>
       <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
-        <canvas ref={canvasRef} className="editor" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
+        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
       {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-primary w-full" onClick={() => setShow3d(true)}><IcGrid size={16} /> 3D view / render</button>}
 
