@@ -420,13 +420,22 @@ const FREE_TRIAL_TIER = "bronze"; // the tier a first-time host can create for f
 // round's first game, no pick = random team auto-assigned, and a team-reuse restriction
 // applies. What a host CAN tune per competition lives here.
 const REUSE_POLICIES = [
-  { id: "nextRound", label: "Sit a round before reusing a team", blurb: "Once you pick a team you can't pick them again the very next round." },
-  { id: "none",      label: "Never reuse a team",                  blurb: "Each team can only ever be picked once by a player." },
-  { id: "free",      label: "Reuse teams freely",                 blurb: "No restriction — pick any team any round." },
+  { id: "nextRound", label: "The same team cannot be chosen back to back", blurb: "You can't pick a team two rounds in a row, but you can use them again after a round off." },
+  { id: "none",      label: "You cannot re-choose the same team ever",     blurb: "Each team can only ever be picked once." },
+  { id: "free",      label: "You can reuse the same team any time",        blurb: "No restriction — pick any team, any round." },
 ];
 function reusePolicyLabel(id) { return (REUSE_POLICIES.find((r) => r.id === id) || REUSE_POLICIES[0]).label; }
 function tierLives(tier) { return Math.max(1, tier && tier.lives ? tier.lives : 1); }
 function tierReusePolicy(tier) { return (tier && tier.reusePolicy) || "nextRound"; }
+
+// Short, human-friendly invite code (no ambiguous 0/O/1/I). Hosts share it so players can
+// join a private competition — the app is invite-only, you don't browse a public list.
+function genCode() {
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < 6; i++) s += A[Math.floor(Math.random() * A.length)];
+  return s;
+}
 
 const DEFAULT_RULES = `HOW TO PLAY
 
@@ -952,6 +961,79 @@ function SportScreen({ userName, onPick, onBack, showBack }) {
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ChooseModeScreen({ theme, onHost, onJoin, onJoined }) {
+  const [view, setView] = useState("choose");
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const join = async () => {
+    setBusy(true); setError("");
+    const res = await onJoin(code);
+    setBusy(false);
+    if (res.error) { setError(res.error); return; }
+    onJoined(res.tierId);
+  };
+  return (
+    <div className="min-h-screen px-6 pt-14 pb-10" style={{ backgroundColor: BG, color: "var(--app-text)" }}>
+      <div className="max-w-sm mx-auto">
+        <div className="flex items-center gap-2 mb-1"><Crown className="text-amber-400 crown-glow" size={22} /><h2 className="font-scoreboard text-3xl tracking-wide">GET STARTED</h2></div>
+        <p className="text-sm text-neutral-500 mb-6">Join a mate's competition, or run your own.</p>
+        {view === "choose" ? (
+          <div className="space-y-3">
+            <button onClick={() => { setError(""); setView("join"); }} className={`w-full text-left rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-5 transition hover:${theme.border}`}>
+              <div className="flex items-center gap-3">
+                <div className={`h-11 w-11 rounded-xl ${theme.bgSoft} ${theme.text} flex items-center justify-center shrink-0`}><LogIn size={19} /></div>
+                <div><div className="font-semibold text-slate-100">Join a competition</div><div className="text-xs text-neutral-500 mt-0.5">Enter the invite code your host gave you.</div></div>
+              </div>
+            </button>
+            <button onClick={onHost} className="w-full text-left rounded-2xl border adapt-border-10 bg-neutral-800 p-5 transition adapt-hover">
+              <div className="flex items-center gap-3">
+                <div className="h-11 w-11 rounded-xl bg-amber-400/10 text-amber-300 flex items-center justify-center shrink-0"><Crown size={19} /></div>
+                <div><div className="font-semibold text-slate-100">Host your own</div><div className="text-xs text-neutral-500 mt-0.5">Create and run a competition for your group.</div></div>
+              </div>
+            </button>
+            <p className="text-[11px] text-neutral-500 text-center pt-2">You can switch to hosting later from the "Become a host" tab.</p>
+          </div>
+        ) : (
+          <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-5`}>
+            <label className="text-[11px] text-neutral-500 mb-1 block">Invite code</label>
+            <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. 7KPQ2M" maxLength={8}
+              className={`w-full rounded-xl bg-black/30 border ${PANEL_BORDER} px-4 py-3 text-lg tracking-[0.3em] font-scoreboard text-slate-100 placeholder:text-neutral-600 placeholder:tracking-normal placeholder:font-sans placeholder:text-sm outline-none focus:border-teal-400 uppercase`} />
+            {error && <p className="text-xs text-rose-400 mt-2">{error}</p>}
+            <button onClick={join} disabled={busy || !code.trim()} className={`mt-4 w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>{busy ? "Joining…" : "Join competition"}</button>
+            <button onClick={() => { setError(""); setView("choose"); }} className="mt-2 w-full text-center text-xs text-neutral-500 hover:text-neutral-300">Back</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JoinCodeCard({ onJoin, theme }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setBusy(true); setError("");
+    const res = await onJoin(code);
+    setBusy(false);
+    if (res.error) { setError(res.error); return; }
+    setCode("");
+  };
+  return (
+    <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-4`}>
+      <div className="flex items-center gap-2 mb-2"><LogIn size={15} className={theme.text} /><h4 className="text-sm font-semibold text-slate-100">Join a competition</h4></div>
+      <p className="text-xs text-neutral-500 mb-3">Enter the invite code your host shared with you.</p>
+      <div className="flex gap-2">
+        <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="CODE" maxLength={8}
+          className={`flex-1 rounded-xl bg-black/30 border ${PANEL_BORDER} px-4 py-2.5 text-base tracking-[0.25em] font-scoreboard text-slate-100 placeholder:text-neutral-600 placeholder:tracking-normal placeholder:font-sans placeholder:text-sm outline-none focus:border-teal-400 uppercase`} />
+        <button onClick={go} disabled={busy || !code.trim()} className={`rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold px-4 text-sm`}>{busy ? "…" : "Join"}</button>
+      </div>
+      {error && <p className="text-xs text-rose-400 mt-2">{error}</p>}
     </div>
   );
 }
@@ -1759,9 +1841,9 @@ function InviteModal({ tier, onClose, theme }) {
     const roundLabel = getRound(tier.roundId).label;
     const preset = getTierPreset(tier.tierLevel);
     const baseUrl = window.location.origin + window.location.pathname;
-    const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&tier=${preset.id}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft}`;
+    const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&tier=${preset.id}&code=${tier.code || ""}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft}`;
     const subject = "You're invited to play Last Man Standing!";
-    const body = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a ${preset.name} tier competition (${tierCapacityLabel(preset)}). ${roundLabel} locks in about ${hoursLeft} hours, so don't wait around!\n\nTap the link below to see the competition and jump in:\n${inviteUrl}\n\nHurry — be the last one standing!`;
+    const body = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a ${preset.name} tier competition (${tierCapacityLabel(preset)}). ${roundLabel} locks in about ${hoursLeft} hours, so don't wait around!\n\n👉 Your invite code: ${tier.code || "(ask your host)"}\n\nOpen the app, create a free account, choose "Join a competition" and enter that code. Or tap this link:\n${inviteUrl}\n\nHurry — be the last one standing!`;
     const list = emails.split(/[,;\n]/).map((e) => e.trim()).filter(Boolean);
     const mailto = `mailto:${encodeURIComponent(list.join(","))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
     window.location.href = mailto;
@@ -1775,7 +1857,14 @@ function InviteModal({ tier, onClose, theme }) {
           <h4 className="text-slate-100 font-semibold">Invite your friends</h4>
           <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300"><X size={18} /></button>
         </div>
-        <p className="text-xs text-neutral-500 mb-4">{tier.name}</p>
+        <p className="text-xs text-neutral-500 mb-3">{tier.name}</p>
+        {tier.code && (
+          <div className={`rounded-xl bg-black/30 border ${PANEL_BORDER} p-3 mb-3 text-center`}>
+            <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Invite code</div>
+            <div className={`font-scoreboard text-3xl tracking-[0.3em] ${theme.text}`}>{tier.code}</div>
+            <div className="text-[10px] text-neutral-500 mt-1">Players enter this under "Join a competition".</div>
+          </div>
+        )}
         <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} placeholder="Paste email addresses, separated by commas or new lines"
           className="w-full rounded-lg bg-black/30 border adapt-border-10 px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none mb-3" />
         <button onClick={sendInvite} disabled={!emails.trim()} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>Open invite email</button>
@@ -1785,7 +1874,7 @@ function InviteModal({ tier, onClose, theme }) {
   );
 }
 
-function HostTab({ tiers, uid, isOwnerOf, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, onAddAdmin, onRemoveAdmin, now, theme }) {
+function HostTab({ tiers, uid, isHostMode, isOwnerOf, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, onAddAdmin, onRemoveAdmin, onEnsureCode, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [cancelling, setCancelling] = useState(null);
@@ -1793,8 +1882,15 @@ function HostTab({ tiers, uid, isOwnerOf, onCreate, onUpdate, onDelete, onKick, 
   const [invitingTierId, setInvitingTierId] = useState(null);
   return (
     <div className="space-y-4 pb-6">
-      <p className="text-sm text-neutral-500">Create a competition — you'll run it as its host. You can appoint co-hosts to help from Manage entrants.</p>
-      {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ Create new competition</button>)}
+      {isHostMode ? (
+        <p className="text-sm text-neutral-500">Create a competition — you'll run it as its host. Share its invite code so players can join, and appoint co-hosts to help from Manage entrants.</p>
+      ) : (
+        <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-4`}>
+          <div className="flex items-center gap-2 mb-1"><Crown size={16} className="text-amber-400" /><h4 className="text-sm font-semibold text-slate-100">Become a host</h4></div>
+          <p className="text-xs text-neutral-500">Run your own Last Man Standing for your mates. Pick a tier for how many players you need, set the lives and rules, then share the invite code. {PAYMENTS_ENABLED ? "Your first competition is free — larger tiers have a one-off setup fee." : "Free while we're in beta."} Any prize pool is organised by you outside the app.</p>
+        </div>
+      )}
+      {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ {isHostMode ? "Create new competition" : "Create my first competition"}</button>)}
       {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={async (data) => { await onCreate(data); setCreating(false); }} />)}
       <div className="space-y-3">
         {tiers.map((tier) => {
@@ -1822,6 +1918,21 @@ function HostTab({ tiers, uid, isOwnerOf, onCreate, onUpdate, onDelete, onKick, 
                     </div>
                   )}
                 </div>
+                {!tier.cancelled && (
+                  <div className="mt-2 flex items-center justify-between rounded-lg bg-black/30 border adapt-border-10 px-3 py-2">
+                    {tier.code ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] uppercase tracking-widest text-neutral-500">Invite code</span>
+                          <span className={`font-scoreboard text-lg tracking-[0.25em] ${theme.text}`}>{tier.code}</span>
+                        </div>
+                        <button onClick={() => { try { navigator.clipboard.writeText(tier.code); } catch (e) {} }} className="text-[11px] text-neutral-400 hover:text-neutral-200">Copy</button>
+                      </>
+                    ) : (
+                      <button onClick={() => onEnsureCode(tier.id)} className={`text-[11px] font-medium ${theme.text}`}>Generate invite code</button>
+                    )}
+                  </div>
+                )}
                 {tier.rules && <p className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{tier.rules}</p>}
                 {!tier.cancelled && (
                   <>
@@ -1915,6 +2026,7 @@ function AppShell({ user }) {
           screenInitialized.current = true;
           if (!data.ageVerified) setScreen("idcheck");
           else if (!data.hasSeenHowToPlay) setScreen("howtoplay");
+          else if (!data.hasChosenMode) setScreen("choosemode");
           else setScreen("sport");
         }
       }
@@ -2068,6 +2180,42 @@ function AppShell({ user }) {
     } catch (e) { setEntryError(e.message); }
   };
 
+  // Join a private competition using the invite code the host shared. Returns { ok, tierId }
+  // or { error }. Used by onboarding and the "Join with a code" action on Compete.
+  const joinByCode = async (rawCode) => {
+    const code = (rawCode || "").toUpperCase().trim();
+    if (code.length < 4) return { error: "Enter the code your host gave you." };
+    let snap;
+    try { snap = await db.collection("tiers").where("code", "==", code).limit(1).get(); }
+    catch (e) { return { error: "Couldn't check that code — try again." }; }
+    if (snap.empty) return { error: "No competition found with that code." };
+    const doc = snap.docs[0]; const data = doc.data();
+    if (data.cancelled) return { error: "That competition has been cancelled." };
+    const already = (await db.collection("entries").doc(`${doc.id}_${user.uid}`).get()).exists;
+    if (!already) {
+      const preset = getTierPreset(data.tierLevel);
+      const lockTime = data.lockTime ? data.lockTime.toDate() : null;
+      if (lockTime && Date.now() >= lockTime.getTime()) return { error: "Entries have closed for that competition." };
+      const count = (await db.collection("entries").where("tierId", "==", doc.id).get()).size;
+      if (preset.maxPlayers !== null && count >= preset.maxPlayers) return { error: "That competition is full." };
+      try {
+        await db.collection("entries").doc(`${doc.id}_${user.uid}`).set({ tierId: doc.id, uid: user.uid, name: profile.name, status: "active", joinedAt: FieldValue.serverTimestamp() });
+      } catch (e) { return { error: "Couldn't join — try again." }; }
+    }
+    playDingSound();
+    return { ok: true, tierId: doc.id };
+  };
+
+  // Older competitions created before invite codes existed get one on demand.
+  const ensureCode = async (tierId) => { const c = genCode(); await db.collection("tiers").doc(tierId).set({ code: c }, { merge: true }); return c; };
+
+  // Compete-tab join: after a successful code join, jump the player straight to their pick.
+  const handleJoinByCode = async (code) => {
+    const res = await joinByCode(code);
+    if (res.ok) { setViewingTierId(res.tierId); setTab("pick"); }
+    return res;
+  };
+
   const submitPick = async () => {
     if (!myPick || !joinedTierId || !currentTier) return;
     const chosenTeam = myPick;
@@ -2085,7 +2233,7 @@ function AppShell({ user }) {
 
   // Whoever creates a competition owns it. ownerUid = full control; adminUids = co-hosts the
   // owner has authorised to help run it. hostUids covers both for quick permission checks.
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, code: genCode(), ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const addAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayUnion(uid) });
   const removeAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayRemove(uid) });
 
@@ -2136,17 +2284,23 @@ function AppShell({ user }) {
 
   if (screen === "loading" || !profile) return <div className="min-h-screen flex items-center justify-center text-neutral-500 text-sm" style={{ backgroundColor: BG, color: "var(--app-text)" }}>Loading…</div>;
   if (screen === "idcheck") return <IDCheckScreen initialName={profile.name} onVerified={(idInfo) => { updateProfile({ ...idInfo, ageVerified: true }); setScreen("howtoplay"); }} />;
-  if (screen === "howtoplay") return <HowToPlayScreen onAccept={() => { updateProfile({ hasSeenHowToPlay: true }); setScreen("sport"); }} />;
+  if (screen === "howtoplay") return <HowToPlayScreen onAccept={() => { updateProfile({ hasSeenHowToPlay: true }); setScreen("choosemode"); }} />;
+  if (screen === "choosemode") return <ChooseModeScreen theme={theme}
+    onHost={() => { updateProfile({ mode: "host", hasChosenMode: true }); setSport("nrl"); setScreen("app"); setTab("host"); }}
+    onJoin={joinByCode}
+    onJoined={(tierId) => { updateProfile({ mode: "player", hasChosenMode: true }); setSport("nrl"); setViewingTierId(tierId); setScreen("app"); setTab("pick"); }} />;
   if (screen === "sport") return <SportScreen userName={profile.name} showBack={!!sport} onBack={() => setScreen("app")} onPick={(s) => { setSport(s); setScreen("app"); }} />;
 
-  // Anyone can host — the Host tab is always available. It's where you create a competition
-  // (which makes you its host) and manage the ones you already host.
+  // Host status: you're a host once you've chosen to host OR you already run a competition.
+  // Players (who joined via a code) instead get a "Become a host" tab that lets them start
+  // their own competition whenever they like.
   const hostsAnything = hostedTiers.length > 0;
+  const isHostMode = profile.mode === "host" || hostsAnything;
   const navTabs = [
     { id: "compete", label: "Compete", Icon: NavTrophy },
     { id: "pick", label: "My Pick", Icon: NavTarget },
     { id: "standings", label: "Standings", Icon: NavBars },
-    { id: "host", label: "Host", Icon: NavClipboard },
+    { id: "host", label: isHostMode ? "Host" : "Become a host", Icon: isHostMode ? NavClipboard : NavTrophy },
     { id: "settings", label: "Settings", Icon: NavGear },
   ];
 
@@ -2175,10 +2329,18 @@ function AppShell({ user }) {
           </div>
         )}
         {tab === "compete" && (
-          <div className="space-y-4">
-            <p className="text-sm text-neutral-500">Pick a tier, and survive the rounds.</p>
-            {tiers.filter((t) => !t.cancelled).length === 0 && <p className="text-center text-sm text-neutral-500 py-12">No competitions live yet — ask your host to set one up.</p>}
-            {tiers.filter((t) => !t.cancelled).map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} onInvite={setInvitingTier} joined={!!myEntries[tier.id]} theme={theme} />)}
+          <div className="space-y-5">
+            <JoinCodeCard onJoin={handleJoinByCode} theme={theme} />
+            <div>
+              <h4 className="text-sm font-semibold text-neutral-300 mb-2">Your competitions</h4>
+              {tiers.filter((t) => myEntries[t.id] && !t.cancelled).length === 0 ? (
+                <p className={`text-center text-sm text-neutral-500 py-8 rounded-2xl border ${PANEL_BORDER} bg-neutral-800`}>You haven't joined any competitions yet.<br />Enter an invite code above to jump into one.</p>
+              ) : (
+                <div className="space-y-4">
+                  {tiers.filter((t) => myEntries[t.id] && !t.cancelled).map((tier) => <TierCard key={tier.id} tier={tier} now={now} onJoin={setEntryTarget} onInvite={setInvitingTier} joined theme={theme} />)}
+                </div>
+              )}
+            </div>
           </div>
         )}
         {tab === "pick" && currentTier && currentRound && (
@@ -2189,7 +2351,7 @@ function AppShell({ user }) {
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
         {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
-        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isOwnerOf={isOwnerOf} onCreate={handleCreateTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} now={now} theme={theme} />}
+        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isHostMode={isHostMode} isOwnerOf={isOwnerOf} onCreate={handleCreateTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} onEnsureCode={ensureCode} now={now} theme={theme} />}
         {tab === "settings" && (
           <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={hostsAnything}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
@@ -2309,6 +2471,7 @@ function InviteLandingScreen({ params, onContinue }) {
   const preset = getTierPreset(params.get("tier") || "bronze");
   const round = params.get("round") || "";
   const hours = params.get("hours") || "";
+  const code = (params.get("code") || "").toUpperCase();
   return (
     <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6 relative overflow-hidden" style={{ backgroundColor: "#050506" }}>
       <div className="smoke-layer-a" /><div className="smoke-layer-b" />
@@ -2324,6 +2487,12 @@ function InviteLandingScreen({ params, onContinue }) {
             {round && <span className="text-xs text-neutral-500">{round}</span>}
           </div>
           <p className="text-sm text-neutral-400 mt-1">{preset.name} tier · {tierCapacityLabel(preset)}</p>
+          {code && (
+            <div className="mt-4 rounded-lg bg-black/30 border border-teal-400/20 p-3 text-center">
+              <div className="text-[10px] uppercase tracking-[0.2em] text-neutral-500 mb-1">Your invite code</div>
+              <div className="font-scoreboard text-3xl tracking-[0.3em] text-teal-300">{code}</div>
+            </div>
+          )}
           {hours && (
             <div className="mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium bg-rose-500/15 text-rose-300 animate-pulse">
               <Clock size={13} /> Locks in about {hours} hours — don't wait around!
@@ -2334,7 +2503,7 @@ function InviteLandingScreen({ params, onContinue }) {
           </button>
         </div>
 
-        <p className="text-center text-[11px] text-neutral-500 mt-5">Create a free account to jump in — takes less than a minute.</p>
+        <p className="text-center text-[11px] text-neutral-500 mt-5">Create a free account, choose <span className="text-neutral-300">Join a competition</span>{code ? ", and enter the code above" : ""} — takes less than a minute.</p>
       </div>
     </div>
   );
