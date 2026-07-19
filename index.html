@@ -437,6 +437,14 @@ const NRL_ROUNDS = [
       { home: "Panthers", away: "Tigers", kickoff: "Sun 6 Sep, 4:05pm AEST — CommBank Stadium" },
     ],
   },
+  // Finals series. Matchups, venues and times aren't known until the previous week's results,
+  // so these start with no fixtures — the host loads each week's games from the NRL feed (or
+  // enters them) via "Fixtures" in the results panel. Dates are provisional round markers so
+  // competitions still advance into finals automatically; the loaded fixtures set the real times.
+  { id: "r28", label: "NRL Finals — Week 1",        firstKickoff: new Date("2026-09-10T19:50:00+10:00"), byes: [], fixtures: [], finals: true, provisional: true },
+  { id: "r29", label: "NRL Semi Finals",            firstKickoff: new Date("2026-09-18T19:50:00+10:00"), byes: [], fixtures: [], finals: true, provisional: true },
+  { id: "r30", label: "NRL Preliminary Finals",     firstKickoff: new Date("2026-09-25T19:50:00+10:00"), byes: [], fixtures: [], finals: true, provisional: true },
+  { id: "r31", label: "NRL Grand Final",            firstKickoff: new Date("2026-10-04T16:00:00+10:00"), byes: [], fixtures: [], finals: true, provisional: true },
 ];
 function getRound(roundId) { return NRL_ROUNDS.find((r) => r.id === roundId) || NRL_ROUNDS[0]; }
 // Rounds a host can still open a competition for — their first game hasn't kicked off yet.
@@ -1414,6 +1422,12 @@ function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown,
           <ShieldAlert className="text-neutral-500 mb-2" size={26} />
           <p className="text-sm text-neutral-400">No pick was submitted for this round.</p>
         </div>
+      ) : round.fixtures.length === 0 ? (
+        <div className="flex flex-col items-center py-10 text-center">
+          <Clock className="text-neutral-500 mb-2" size={26} />
+          <p className="text-sm text-neutral-400">Fixtures for {round.label} aren't set yet.</p>
+          <p className="text-xs text-neutral-500 mt-1">Finals matchups are confirmed the week before — check back once your host loads this round's games.</p>
+        </div>
       ) : (
         <>
           <div className="flex items-center justify-between">
@@ -1895,19 +1909,60 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
 function FixtureEditor({ tier, effectiveFixtures, theme }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(effectiveFixtures);
+  const [loadMsg, setLoadMsg] = useState("");
   const hasOverride = !!tier.fixtureOverrides;
+  const round = getRound(tier.roundId);
+  const isFinals = !!round.finals;
+  const noFixtures = (effectiveFixtures || []).length === 0;
   useEffect(() => { if (!editing) setDraft(effectiveFixtures); }, [effectiveFixtures, editing]);
 
   const updateRow = (i, field, value) => setDraft((prev) => prev.map((f, idx) => (idx === i ? { ...f, [field]: value } : f)));
+  const addRow = () => setDraft((prev) => [...prev, { home: ALL_TEAMS[0], away: ALL_TEAMS[1], kickoff: "" }]);
+  const removeRow = (i) => setDraft((prev) => prev.filter((_, idx) => idx !== i));
   const save = async () => { await db.collection("tiers").doc(tier.id).set({ fixtureOverrides: draft }, { merge: true }); setEditing(false); };
   const resetToOfficial = async () => { await db.collection("tiers").doc(tier.id).set({ fixtureOverrides: FieldValue.delete() }, { merge: true }); setEditing(false); };
+  // Pull this round's actual fixtures (teams, kickoff, venue) from the auto-updated NRL feed —
+  // the weekly source of truth for finals, where matchups aren't known until the week before.
+  const loadFromNRL = async () => {
+    setLoadMsg("Loading fixtures from NRL…");
+    try {
+      const res = await fetch("nrl-results.json?t=" + tier.roundId, { cache: "no-store" });
+      if (!res.ok) throw new Error("feed unavailable");
+      const store = await res.json();
+      let rd = (store.rounds || {})[tier.roundId];
+      // Fallback: if the exact round key isn't in the feed (e.g. finals numbered differently),
+      // match the feed round whose games kick off closest to this round's date.
+      if (!rd) {
+        const target = round.firstKickoff.getTime();
+        let best = null, bestDiff = 6 * 24 * 3600 * 1000; // within ~6 days
+        for (const k in (store.rounds || {})) {
+          const g0 = (store.rounds[k].games || []).find((g) => g.date);
+          if (!g0) continue;
+          const diff = Math.abs(new Date(g0.date).getTime() - target);
+          if (diff < bestDiff) { bestDiff = diff; best = store.rounds[k]; }
+        }
+        rd = best;
+      }
+      if (!rd || !rd.games || !rd.games.length) { setLoadMsg("No NRL fixtures for this round yet — they usually appear once the previous round finishes."); return; }
+      const fx = rd.games.map((g) => ({
+        home: g.home, away: g.away,
+        kickoff: g.kickoff || (g.date ? (formatStartLabel(new Date(g.date)) + (g.venue ? " — " + g.venue : "")) : ""),
+      }));
+      setDraft(fx); setEditing(true);
+      setLoadMsg(`Loaded ${fx.length} fixture${fx.length === 1 ? "" : "s"} from NRL — review and Save.`);
+    } catch (e) { setLoadMsg("Couldn't reach the NRL feed — add the fixtures manually below."); }
+  };
 
   return (
     <div className="rounded-lg border border-dashed adapt-border-10 p-3">
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] text-neutral-400">{hasOverride ? "This round has host-corrected fixtures." : "Fixtures shown are from the official draw."}</span>
-        <button onClick={() => setEditing((e) => !e)} className="text-[11px] text-neutral-300 underline">{editing ? "Cancel" : "Fix fixtures"}</button>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] text-neutral-400">{noFixtures ? (isFinals ? "Finals fixtures aren't set yet — load this week's games." : "No fixtures set for this round.") : hasOverride ? "This round has host-set fixtures." : "Fixtures shown are from the official draw."}</span>
+        <button onClick={() => setEditing((e) => !e)} className="text-[11px] text-neutral-300 underline shrink-0">{editing ? "Cancel" : noFixtures ? "Set fixtures" : "Fix fixtures"}</button>
       </div>
+      <button onClick={loadFromNRL} className={`mt-2 w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-medium py-1.5 text-[12px]`}>
+        <Zap size={13} /> Load fixtures from NRL
+      </button>
+      {loadMsg && <p className="text-[11px] text-neutral-400 mt-1.5">{loadMsg}</p>}
       {editing && (
         <div className="mt-2 space-y-2">
           {draft.map((f, i) => (
@@ -1919,15 +1974,17 @@ function FixtureEditor({ tier, effectiveFixtures, theme }) {
               <select value={f.away} onChange={(e) => updateRow(i, "away", e.target.value)} className="flex-1 rounded bg-black/30 border adapt-border-10 px-1.5 py-1 text-[11px] text-slate-100">
                 {ALL_TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
+              <button onClick={() => removeRow(i)} className="shrink-0 text-neutral-500 hover:text-rose-400 p-1"><X size={13} /></button>
             </div>
           ))}
           {draft.map((f, i) => (
             <input key={`ko-${i}`} value={f.kickoff || ""} onChange={(e) => updateRow(i, "kickoff", e.target.value)} placeholder={`Kickoff details for ${f.home} vs ${f.away}`}
               className="w-full rounded bg-black/30 border adapt-border-10 px-2 py-1 text-[10px] text-slate-300 placeholder:text-neutral-600" />
           ))}
+          <button onClick={addRow} className="w-full rounded-lg border adapt-border-10 text-neutral-300 py-1.5 text-[11px]">+ Add a fixture</button>
           <div className="flex gap-2 pt-1">
             {hasOverride && <button onClick={resetToOfficial} className="flex-1 rounded-lg border adapt-border-10 text-neutral-300 py-1.5 text-xs">Reset to official draw</button>}
-            <button onClick={save} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-1.5 text-xs`}>Save fixture corrections</button>
+            <button onClick={save} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-1.5 text-xs`}>Save fixtures</button>
           </div>
         </div>
       )}

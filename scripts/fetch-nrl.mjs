@@ -61,6 +61,9 @@ function buildRound(json) {
       awayScore: away.score != null ? Number(away.score) : null,
       winner,
       completed: !!ev.status?.type?.completed,
+      // Schedule info so the app can load real fixtures/times each week (esp. finals).
+      date: ev.date || null,
+      venue: comp.venue?.fullName || null,
     };
   }).filter(Boolean);
   return { roundId: `r${week}`, week, year, games };
