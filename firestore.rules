@@ -71,9 +71,13 @@ service cloud.firestore {
         && entryId == request.resource.data.tierId + '_' + uid();
 
       // Status changes (kick / eliminate / restore / cancel) are host-only.
-      allow update: if isCompHost(resource.data.tierId);
+      // A player may also forfeit their OWN entry (concede — status "forfeited"),
+      // but can't otherwise edit it.
+      allow update: if isCompHost(resource.data.tierId)
+        || (resource.data.uid == uid() && request.resource.data.status == 'forfeited');
 
-      allow delete: if false;
+      // A player may leave a competition by deleting their own entry.
+      allow delete: if signedIn() && resource.data.uid == uid();
     }
 
     // ---- Picks (doc id = `${tierId}_${roundId}_${uid}`) ----
