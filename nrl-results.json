@@ -1,18 +1,74 @@
 {
-  "updatedAt": "2026-07-19T06:05Z",
+  "updatedAt": "2026-07-16T09:50Z",
   "rounds": {
     "r20": {
       "week": 20,
       "year": 2026,
       "games": [
-        { "home": "Panthers", "away": "Broncos", "homeScore": 12, "awayScore": 14, "winner": "Broncos", "completed": true },
-        { "home": "Sharks", "away": "Knights", "homeScore": 20, "awayScore": 18, "winner": "Sharks", "completed": true },
-        { "home": "Roosters", "away": "Storm", "homeScore": 14, "awayScore": 6, "winner": "Roosters", "completed": true },
-        { "home": "Raiders", "away": "Rabbitohs", "homeScore": 34, "awayScore": 24, "winner": "Raiders", "completed": true },
-        { "home": "Warriors", "away": "Dragons", "homeScore": 20, "awayScore": 12, "winner": "Warriors", "completed": true },
-        { "home": "Bulldogs", "away": "Tigers", "homeScore": 32, "awayScore": 0, "winner": "Bulldogs", "completed": true },
-        { "home": "Titans", "away": "Manly", "homeScore": 38, "awayScore": 32, "winner": "Titans", "completed": true },
-        { "home": "Dolphins", "away": "Cowboys", "homeScore": 36, "awayScore": 16, "winner": "Dolphins", "completed": true }
+        {
+          "home": "Panthers",
+          "away": "Broncos",
+          "homeScore": 12,
+          "awayScore": 14,
+          "winner": "Broncos",
+          "completed": true
+        },
+        {
+          "home": "Sharks",
+          "away": "Knights",
+          "homeScore": 20,
+          "awayScore": 18,
+          "winner": "Sharks",
+          "completed": true
+        },
+        {
+          "home": "Roosters",
+          "away": "Storm",
+          "homeScore": 14,
+          "awayScore": 6,
+          "winner": "Roosters",
+          "completed": true
+        },
+        {
+          "home": "Raiders",
+          "away": "Rabbitohs",
+          "homeScore": 34,
+          "awayScore": 24,
+          "winner": "Raiders",
+          "completed": true
+        },
+        {
+          "home": "Warriors",
+          "away": "Dragons",
+          "homeScore": 20,
+          "awayScore": 12,
+          "winner": "Warriors",
+          "completed": true
+        },
+        {
+          "home": "Bulldogs",
+          "away": "Tigers",
+          "homeScore": 32,
+          "awayScore": 0,
+          "winner": "Bulldogs",
+          "completed": true
+        },
+        {
+          "home": "Titans",
+          "away": "Manly",
+          "homeScore": 38,
+          "awayScore": 32,
+          "winner": "Titans",
+          "completed": true
+        },
+        {
+          "home": "Dolphins",
+          "away": "Cowboys",
+          "homeScore": 36,
+          "awayScore": 16,
+          "winner": "Dolphins",
+          "completed": true
+        }
       ]
     }
   }
