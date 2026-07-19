@@ -2,7 +2,7 @@
   "name": "RJG Builders — Site Pricing & Takeoff",
   "short_name": "RJG Pricing",
   "description": "On-site pricing, digital takeoffs, drawing markups, scaled floor plans and quick quotes for RJG Builders.",
-  "start_url": "./rjg-pricing.html",
+  "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

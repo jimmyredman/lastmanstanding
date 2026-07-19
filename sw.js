@@ -1,7 +1,7 @@
 /* RJG Pricing — offline service worker.
    Network-first for same-origin requests so updates always arrive when there is
    signal; falls back to the cache when offline so the app still works on-site. */
-const CACHE = "rjg-pricing-v34";
+const CACHE = "rjg-pricing-v35";
 const PRECACHE = [
   "./index.html",
   "./rjg-pricing.html",
@@ -31,7 +31,13 @@ const PRECACHE = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  // Cache each item on its own so one missing/404 file (e.g. a filename that
+  // differs between environments) can't abort the whole precache.
+  e.waitUntil(
+    caches.open(CACHE)
+      .then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(u))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 // let the page tell a waiting worker to take over straight away
