@@ -131,6 +131,17 @@
   /* Carved-into-stone treatment: bright top edge, deep drop shadow, faint warm rim. */
   .word-carved { color: #f3ece1; text-shadow: 0 1px 0 rgba(255,255,255,0.16), 0 -1px 0 rgba(0,0,0,0.55), 0 3px 5px rgba(0,0,0,0.85), 0 8px 20px rgba(0,0,0,0.55), 0 0 34px rgba(255,120,60,0.20); }
   .splash-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(130% 90% at 50% 52%, transparent 42%, rgba(0,0,0,0.66) 100%); }
+  /* Clean logo reveal */
+  @keyframes lmsCrown { 0% { opacity: 0; transform: scale(0.55) translateY(8px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+  @keyframes lmsTrackIn { 0% { opacity: 0; letter-spacing: 0.42em; filter: blur(7px); } 55% { opacity: 1; filter: blur(0); } 100% { opacity: 1; letter-spacing: 0.04em; filter: blur(0); } }
+  @keyframes lmsLine { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  @keyframes lmsFadeRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  @keyframes lmsGlow { 0%, 100% { opacity: 0.16; } 50% { opacity: 0.4; } }
+  .lms-crown { animation: lmsCrown 0.9s cubic-bezier(.2,.8,.3,1) both; }
+  .lms-mark { animation: lmsTrackIn 1.15s cubic-bezier(.2,.7,.2,1) both; will-change: letter-spacing, filter, opacity; }
+  .lms-line { transform-origin: center; animation: lmsLine 0.7s cubic-bezier(.4,0,.2,1) both; }
+  .lms-fade { animation: lmsFadeRise 0.7s ease-out both; }
+  .lms-glow { animation: lmsGlow 2.8s ease-in-out infinite; }
   @keyframes shockRing { 0% { transform: translateX(-50%) scale(0.15); opacity: 0.5; } 100% { transform: translateX(-50%) scale(2.7); opacity: 0; } }
   .shock-ring { position: absolute; left: 50%; bottom: -6px; width: 220px; height: 56px; border-radius: 50%; border: 2px solid rgba(220,210,195,0.5); animation: shockRing 0.75s cubic-bezier(.2,.7,.3,1) both; }
   @keyframes crackIn { 0% { stroke-dashoffset: 130; opacity: 0; } 25% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0.85; } }
@@ -710,6 +721,24 @@ function playBellStrike(ctx, t, fundamental) {
   clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
   click.connect(clickGain); clickGain.connect(ctx.destination);
   click.start(t);
+}
+
+// Gentle warm swell for the logo reveal — soft and premium, not a smash.
+function playSoftReveal() {
+  try {
+    const ctx = getSharedAudioCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 950; lp.connect(ctx.destination);
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = "sine"; o.frequency.setValueAtTime(196, now); o.frequency.linearRampToValueAtTime(294, now + 0.5);
+    g.gain.setValueAtTime(0.0001, now); g.gain.exponentialRampToValueAtTime(0.11, now + 0.28); g.gain.exponentialRampToValueAtTime(0.0001, now + 1.3);
+    o.connect(g); g.connect(lp); o.start(now); o.stop(now + 1.4);
+    const o2 = ctx.createOscillator(); const g2 = ctx.createGain();
+    o2.type = "sine"; o2.frequency.setValueAtTime(587, now);
+    g2.gain.setValueAtTime(0.0001, now); g2.gain.exponentialRampToValueAtTime(0.045, now + 0.32); g2.gain.exponentialRampToValueAtTime(0.0001, now + 1.05);
+    o2.connect(g2); g2.connect(ctx.destination); o2.start(now); o2.stop(now + 1.1);
+  } catch (e) { /* audio blocked or unavailable */ }
 }
 
 function playDingSound() {
@@ -2575,75 +2604,33 @@ function ImpactBurst({ big = false }) {
 }
 
 function SplashScreen({ onFinish }) {
-  const [revealCount, setRevealCount] = useState(0);
-  const [showSub, setShowSub] = useState(false);
+  const [show, setShow] = useState(false);
   const [phase, setPhase] = useState("in");
-
-  const playThump = (freq, boom) => playThumpSound(freq, boom);
 
   useEffect(() => {
     const timers = [
-      setTimeout(() => { setRevealCount(1); playThump(85, false); }, 300),   // LAST. — low thud
-      setTimeout(() => { setRevealCount(2); playThump(70, false); }, 1300),  // MAN. — a bit heavier
-      setTimeout(() => { setRevealCount(3); playThump(48, true); }, 2400),   // STANDING! — full boom
-      setTimeout(() => setShowSub(true), 2900),
-      setTimeout(() => setPhase("out"), 4500),
-      setTimeout(() => onFinish(), 5050),
+      setTimeout(() => { setShow(true); playSoftReveal(); }, 250),
+      setTimeout(() => setPhase("out"), 2800),
+      setTimeout(() => onFinish(), 3350),
     ];
     return () => timers.forEach(clearTimeout);
   }, []);
 
-  const cracks = [
-    "M200,360 L182,332 L188,300 L160,270 L168,232 L138,196 L146,150",
-    "M200,360 L224,338 L258,344 L286,312 L330,300 L360,262 L392,236",
-    "M200,360 L206,398 L184,428 L196,472 L168,512 L178,566 L150,628",
-    "M200,360 L232,392 L246,436 L286,468 L300,524 L342,566 L356,632",
-    "M200,360 L166,368 L128,356 L92,378 L52,368 L18,392",
-    "M200,360 L246,356 L298,368 L342,352 L388,372",
-    "M188,300 L150,296 L120,268",
-    "M258,344 L268,308 L300,286",
-    "M196,472 L232,486 L252,520",
-    "M128,356 L104,332 L96,300",
-  ];
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden transition-all duration-[700ms] ease-out ${phase === "out" ? "opacity-0 scale-105" : "opacity-100 scale-100"}`} style={{ backgroundColor: "#16130e" }}>
-      {/* Weathered concrete slab: dark stone gradient + a once-rasterised grain (no live filters). */}
-      <div className="concrete-base" />
-      <div className="concrete-grain" />
+    <div className={`fixed inset-0 z-50 flex items-center justify-center overflow-hidden transition-all duration-[650ms] ease-out ${phase === "out" ? "opacity-0 scale-[1.04]" : "opacity-100 scale-100"}`} style={{ backgroundColor: "#0b0c10" }}>
+      <div className="lms-glow" style={{ position: "absolute", width: 520, height: 520, borderRadius: "9999px", background: "radial-gradient(circle, rgba(45,212,191,0.16), transparent 68%)", filter: "blur(20px)" }} />
       <div className="splash-vignette" />
-
-      {/* Fracture lines spreading across the slab on the final impact. */}
-      {revealCount >= 3 && (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 400 720" preserveAspectRatio="xMidYMid slice">
-          <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-            {cracks.map((d, i) => <path key={`h${i}`} className="crack" d={d} stroke="rgba(210,202,186,0.28)" strokeWidth="3.4" style={{ "--len": 640, animationDelay: `${i * 0.015}s`, transform: "translateY(-1.5px)" }} />)}
-            {cracks.map((d, i) => <path key={`d${i}`} className="crack" d={d} stroke="rgba(8,6,4,0.85)" strokeWidth="2.2" style={{ "--len": 640, animationDelay: `${i * 0.015}s` }} />)}
-          </g>
-        </svg>
+      {show && (
+        <div className="relative z-10 flex flex-col items-center px-8">
+          <div className="lms-crown relative mb-4">
+            <div style={{ position: "absolute", inset: -14, borderRadius: "9999px", background: "radial-gradient(circle, rgba(255,190,90,0.4), transparent 70%)", filter: "blur(8px)" }} />
+            <Crown className="relative text-amber-400" size={40} style={{ filter: "drop-shadow(0 0 14px rgba(255,190,90,0.6))" }} />
+          </div>
+          <h1 className="lms-mark font-scoreboard text-[9vw] sm:text-5xl text-center whitespace-nowrap" style={{ color: "#f4f1ea" }}>LAST MAN STANDING</h1>
+          <div className="lms-line mt-3 h-px w-40" style={{ background: "linear-gradient(90deg, transparent, rgba(45,212,191,0.9), transparent)", animationDelay: "0.9s" }} />
+          <p className="lms-fade text-[11px] tracking-[0.45em] uppercase text-neutral-500 mt-4" style={{ animationDelay: "1.5s" }}>Beta</p>
+        </div>
       )}
-
-      <div className={`flex flex-col items-center gap-1 relative z-10 ${revealCount > 0 ? `ground-shake-${revealCount}` : ""}`}>
-        {revealCount >= 1 && (
-          <div className="relative">
-            <div className="word-slam stone-word font-scoreboard text-5xl tracking-wide">LAST.</div>
-            <ImpactBurst />
-          </div>
-        )}
-        {revealCount >= 2 && (
-          <div className="relative">
-            <div className="word-slam stone-word font-scoreboard text-5xl tracking-wide">MAN.</div>
-            <ImpactBurst />
-          </div>
-        )}
-        {revealCount >= 3 && (
-          <div className="relative">
-            <div className="word-slam-big stone-word font-scoreboard text-6xl tracking-wide">STANDING!</div>
-            <div className="shock-ring" />
-            <ImpactBurst big />
-          </div>
-        )}
-        {showSub && <p className="splash-sub text-[11px] tracking-[0.45em] uppercase text-neutral-400 mt-5 text-center relative">Beta</p>}
-      </div>
     </div>
   );
 }
