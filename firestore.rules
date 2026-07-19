@@ -83,10 +83,19 @@ service cloud.firestore {
     // ---- Picks (doc id = `${tierId}_${roundId}_${uid}`) ----
     match /picks/{pickId} {
       allow read: if signedIn();
-      // You may write your own pick; a competition host may allocate a pick for an entrant
-      // (e.g. a no-show). pickId is `${tierId}_${roundId}_${uid}`.
-      allow create, update: if signedIn()
-        && (request.resource.data.uid == uid() || isCompHost(pickId.split('_')[0]));
+      // A player may write their OWN pick, for the competition's CURRENT round only, and only
+      // BEFORE that round locks — this enforces the deadline server-side (the client can't be
+      // trusted). A competition host may write picks any time (e.g. allocating or auto-assigning
+      // a no-show's team after lockout). pickId is `${tierId}_${roundId}_${uid}`.
+      allow create, update: if signedIn() && (
+        (
+          request.resource.data.uid == uid()
+          && request.resource.data.tierId == pickId.split('_')[0]
+          && request.resource.data.roundId == tierData(pickId.split('_')[0]).get('roundId', '')
+          && request.time < tierData(pickId.split('_')[0]).get('lockTime', timestamp.date(9999, 1, 1))
+        )
+        || isCompHost(pickId.split('_')[0])
+      );
       allow delete: if false;
     }
 

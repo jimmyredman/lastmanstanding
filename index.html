@@ -580,7 +580,7 @@ Once you've won with a team, you can't pick that same team again the following r
 
 If everyone happens to pick the same team, tips reopen and nobody can select that team again for that round.
 
-Get your pick in before the deadline each week. If you miss it, you're automatically given a random team. No exceptions — deadlines are firm.
+Get your pick in before the deadline each week. Once picks lock they can't be changed — if you miss the deadline, your host gives you a random team when results are entered. No exceptions — deadlines are firm.
 
 Once you're eliminated, you're out of that competition — no buy-backs. You're welcome to join a different competition to keep playing. If literally everyone loses in the same round, nobody is eliminated and the competition continues.
 
@@ -1165,7 +1165,7 @@ function HowToPlayScreen({ onAccept }) {
         <h2 className="font-scoreboard text-3xl tracking-wide mb-4">HOW IT WORKS</h2>
         <div className="space-y-3 text-sm text-neutral-300">
           <p>• Each round, choose one team. Depending on the competition's rules, you may not be able to reuse the same team.</p>
-          <p>• Get your pick in before lockout (at least 24 hours before the round's first game). Miss it and you're given a random team.</p>
+          <p>• Get your pick in before lockout (at least 24 hours before the round's first game). Once picks lock they can't be changed — miss it and your host gives you a random team when results are entered.</p>
           <p>• If your team loses, you lose a life. Run out of lives and you're out.</p>
           <p>• If everyone still in loses the same round, nobody is eliminated and the round replays.</p>
           <p>• The host runs the competition and can add co-hosts to help.</p>
@@ -2051,6 +2051,17 @@ function HostResultsPanel({ tier, now, theme }) {
   };
   // Host allocates a team to a player who didn't submit a pick for this round.
   const assignPick = (uid, name, team) => db.collection("picks").doc(`${tier.id}_${tier.roundId}_${uid}`).set({ tierId: tier.id, roundId: tier.roundId, uid, name, team, submittedAt: FieldValue.serverTimestamp(), assignedByHost: true }, { merge: true });
+  // Give every no-show a random team (and a random margin in margins mode) — the "miss the
+  // deadline, get a random team" rule, applied host-side since players can't write post-lock.
+  const assignRandomToNoShows = () => {
+    const teams = [...new Set(effectiveFixtures.flatMap((f) => [f.home, f.away]))];
+    if (teams.length === 0) return;
+    noPick.forEach((e) => {
+      const doc = { tierId: tier.id, roundId: tier.roundId, uid: e.uid, name: e.name, team: teams[Math.floor(Math.random() * teams.length)], submittedAt: FieldValue.serverTimestamp(), assignedByHost: true, autoAssigned: true };
+      if (tier.marginsMode) doc.margin = 1 + Math.floor(Math.random() * 12);
+      db.collection("picks").doc(`${tier.id}_${tier.roundId}_${e.uid}`).set(doc, { merge: true });
+    });
+  };
   const pickedUids = new Set(picks.map((p) => p.uid));
   const noPick = entries.filter((e) => e.status === "active" && !pickedUids.has(e.uid));
   const roundTeams = [...new Set(effectiveFixtures.flatMap((f) => [f.home, f.away]))].sort();
@@ -2207,6 +2218,9 @@ function HostResultsPanel({ tier, now, theme }) {
                   </div>
                 ))}
               </div>
+              {roundTeams.length > 0 && (
+                <button onClick={assignRandomToNoShows} className="mt-2 w-full rounded-lg border adapt-border-10 text-neutral-200 py-1.5 text-[11px] font-medium">Auto-assign random teams to everyone above</button>
+              )}
             </div>
           )}
           <button onClick={autoFillFromNRL} className={`w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-medium py-2 text-[13px]`}>
@@ -2771,43 +2785,10 @@ function AppShell({ user }) {
     return () => { cancelled = true; };
   }, [joinedTierId, currentTier?.previousRoundId, currentTier?.reusePolicy, effectiveRoundId, user.uid]);
 
-  // If tips have locked and this user never submitted a pick, auto-assign a random
-  // team on their behalf (excluding whichever team they can't reuse), per the rules.
-  //
-  // This runs off the reactive picks listener (picksLoaded/myPick/pickSubmitted), and
-  // that listener can momentarily report "no pick yet" right after switching between
-  // competitions — Firestore's onSnapshot can deliver an early, not-yet-server-confirmed
-  // result for a tierId+roundId query it hasn't run before in this session, before
-  // correcting itself a moment later. If this effect wrote blindly on that first signal,
-  // it could stomp a real, already-locked-in pick with a fresh random one. So the write
-  // itself is wrapped in a transaction that re-checks the actual server state at write
-  // time and only assigns a pick if one truly doesn't exist yet — the reactive state above
-  // only decides *whether to try*, never *whether it's safe to overwrite*.
-  useEffect(() => {
-    if (!picksLoaded || !tipsLocked || !joinedTierId || !currentRound || eliminated || myPick || pickSubmitted) return;
-    const available = currentRound.fixtures.flatMap((f) => [f.home, f.away]).filter((t) => !lockedTeams.includes(t));
-    if (available.length === 0) return;
-    const pickRef = db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`);
-    let cancelled = false;
-    db.runTransaction(async (tx) => {
-      const existing = await tx.get(pickRef);
-      if (existing.exists) return existing.data().team; // a real pick is already there server-side — never touch it
-      const randomTeam = available[Math.floor(Math.random() * available.length)];
-      const autoPick = {
-        tierId: joinedTierId, roundId: effectiveRoundId, uid: user.uid, name: profile.name, avatarPreset: profile.avatarPreset || null, team: randomTeam,
-        submittedAt: FieldValue.serverTimestamp(), autoAssigned: true,
-      };
-      if (currentTier && currentTier.marginsMode) autoPick.margin = 1 + Math.floor(Math.random() * 12); // random 1–12 pts for no-shows
-      tx.set(pickRef, autoPick);
-      return { team: randomTeam, margin: autoPick.margin };
-    }).then((res) => {
-      if (cancelled || !res) return;
-      setMyPick(res.team);
-      if (res.margin != null) setMyMargin(String(res.margin));
-      setPickSubmitted(true);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [picksLoaded, tipsLocked, joinedTierId, currentRound, eliminated, myPick, pickSubmitted, lockedTeams.join(",")]);
+  // Note: random teams for no-shows are assigned HOST-SIDE now (see the results panel's
+  // "Auto-assign random to no-shows"). Server rules block any pick write after lockout, so a
+  // player's own device can no longer write a pick once tips lock — that's what keeps the
+  // deadline honest. The host allocates (or auto-assigns) missed picks when entering results.
 
   const updateProfile = (patch) => db.collection("users").doc(user.uid).set(patch, { merge: true });
 
