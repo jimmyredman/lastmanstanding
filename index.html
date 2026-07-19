@@ -23,28 +23,78 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Inter:wght@400;500;600;700&display=swap');
-  :root { --app-bg: #212124; --app-text: #f1f5f9; --app-border-5: rgba(255,255,255,0.05); --app-border-10: rgba(255,255,255,0.1); --app-border-20: rgba(255,255,255,0.2); --app-hover: rgba(255,255,255,0.05); }
+  /* ---- Theme tokens. Two themes only: dark (default) and light. ---- */
+  :root {
+    --app-bg: #0b0c10;        /* page background */
+    --app-text: #eef1f5;      /* primary text */
+    --surface: #14161c;       /* cards / panels */
+    --surface-2: #20242d;     /* secondary buttons / hover */
+    --inset: rgba(0,0,0,0.30); /* recessed panels inside cards */
+    --app-border-5: rgba(255,255,255,0.05);
+    --app-border-10: rgba(255,255,255,0.09);
+    --app-border-20: rgba(255,255,255,0.16);
+    --app-hover: rgba(255,255,255,0.05);
+    --hairline: rgba(255,255,255,0.08);
+    --nav-bg: rgba(11,12,16,0.82);
+    --card-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 10px 30px rgba(0,0,0,0.28);
+    --accent: #2dd4bf;
+  }
+  :root.app-light {
+    --app-bg: #f4f5f8;
+    --app-text: #14171c;
+    --surface: #ffffff;
+    --surface-2: #e9ebf0;
+    --inset: #eef1f5;
+    --app-border-5: rgba(15,23,42,0.05);
+    --app-border-10: rgba(15,23,42,0.10);
+    --app-border-20: rgba(15,23,42,0.16);
+    --app-hover: rgba(15,23,42,0.04);
+    --hairline: rgba(15,23,42,0.08);
+    --nav-bg: rgba(244,245,248,0.82);
+    --card-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 8px 24px rgba(15,23,42,0.07);
+  }
   .adapt-border-5 { border-color: var(--app-border-5) !important; }
   .adapt-border-10 { border-color: var(--app-border-10) !important; }
   .adapt-border-20 { border-color: var(--app-border-20) !important; }
   .adapt-hover:hover { background-color: var(--app-hover); }
-  /* Light-background mode: flip the pale grey text utilities to dark so text is always
-     the opposite of the background. Colored buttons/badges (text-white, text-neutral-950
-     on accent fills, rose/violet chips) are intentionally left untouched. */
-  .app-light .text-slate-100 { color: #191c22 !important; }
-  .app-light .text-slate-200 { color: #22262e !important; }
-  .app-light .text-slate-300 { color: #2e343f !important; }
-  .app-light .text-neutral-200 { color: #26262a !important; }
-  .app-light .text-neutral-300 { color: #34343a !important; }
-  .app-light .text-neutral-400 { color: #45454d !important; }
-  .app-light .text-neutral-500 { color: #55555d !important; }
-  .app-light .text-neutral-600 { color: #4a4a52 !important; }
-  /* Custom font colour override — wins over both default and light-mode contrast.
-     Placed after .app-light so equal-specificity !important rules resolve in its favour. */
-  .app-fontcolor .text-slate-100, .app-fontcolor .text-slate-200, .app-fontcolor .text-slate-300,
-  .app-fontcolor .text-neutral-200, .app-fontcolor .text-neutral-300, .app-fontcolor .text-neutral-400,
-  .app-fontcolor .text-neutral-500, .app-fontcolor .text-neutral-600 { color: var(--app-fontcolor) !important; }
-  html, body { background: var(--app-bg); margin:0; font-family:'Inter', sans-serif; }
+
+  /* Repoint Tailwind's hard-coded greys at theme tokens so the whole app shifts cleanly
+     between dark and light without editing every component. Cards get a soft elevation. */
+  .bg-neutral-800 { background-color: var(--surface) !important; box-shadow: var(--card-shadow); }
+  .bg-neutral-700 { background-color: var(--surface-2) !important; }
+  .hover\:bg-neutral-600:hover, .hover\:bg-neutral-700:hover { background-color: var(--surface-2) !important; filter: brightness(1.15); }
+  .bg-black\/20, .bg-black\/30, .bg-black\/40 { background-color: var(--inset) !important; box-shadow: none; }
+  /* Small chips/inputs that reuse the card colour shouldn't carry the card shadow. */
+  input.bg-neutral-800, select.bg-neutral-800, textarea.bg-neutral-800, .no-elev.bg-neutral-800 { box-shadow: none !important; }
+
+  /* Text contrast in light mode (colored fills like text-white / text-neutral-950 stay put). */
+  .app-light .text-slate-100 { color: #12151b !important; }
+  .app-light .text-slate-200 { color: #1b1f27 !important; }
+  .app-light .text-slate-300 { color: #2a2f38 !important; }
+  .app-light .text-neutral-200 { color: #1e2229 !important; }
+  .app-light .text-neutral-300 { color: #333941 !important; }
+  .app-light .text-neutral-400 { color: #565d68 !important; }
+  .app-light .text-neutral-500 { color: #6b7280 !important; }
+  .app-light .text-neutral-600 { color: #7b828d !important; }
+  /* Faint white dividers/tints need flipping so they're visible on light surfaces. */
+  .app-light .bg-white\/5 { background-color: rgba(15,23,42,0.04) !important; }
+  .app-light .bg-white\/10 { background-color: rgba(15,23,42,0.09) !important; }
+  /* Accent/badge text tuned for dark bg goes pale on white — darken it in light mode.
+     (Solid accent fills like bg-teal-400 keep their dark text and are untouched.) */
+  .app-light .text-teal-300, .app-light .text-teal-400 { color: #0d9488 !important; }
+  .app-light .text-rose-300, .app-light .text-rose-400 { color: #e11d48 !important; }
+  .app-light .text-amber-300 { color: #b45309 !important; }
+  .app-light .text-sky-300 { color: #0369a1 !important; }
+
+  /* Frosted bottom nav + sticky header. */
+  .lms-nav { background: var(--nav-bg); -webkit-backdrop-filter: saturate(1.4) blur(18px); backdrop-filter: saturate(1.4) blur(18px); border-top: 1px solid var(--hairline); }
+  .lms-header { background: var(--nav-bg); -webkit-backdrop-filter: saturate(1.4) blur(18px); backdrop-filter: saturate(1.4) blur(18px); border-bottom: 1px solid var(--hairline); }
+
+  html, body { background: var(--app-bg); margin:0; font-family:'Inter', sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  * { -webkit-tap-highlight-color: transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--app-border-20); border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   .font-scoreboard { font-family: 'Teko', sans-serif; }
 
   @keyframes smokeDrift1 { 0% { transform: translate(-9%, -6%) scale(1); } 50% { transform: translate(7%, 5%) scale(1.2); } 100% { transform: translate(-9%, -6%) scale(1); } }
@@ -413,36 +463,7 @@ const SPORTS = [
   { id: "epl", name: "EPL", tagline: "Coming soon", active: false },
 ];
 
-const ACCENT_OPTIONS = [
-  { id: "teal", label: "Teal" }, { id: "violet", label: "Violet" },
-  { id: "amber", label: "Amber" }, { id: "rose", label: "Rose" },
-  { id: "sky", label: "Sky" }, { id: "emerald", label: "Emerald" },
-];
-
 const BG = "var(--app-bg)";
-const BG_MODES = [
-  { id: "black", label: "Black", hex: "#0a0a0c", text: "#f4f4f5", light: false },
-  { id: "white", label: "White", hex: "#f6f5f2", text: "#16181d", light: true },
-  { id: "grey", label: "Grey", hex: "#474b52", text: "#f5f5f6", light: false },
-  { id: "navy", label: "Dark Blue", hex: "#122a63", text: "#e8f0fb", light: false },
-  { id: "sky", label: "Light Blue", hex: "#bfe1f6", text: "#0b2233", light: true },
-  { id: "maroon", label: "Maroon", hex: "#5c1523", text: "#f8e8ec", light: false },
-  { id: "green", label: "Green", hex: "#123f2c", text: "#e6f7ee", light: false },
-];
-// Optional custom font colour (overrides the auto light/dark contrast for extra visibility)
-const FONT_COLORS = [
-  { id: "gold", label: "Gold", hex: "#ffcf4a" },
-  { id: "cyan", label: "Cyan", hex: "#3fe0d6" },
-  { id: "lime", label: "Lime", hex: "#9be15d" },
-  { id: "pink", label: "Pink", hex: "#ff86c8" },
-  { id: "sky", label: "Sky", hex: "#7cc4ff" },
-  { id: "white", label: "White", hex: "#ffffff" },
-];
-const FONT_SIZES = [
-  { id: "small", label: "Small", px: "16px" },
-  { id: "medium", label: "Medium", px: "17.5px" },
-  { id: "large", label: "Large", px: "19px" },
-];;
 const PANEL_BORDER = "adapt-border-10";
 
 function formatCountdown(ms) {
@@ -1350,63 +1371,19 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
       </div>
 
       <div>
-        <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2"><Palette size={14} /> Display settings</h4>
-        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 space-y-4`}>
-          <div>
-            <p className="text-xs text-neutral-500 mb-3">Choose the accent colour used across your tabs and buttons.</p>
-            <div className="grid grid-cols-3 gap-2">
-              {ACCENT_OPTIONS.map((opt) => (
-                <button key={opt.id} onClick={() => onAccentChange(opt.id)} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${accent === opt.id ? `border-${opt.id}-400 bg-${opt.id}-400/10 text-${opt.id}-300` : "adapt-border-10 text-neutral-300"}`}>
-                  <span className={`h-3 w-3 rounded-full bg-${opt.id}-400`} />{opt.label}
+        <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2"><Palette size={14} /> Appearance</h4>
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+          <p className="text-xs text-neutral-500 mb-3">Choose how the app looks.</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((opt) => {
+              const active = (profile.theme || (profile.bgMode === "white" || profile.bgMode === "sky" ? "light" : "dark")) === opt.id;
+              return (
+                <button key={opt.id} onClick={() => onProfileChange({ theme: opt.id })}
+                  className={`rounded-lg border py-2.5 text-sm font-semibold transition ${active ? `${theme.borderHalf} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300 adapt-hover"}`}>
+                  {opt.label}
                 </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-neutral-500 mb-3">Choose the background ambience.</p>
-            <div className="grid grid-cols-2 gap-2">
-              {BG_MODES.map((mode) => {
-                const active = (profile.bgMode || "black") === mode.id;
-                return (
-                  <button key={mode.id} onClick={() => onProfileChange({ bgMode: mode.id })}
-                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${active ? `${theme.borderSoft} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300"}`}>
-                    <span className="h-4 w-4 rounded-full border adapt-border-20" style={{ backgroundColor: mode.hex }} />{mode.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-neutral-500 mb-3">Font colour. "Default" matches your background automatically — or pick a colour to make text stand out more.</p>
-            <div className="grid grid-cols-4 gap-2">
-              <button onClick={() => onProfileChange({ fontColor: null })}
-                className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium ${!profile.fontColor ? `${theme.borderSoft} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300"}`}>
-                Default
-              </button>
-              {FONT_COLORS.map((fc) => {
-                const active = profile.fontColor === fc.id;
-                return (
-                  <button key={fc.id} onClick={() => onProfileChange({ fontColor: fc.id })}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium ${active ? `${theme.borderSoft} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300"}`}>
-                    <span className="h-3.5 w-3.5 rounded-full border adapt-border-20" style={{ backgroundColor: fc.hex }} />{fc.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs text-neutral-500 mb-3">Font size.</p>
-            <div className="grid grid-cols-3 gap-2">
-              {FONT_SIZES.map((fs) => {
-                const active = (profile.fontSize || "small") === fs.id;
-                return (
-                  <button key={fs.id} onClick={() => onProfileChange({ fontSize: fs.id })}
-                    className={`rounded-lg border px-3 py-2 text-xs font-medium ${active ? `${theme.borderSoft} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300"}`}>
-                    {fs.label}
-                  </button>
-                );
-              })}
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -1915,40 +1892,13 @@ function AppShell({ user }) {
   const [results, setResults] = useState({});
   const [picksLoaded, setPicksLoaded] = useState(false);
 
-  const accent = profile?.accent || "teal";
-  const bgMode = profile?.bgMode || "black";
-  const fontColor = profile?.fontColor || null;
-  const fontSize = profile?.fontSize || "small";
+  // One fixed, refined accent across the whole app — no per-user colour pickers.
+  const accent = "teal";
+  // Two themes only. Back-compat: earlier light-ish bg choices map to light, everything else dark.
+  const themePref = profile?.theme || ((profile?.bgMode === "white" || profile?.bgMode === "sky") ? "light" : "dark");
   useEffect(() => {
-    const mode = BG_MODES.find((m) => m.id === bgMode) || BG_MODES[0];
-    document.documentElement.style.setProperty("--app-bg", mode.hex);
-    document.documentElement.style.setProperty("--app-text", mode.text);
-    if (mode.light) {
-      document.documentElement.classList.add("app-light");
-      document.documentElement.style.setProperty("--app-border-5", "rgba(0,0,0,0.06)");
-      document.documentElement.style.setProperty("--app-border-10", "rgba(0,0,0,0.13)");
-      document.documentElement.style.setProperty("--app-border-20", "rgba(0,0,0,0.22)");
-      document.documentElement.style.setProperty("--app-hover", "rgba(0,0,0,0.05)");
-    } else {
-      document.documentElement.classList.remove("app-light");
-      document.documentElement.style.setProperty("--app-border-5", "rgba(255,255,255,0.05)");
-      document.documentElement.style.setProperty("--app-border-10", "rgba(255,255,255,0.1)");
-      document.documentElement.style.setProperty("--app-border-20", "rgba(255,255,255,0.2)");
-      document.documentElement.style.setProperty("--app-hover", "rgba(255,255,255,0.05)");
-    }
-    // Custom font colour (overrides the auto contrast when chosen)
-    const fc = FONT_COLORS.find((c) => c.id === fontColor);
-    if (fc) {
-      document.documentElement.classList.add("app-fontcolor");
-      document.documentElement.style.setProperty("--app-fontcolor", fc.hex);
-    } else {
-      document.documentElement.classList.remove("app-fontcolor");
-      document.documentElement.style.removeProperty("--app-fontcolor");
-    }
-    // Font size (scales all rem-based text)
-    const fs = FONT_SIZES.find((s) => s.id === fontSize) || FONT_SIZES[0];
-    document.documentElement.style.fontSize = fs.px;
-  }, [bgMode, fontColor, fontSize]);
+    document.documentElement.classList.toggle("app-light", themePref === "light");
+  }, [themePref]);
   const theme = useAccentTheme(accent);
 
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(id); }, []);
@@ -2202,10 +2152,10 @@ function AppShell({ user }) {
 
   return (
     <div className="min-h-screen text-slate-100 pb-20" style={{ backgroundColor: BG, color: "var(--app-text)" }}>
-      <header className="px-5 pt-6 pb-4 border-b adapt-border-5 flex items-center justify-between">
-        <button onClick={() => setScreen("sport")} className="flex items-center gap-1 text-neutral-400 text-xs hover:text-neutral-200"><ChevronLeft size={16} /> Sport</button>
-        <div className="flex items-center gap-2"><Crown className="text-amber-400 crown-glow" size={20} /><h1 className="font-scoreboard text-2xl tracking-wide">LAST MAN STANDING</h1></div>
-        <span className="text-[11px] uppercase tracking-widest text-neutral-500 border adapt-border-10 rounded-full px-2 py-1">{sport}</span>
+      <header className="lms-header sticky top-0 z-30 px-5 pt-5 pb-4 flex items-center justify-between">
+        <button onClick={() => setScreen("sport")} className="flex items-center gap-1 text-neutral-400 text-xs hover:text-neutral-200 transition"><ChevronLeft size={16} /> Sport</button>
+        <div className="flex items-center gap-2"><Crown className="text-amber-400 crown-glow" size={19} /><h1 className="font-scoreboard text-2xl tracking-wide">LAST MAN STANDING</h1></div>
+        <span className="text-[10px] uppercase tracking-widest text-neutral-500 border adapt-border-10 rounded-full px-2 py-1">{sport}</span>
       </header>
 
       <main className="px-5 py-5 max-w-md mx-auto">
@@ -2246,10 +2196,10 @@ function AppShell({ user }) {
         )}
       </main>
 
-      <nav className="fixed bottom-0 inset-x-0 border-t adapt-border-10 px-2 py-2" style={{ backgroundColor: BG, opacity: 0.98 }}>
+      <nav className="lms-nav fixed bottom-0 inset-x-0 px-2 py-2 z-30">
         <div className="max-w-md mx-auto grid gap-1" style={{ gridTemplateColumns: `repeat(${navTabs.length}, minmax(0, 1fr))` }}>
           {navTabs.map(({ id, label, Icon }) => (
-            <button key={id} onClick={() => setTab(id)} className={`flex flex-col items-center gap-1 py-2 rounded-lg text-[10px] ${tab === id ? theme.text : "text-neutral-500"}`}>
+            <button key={id} onClick={() => setTab(id)} className={`flex flex-col items-center gap-1 py-2 rounded-xl text-[10px] font-medium transition ${tab === id ? `${theme.text} ${theme.bgSoft}` : "text-neutral-500 hover:text-neutral-300"}`}>
               <Icon active={tab === id} />{label}
             </button>
           ))}
