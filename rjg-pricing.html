@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v36 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v37 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -1168,17 +1168,27 @@ function smoothPath(ctx, pts){
   for (let i = 1; i < pts.length - 1; i++){ const xc = (pts[i].x + pts[i+1].x) / 2, yc = (pts[i].y + pts[i+1].y) / 2; ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
   ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
 }
-const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, roller: 2.4, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, island: 1.8, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, gate: 1.0, gate_black: 1.0, gate_glass: 1.0, pool: 6.0 };
-const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["roller","Garage roller door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["island","Kitchen island"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["car","Car"],["tree","Tree"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["gate","Gate — timber"],["gate_black","Gate — black steel"],["gate_glass","Gate — glass"],["pool","Pool"]];
+const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, roller: 2.4, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, island: 1.8, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, bush: 1.2, gazebo: 3.6, shed: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, gate: 1.0, gate_black: 1.0, gate_glass: 1.0, pool: 6.0 };
+const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["roller","Garage roller door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["island","Kitchen island"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["car","Car"],["tree","Tree"],["bush","Bush / shrub"],["gazebo","Gazebo"],["shed","Garden shed"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["gate","Gate — timber"],["gate_black","Gate — black steel"],["gate_glass","Gate — glass"],["pool","Pool"]];
 const STAMP_LABEL = Object.fromEntries(STAMP_TYPES);
-const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","roller","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","island","sink","toilet","shower","bath"]], ["Fences & gates", ["fence","fence_black","fence_glass","gate","gate_black","gate_glass"]], ["Outdoor / site", ["car","tree","pool"]]];
+const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","roller","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","island","sink","toilet","shower","bath"]], ["Fences & gates", ["fence","fence_black","fence_glass","gate","gate_black","gate_glass"]], ["Structures", ["gazebo","shed"]], ["Outdoor / site", ["car","tree","bush","pool"]]];
 // depth ÷ width ratio for each object (defines its footprint when first dropped)
-const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, roller: 0.12, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, island: 0.5, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, gate: 0.06, gate_black: 0.06, gate_glass: 0.06, pool: 0.6 };
+const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, roller: 0.12, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, island: 0.5, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, bush: 1.0, gazebo: 1.0, shed: 0.7, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, gate: 0.06, gate_black: 0.06, gate_glass: 0.06, pool: 0.6 };
 const STAMP_LINEAR = new Set(["door","doubledoor","slidingdoor","roller","window","opening","fence","fence_black","fence_glass","gate","gate_black","gate_glass"]);   // resize length only
-const STAMP_ROUND  = new Set(["tree"]);                                                                                    // uniform resize
+const STAMP_ROUND  = new Set(["tree","bush"]);                                                                             // uniform resize
 const STAMP_OPENINGS = new Set(["door","doubledoor","slidingdoor","roller","window","opening"]);                           // cut into 3D walls
-const STAMP_FLIP = new Set(["door","doubledoor","slidingdoor","gate","gate_black","gate_glass"]);                          // can swing/flip the other way
+const STAMP_FLIP = new Set(["door","doubledoor","slidingdoor","gate","gate_black","gate_glass","shed"]);                   // can swing/flip the other way
 const GATE_COLORS = { gate: "#8a6a3f", gate_black: "#2a2f36", gate_glass: "#5fa9d6" };
+// Structures with selectable roof lines and (sheds) door types.
+const STAMP_ROOFS = { gazebo: [["pyramid","Pyramid"],["hip","Hip"],["gable","Gable"],["flat","Flat"]], shed: [["gable","Gable"],["skillion","Skillion"],["flat","Flat"]] };
+const STAMP_DOORS = { shed: [["roller","Roller door"],["door","Single door"],["double","Double door"],["none","No door"]] };
+// Ground / surface areas (drawn like a room but no walls — just a material fill).
+const SURFACE_KINDS = [["concrete","Concrete"],["grass","Grass"],["dirt","Dirt"]];
+const SURFACE_LABEL = Object.fromEntries(SURFACE_KINDS);
+const SURFACE_SET = new Set(SURFACE_KINDS.map(s => s[0]));
+const SURFACE_FILL = { concrete: "rgba(150,157,168,.38)", grass: "rgba(120,175,90,.32)", dirt: "rgba(176,137,104,.38)" };
+const SURFACE_STROKE = { concrete: "#8b929c", grass: "#5f8f43", dirt: "#8a6a4a" };
+const SURFACE_3D = { concrete: 0xc3c8cf, grass: 0x7fb069, dirt: 0xb08968 };
 const stampAspect = (t) => STAMP_ASPECT[t] != null ? STAMP_ASPECT[t] : 1;
 const stampW = (s) => s.w != null ? s.w : s.size;                                                                          // local width (world px)
 const stampD = (s) => s.d != null ? s.d : (STAMP_ROUND.has(s.type) ? (s.w != null ? s.w : s.size) : (s.size * stampAspect(s.type)));  // local depth
@@ -1272,6 +1282,24 @@ function drawStamp(ctx, s, brand){
     ctx.lineWidth = 2.5; rrect(ctx, -half, -hh, w, h, hh*0.4); ctx.stroke();                                                  // outer
     ctx.lineWidth = 1.6; rrect(ctx, -half + w*0.06, -hh + h*0.14, w*0.72, h*0.72, hh*0.35); ctx.stroke();                     // inner tub
     ctx.beginPath(); ctx.arc(half - w*0.12, 0, Math.max(1.5, w*0.04), 0, 7); ctx.stroke();                                    // plug
+  } else if (s.type === "bush"){
+    ctx.fillStyle = "rgba(76,164,89,.30)"; ctx.strokeStyle = "#3c8f4a"; ctx.lineWidth = 1.8;
+    [[0,0,half*0.66],[-half*0.5,half*0.22,half*0.5],[half*0.5,half*0.22,half*0.5],[0,-half*0.45,half*0.5]].forEach(([bx,by,br]) => { ctx.beginPath(); ctx.arc(bx,by,br,0,7); ctx.fill(); ctx.stroke(); });
+  } else if (s.type === "gazebo"){
+    ctx.fillStyle = "rgba(2,34,75,.05)"; ctx.lineWidth = 2.6; rrect(ctx, -half, -hh, w, h, 4); ctx.fill(); ctx.stroke();       // footprint
+    ctx.lineWidth = 1.6; ctx.strokeStyle = brand; const grf = s.roof || "pyramid";
+    if (grf === "gable"){ ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke(); }                          // ridge
+    else if (grf !== "flat"){ ctx.beginPath(); ctx.moveTo(-half,-hh); ctx.lineTo(half,hh); ctx.moveTo(half,-hh); ctx.lineTo(-half,hh); ctx.stroke(); }  // hip / pyramid hips
+    ctx.fillStyle = brand; [[-half,-hh],[half,-hh],[half,hh],[-half,hh]].forEach(([px,py]) => { ctx.beginPath(); ctx.arc(px,py,4,0,7); ctx.fill(); });   // posts
+  } else if (s.type === "shed"){
+    ctx.fillStyle = "rgba(2,34,75,.06)"; ctx.lineWidth = 2.8; rrect(ctx, -half, -hh, w, h, 2); ctx.fill(); ctx.stroke();       // footprint
+    ctx.lineWidth = 1.4; ctx.strokeStyle = "#9aa3b2"; const srf = s.roof || "gable";
+    if (srf === "gable"){ ctx.beginPath(); ctx.moveTo(-half, 0); ctx.lineTo(half, 0); ctx.stroke(); }                          // ridge
+    else if (srf === "skillion"){ ctx.beginPath(); ctx.moveTo(-half, -hh*0.5); ctx.lineTo(half, -hh*0.5); ctx.stroke(); }
+    ctx.strokeStyle = brand; ctx.lineWidth = 2.4; const sdr = s.door || "roller"; const dw = Math.min(w*0.62, h*0.9);
+    if (sdr === "roller"){ ctx.setLineDash([3,3]); for (let i = 0; i < 4; i++){ const yy = hh - 3 - i*3; ctx.beginPath(); ctx.moveTo(-dw/2, yy); ctx.lineTo(dw/2, yy); ctx.stroke(); } ctx.setLineDash([]); }
+    else if (sdr === "door"){ ctx.beginPath(); ctx.moveTo(-dw/2, hh); ctx.lineTo(-dw/2, hh - dw); ctx.stroke(); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(-dw/2, hh, dw, -Math.PI/2, 0); ctx.stroke(); }
+    else if (sdr === "double"){ ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(-dw/2, hh, dw/2, -Math.PI/2, 0); ctx.stroke(); ctx.beginPath(); ctx.arc(dw/2, hh, dw/2, -Math.PI, -Math.PI/2); ctx.stroke(); }
   }
   ctx.restore();
 }
@@ -1350,8 +1378,16 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       let insideCount = 0; inner.forEach(v => { if (inPoly2(v, outer)) insideCount++; });
       return insideCount >= Math.ceil(inner.length * 0.5);
     };
+    // ground / surface areas: a flat coloured pad, no walls or roof
+    rooms.forEach(r => {
+      if (!r.surface || r.points.length < 3) return;
+      const pts = r.points.map(toM);
+      const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
+      const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const m = new THREE.Mesh(g, mat(SURFACE_3D[r.surface] || 0xcccccc)); m.position.y = 0.012; scene.add(m);
+    });
     const cands = [];
     rooms.forEach(r => {
+      if (r.surface) return;   // surfaces handled above — no walls
       const h = r.height || wallH; const pts = r.points.map(toM);
       if (!r.wall && pts.length >= 3){ for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); cands.push({ pts, h, area: polyArea2(pts) }); }
       else if (r.wall){ for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) cands.push({ pts, h, area: polyArea2(pts) }); }
@@ -1415,10 +1451,68 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       const leg = (x, z, hgt, m, r) => { const g = new THREE.Mesh(new THREE.BoxGeometry(r||0.06, hgt, r||0.06), m); g.position.set(x, hgt/2, z); grp.add(g); };
       const cyl = (rt, rb, h, m, x, y, z, seg) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg||16), m); g.position.set(x, y, z); grp.add(g); return g; };
       const ball = (r, m, x, y, z) => { const g = new THREE.Mesh(new THREE.SphereGeometry(r, 14, 12), m); g.position.set(x, y, z); grp.add(g); return g; };
+      const triMesh = (arr, m) => { if (!arr.length) return; const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); grp.add(new THREE.Mesh(g, m)); };  // local-space roof/slope geometry
       // faint contact shadow so objects sit on the floor
       const sh = new THREE.Mesh(new THREE.CircleGeometry(Math.max(w,d)*0.55, 20), mat(0x9aa6b3, { transparent: true, opacity: 0.18 })); sh.rotateX(-Math.PI/2); sh.position.y = 0.015; grp.add(sh);
 
-      if (s.type === "tree"){
+      if (s.type === "bush"){
+        const R = w * 0.5, g1 = mat(0x4c9a55), g2 = mat(0x3d8a49);                               // low, rounded shrub
+        ball(R*0.6, g1, 0, R*0.45, 0);
+        [[R*0.42,0],[-R*0.42,0],[0,R*0.42],[0,-R*0.42]].forEach(([bx,bz],i) => ball(R*0.4, i%2?g2:g1, bx, R*0.36, bz));
+        ball(R*0.42, g2, 0, R*0.7, 0);
+      }
+      else if (s.type === "gazebo"){
+        const postM = glossy(0x6a5236, 12), roofM = mat(0x8a5a3c, { side: THREE.DoubleSide }), deckM = glossy(0xc79a5e, 10);
+        const gh = 2.4, ov = 0.25, hw = w/2 + ov, hd = d/2 + ov;
+        grp.add(box(w, 0.12, d, deckM, 0, 0.06, 0));                                             // raised deck
+        [[-w/2+0.12,-d/2+0.12],[w/2-0.12,-d/2+0.12],[-w/2+0.12,d/2-0.12],[w/2-0.12,d/2-0.12]].forEach(([x,z]) => leg(x, z, gh, postM, 0.12));  // corner posts
+        [[gh*0.55],[gh*0.9]].forEach(([ry]) => { grp.add(box(w, 0.06, 0.06, postM, 0, ry, -d/2+0.12)); grp.add(box(w, 0.06, 0.06, postM, 0, ry, d/2-0.12)); });  // rails
+        const rf = s.roof || "pyramid";
+        if (rf === "flat"){ grp.add(box(w + ov*2, 0.1, d + ov*2, roofM, 0, gh + 0.05, 0)); }
+        else {
+          const rise = Math.max(w, d) * (rf === "gable" ? 0.4 : 0.42), peak = gh + rise;
+          const c = [[-hw,gh,-hd],[hw,gh,-hd],[hw,gh,hd],[-hw,gh,hd]], arr = [];
+          if (rf === "gable"){
+            const ax = w >= d;                                                                   // ridge along the longer side
+            if (ax){ const r0 = [-hw,peak,0], r1 = [hw,peak,0];
+              tri(arr, c[0], c[1], r1); tri(arr, c[0], r1, r0); tri(arr, c[2], c[3], r0); tri(arr, c[2], r0, r1);  // two slopes
+              tri(arr, c[1], c[2], r1); tri(arr, c[3], c[0], r0);                                                  // gable ends
+            } else { const r0 = [0,peak,-hd], r1 = [0,peak,hd];
+              tri(arr, c[1], c[2], r1); tri(arr, c[1], r1, r0); tri(arr, c[3], c[0], r0); tri(arr, c[3], r0, r1);
+              tri(arr, c[0], c[1], r0); tri(arr, c[2], c[3], r1);
+            }
+          } else { const apex = [0, peak, 0]; for (let i = 0; i < 4; i++) tri(arr, c[i], c[(i+1)%4], apex); }  // pyramid / hip → apex
+          triMesh(arr, roofM);
+        }
+      }
+      else if (s.type === "shed"){
+        const wallM = mat(0xdde2e8), roofM = mat(0x717884, { side: THREE.DoubleSide }), doorM = glossy(0xb9bfc7, 30), darkM = glossy(0x3a4048, 20);
+        const sh_h = Math.max(2.0, Math.min(2.5, d * 0.95)), t = 0.08;
+        const dr = s.door || "roller", dw = dr === "none" ? 0 : Math.min(w*0.6, sh_h*0.9), dh = sh_h*0.86, fz = d/2;
+        grp.add(box(w, sh_h, t, wallM, 0, sh_h/2, -d/2));                                        // back wall
+        grp.add(box(t, sh_h, d, wallM, -w/2, sh_h/2, 0)); grp.add(box(t, sh_h, d, wallM, w/2, sh_h/2, 0));  // side walls
+        if (dw > 0){                                                                             // front wall with a door gap
+          grp.add(box((w-dw)/2, sh_h, t, wallM, -(w+dw)/4, sh_h/2, fz)); grp.add(box((w-dw)/2, sh_h, t, wallM, (w+dw)/4, sh_h/2, fz));
+          grp.add(box(dw, sh_h-dh, t, wallM, 0, (dh+sh_h)/2, fz));                               // header
+          if (dr === "roller"){ for (let y0 = 0.06; y0 < dh-0.02; y0 += 0.2) grp.add(box(dw-0.06, 0.16, 0.03, doorM, 0, y0+0.09, fz+0.03)); }
+          else if (dr === "double"){ grp.add(box(dw/2-0.03, dh, 0.04, darkM, -dw/4, dh/2, fz+0.02)); grp.add(box(dw/2-0.03, dh, 0.04, darkM, dw/4, dh/2, fz+0.02)); }
+          else { grp.add(box(dw, dh, 0.04, darkM, 0, dh/2, fz+0.02)); }                          // single door
+        } else { grp.add(box(w, sh_h, t, wallM, 0, sh_h/2, fz)); }
+        const rf = s.roof || "gable";
+        const cc = [[-w/2,sh_h,-d/2],[w/2,sh_h,-d/2],[w/2,sh_h,d/2],[-w/2,sh_h,d/2]], arr = [];
+        if (rf === "flat"){ grp.add(box(w+0.16, 0.08, d+0.16, roofM, 0, sh_h+0.04, 0)); }
+        else if (rf === "skillion"){ const rise = d*0.3, back = sh_h + rise;                     // slopes up to the back
+          const b0 = [-w/2,back,-d/2], b1 = [w/2,back,-d/2];
+          tri(arr, cc[3], cc[2], b1); tri(arr, cc[3], b1, b0);                                   // slope
+          tri(arr, cc[0], cc[3], b0); tri(arr, cc[1], b1, cc[2]);                                // triangular side infills
+          triMesh(arr, roofM); grp.add(box(w+0.12, 0.06, 0.06, roofM, 0, back, -d/2));
+        } else { const rise = d*0.32, peak = sh_h + rise, r0 = [0,peak,-d/2], r1 = [0,peak,d/2]; // gable ridge along depth
+          tri(arr, cc[1], cc[2], r1); tri(arr, cc[1], r1, r0); tri(arr, cc[3], cc[0], r0); tri(arr, cc[3], r0, r1);
+          tri(arr, cc[0], cc[1], r0); tri(arr, cc[2], cc[3], r1);                                // gable ends
+          triMesh(arr, roofM);
+        }
+      }
+      else if (s.type === "tree"){
         const R = w * 0.5;                                                                      // bushy, rounded canopy (overlapping spheres)
         cyl(w*0.05, w*0.09, R*1.1, glossy(0x6b4a2a, 8), 0, R*0.55, 0, 8);                        // trunk
         const foliage = mat(0x4aa459), foliage2 = mat(0x3c9450);
@@ -1669,13 +1763,15 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     for (let rN = 0; rN <= rowsN; rN++){ ctx.beginPath(); ctx.moveTo(0, rN*gridPx); ctx.lineTo(worldW, rN*gridPx); ctx.stroke(); }
     const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#02224B";
     const lenLabel = (a, b, len) => { const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; const t=round2(len).toFixed(2)+"m"; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,.88)"; const w=ctx.measureText(t).width+6; ctx.fillRect(mx-w/2,my-8,w,15); ctx.fillStyle="#111"; ctx.fillText(t,mx,my+4); };
-    const drawRoom = (pts, name) => {
-      ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round";
+    const drawRoom = (r) => {
+      const pts = r.points, surf = r.surface;
+      const stroke = surf ? (SURFACE_STROKE[surf] || brand) : brand;
+      ctx.strokeStyle = stroke; ctx.lineWidth = surf ? 3 : 5; ctx.lineJoin = "round";
       ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
-      ctx.fillStyle = "rgba(2,34,75,.06)"; ctx.fill(); ctx.stroke();
-      ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : "rgba(2,34,75,.06)"; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = stroke; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
       for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
-      if (pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=brand; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(name||"Room",c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
+      if (pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=stroke; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(r.name||(surf?SURFACE_LABEL[surf]:"Room"),c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
     };
     const drawWall = (pts, curved) => {
       ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.lineCap = "round";
@@ -1684,7 +1780,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       if (curved){ const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); } }
       else { for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); } }   // per-segment lengths
     };
-    rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r.points, r.name));
+    rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r));
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
     if (labels){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
@@ -1730,7 +1826,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
     }
     if (draft){
-      if (draft.tool === "room"){ ctx.strokeStyle=brand; ctx.lineWidth=4; ctx.beginPath(); draft.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.fillStyle=brand; draft.points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
+      if (draft.tool === "room" || draft.tool === "surface"){ const dc = draft.tool === "surface" ? (SURFACE_STROKE[draft.surface] || brand) : brand; ctx.strokeStyle=dc; ctx.lineWidth=4; ctx.beginPath(); draft.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.fillStyle=dc; draft.points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
       else if (draft.tool === "wall"){ // chained wall with per-segment lengths
         const pts = draft.preview ? [...draft.points, draft.preview] : draft.points;
         ctx.strokeStyle=brand; ctx.lineWidth=5; ctx.lineJoin="round"; ctx.lineCap="round";
@@ -1745,7 +1841,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const commitStamp = (p, type) => {
     const size = STAMP_DEFAULT_M[type] * pxPerM;
     const id = uid();
-    onChange({ ...plan, stamps: [...stamps, { id, type, x: p.x, y: p.y, size, w: size, d: STAMP_ROUND.has(type) ? size : size * stampAspect(type), angle: 0 }] });
+    const extra = type === "gazebo" ? { roof: "pyramid" } : type === "shed" ? { roof: "gable", door: "roller" } : {};
+    onChange({ ...plan, stamps: [...stamps, { id, type, x: p.x, y: p.y, size, w: size, d: STAMP_ROUND.has(type) ? size : size * stampAspect(type), angle: 0, ...extra }] });
     setTool("move"); setSel(id);   // drop then immediately edit — no duplicate taps
   };
 
@@ -1793,6 +1890,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       setSel(null); setSelShape(null); return;
     }
     if (tool === "room"){ const p = placePoint(e); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
+    if (SURFACE_SET.has(tool)){ const p = placePoint(e); setDraft(d => d && d.tool === "surface" && d.surface === tool ? { ...d, points: [...d.points, p] } : { tool: "surface", surface: tool, points: [p] }); return; }
     if (STAMP_DEFAULT_M[tool]){ commitStamp(toWorld(e, true), tool); return; }
     if (tool === "curve"){ const p = placePoint(e); setDraft({ tool: "curve", points: [p, p], dragging: true, start: p }); return; }
     if (tool === "wall"){ if (!draft || draft.tool !== "wall"){ setDraft({ tool: "wall", points: [], chain: true }); } return; }
@@ -1840,7 +1938,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     onChange({ ...plan, rooms: [...rooms, { id: uid(), name: curved ? "Curve" : "Wall", points: pts, wall: true, curved, perim: round2(perimeter(pts, false) * mPerPx) }] });
   };
 
-  const finishRoom = () => { if (draft && draft.tool === "room" && draft.points.length >= 3){ const name = prompt("Room name:", "Room " + (rooms.filter(r=>!r.wall).length + 1)) || "Room"; onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points }] }); } setDraft(null); };
+  const finishRoom = () => {
+    if (draft && draft.tool === "surface" && draft.points.length >= 3){
+      const kind = draft.surface, n = rooms.filter(r => r.surface === kind).length + 1;
+      onChange({ ...plan, rooms: [...rooms, { id: uid(), name: SURFACE_LABEL[kind] + " " + n, points: draft.points, surface: kind }] });
+    } else if (draft && draft.tool === "room" && draft.points.length >= 3){
+      const name = prompt("Room name:", "Room " + (rooms.filter(r => !r.wall && !r.surface).length + 1)) || "Room";
+      onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points }] });
+    }
+    setDraft(null);
+  };
   const finishWall = () => { if (draft && draft.tool === "wall" && draft.points.length >= 2){ const pts = draft.points; onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Wall " + (rooms.filter(r => r.wall).length + 1), points: pts, wall: true, perim: round2(perimeter(pts, false) * mPerPx) }] }); } setDraft(null); };
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
@@ -1874,13 +1981,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     const priced = lines.filter(l => l.rateEx > 0).length;
     notify(lines.length + " sent to quote" + (priced < lines.length ? " · " + (lines.length - priced) + " need a rate" : ""));
   };
-  const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
+  const totalArea = rooms.filter(r => !r.wall && !r.surface).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
+  const setStampRoof = (id, roof) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, roof } : s) });
+  const setStampDoor = (id, door) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, door } : s) });
 
   const DRAW_TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["move","Edit"]];
   const stampLabel = STAMP_LABEL[tool] || "";
   const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room. Corners snap to nearby corners so rooms close cleanly."
     : tool === "wall" ? "Tap to drop each corner and keep going around bends (drag works too); Finish when done. Set a length below to fix each segment."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
+    : SURFACE_SET.has(tool) ? "Tap the grid to outline the " + SURFACE_LABEL[tool].toLowerCase() + " area, then Finish. It's measured in m² and can be sent to the quote."
     : tool === "move" ? "Tap a room to select it — drag inside to move it, the green + to add a wall corner, the red ✕ to remove one, or drag any corner to reshape. Tap an object to move/resize/rotate it."
     : "Tap the plan to drop a " + stampLabel + ". Then use Edit to move, rotate, resize or delete it by hand.";
   const selShapeObj = rooms.find(r => r.id === selShape);
@@ -1905,9 +2015,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         </select>
         {STAMP_DEFAULT_M[tool] && <span className="text-sm" style={{ color: "var(--muted)" }}>Placing <b className="brand-text">{stampLabel}</b> — tap the plan</span>}
       </div>
+      <div className="flex gap-1.5 items-center flex-wrap">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Ground area:</span>
+        {SURFACE_KINDS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); setSelShape(null); }}>{l}</button>)}
+      </div>
       {tool === "wall" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={lockLen > 0} onChange={e => setLockLen(e.target.checked ? 3 : 0)} /> Fixed segment length {lockLen > 0 && <><NumInput value={lockLen} onCommit={v => setLockLen(v > 0 ? v : 0.1)} className="inp !py-1 w-20" /> m</>}</label>}
-      {draft && (draft.tool === "room" || draft.tool === "wall")
-        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={draft.tool === "room" ? finishRoom : finishWall}><IcCheck size={14} /> Finish {draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pt{draft.points.length === 1 ? "" : "s"}</span></div>
+      {draft && (draft.tool === "room" || draft.tool === "surface" || draft.tool === "wall")
+        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={draft.tool === "wall" ? finishWall : finishRoom}><IcCheck size={14} /> Finish {draft.tool === "surface" ? SURFACE_LABEL[draft.surface].toLowerCase() : draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pt{draft.points.length === 1 ? "" : "s"}</span></div>
         : <div className="text-sm" style={{ color: "var(--muted)" }}>{hint} · 1 cell = {gridM} m</div>}
 
       <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
@@ -1935,10 +2049,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
           <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms & walls</div><div className="text-sm font-semibold">Total floor: {round2(totalArea).toFixed(2)} m²</div></div>
           {rooms.map(r => (
             <div key={r.id} className="flex items-center gap-2 text-sm flex-wrap">
-              <span className="chip">{r.wall ? (r.curved ? "Curve" : "Wall") : "Room"}</span>
+              <span className="chip">{r.wall ? (r.curved ? "Curve" : "Wall") : r.surface ? SURFACE_LABEL[r.surface] : "Room"}</span>
               <input className="inp !py-1" style={{ flex: "1 1 120px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} />
               <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
-              <label className="flex items-center gap-1 whitespace-nowrap" style={{ color: "var(--muted)" }}>H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1 w-16" />m</label>
+              {!r.surface && <label className="flex items-center gap-1 whitespace-nowrap" style={{ color: "var(--muted)" }}>H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1 w-16" />m</label>}
               <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link {r.wall ? "m" : "m²"} item —</option>{items.filter(i => unitFamily(i.unit) === (r.wall ? "length" : "area") || i.id === r.priceItemId).map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}</select>
               <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
             </div>
@@ -1958,6 +2072,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
               <label className="flex items-center gap-1">angle <NumInput value={s.angle || 0} onCommit={v => setAngle(s.id, v)} className="inp !py-1 w-14" />°</label>
               <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, -15)}>↺</button>
               <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, 15)}>↻</button>
+              {STAMP_ROOFS[s.type] && <label className="flex items-center gap-1">roof <select className="inp !py-1" value={s.roof || STAMP_ROOFS[s.type][0][0]} onChange={e => setStampRoof(s.id, e.target.value)}>{STAMP_ROOFS[s.type].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>}
+              {STAMP_DOORS[s.type] && <label className="flex items-center gap-1">door <select className="inp !py-1" value={s.door || STAMP_DOORS[s.type][0][0]} onChange={e => setStampDoor(s.id, e.target.value)}>{STAMP_DOORS[s.type].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>}
               {STAMP_FLIP.has(s.type) && <button className="btn btn-ghost !py-1 !px-2" onClick={() => flipStamp(s.id)}>⇅ Flip</button>}
               <button className="btn btn-ghost !p-1.5 ml-auto" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
             </div>
