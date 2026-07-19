@@ -9,7 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="RJG Pricing" />
 <meta name="theme-color" content="#02224B" />
 <link rel="manifest" href="./manifest.webmanifest" />
-<link rel="apple-touch-icon" href="./icon.svg" />
+<link rel="apple-touch-icon" href="./vendor/icon-180.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="./vendor/icon-180.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="./vendor/icon-192.png" />
 <link rel="icon" href="./icon.svg" />
 
 <!-- All libraries are vendored locally in ./vendor so the app is fully self-contained and works offline on-site. -->
@@ -164,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v33 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v34 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
