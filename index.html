@@ -1893,17 +1893,28 @@ function EntrantsModal({ tier, theme, isOwner, onKick, onRestore, onMarkEliminat
 
 function InviteModal({ tier, onClose, theme }) {
   const [emails, setEmails] = useState("");
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const sendInvite = () => {
-    const hoursLeft = Math.max(1, Math.round((tier.lockTime.getTime() - Date.now()) / (1000 * 60 * 60)));
-    const roundLabel = getRound(tier.roundId).label;
-    const preset = getTierPreset(tier.tierLevel);
-    const baseUrl = window.location.origin + window.location.pathname;
-    const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&tier=${preset.id}&code=${tier.code || ""}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft}`;
+  const roundLabel = getRound(tier.roundId).label;
+  const preset = getTierPreset(tier.tierLevel);
+  const baseUrl = window.location.origin + window.location.pathname;
+  const inviteUrl = `${baseUrl}?invite=1&name=${encodeURIComponent(tier.name)}&tier=${preset.id}&code=${tier.code || ""}&round=${encodeURIComponent(roundLabel)}&hours=${hoursLeft(tier)}`;
+  const shareText = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a ${preset.name} tier competition.\n\n👉 Invite code: ${tier.code || "(ask your host)"}\n\nOpen the app, create a free account, choose "Join a competition" and enter that code — or tap:\n${inviteUrl}`;
+
+  const share = async () => {
+    try {
+      if (navigator.share) { await navigator.share({ title: "Last Man Standing invite", text: shareText }); }
+      else { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1600); }
+    } catch (e) { /* user cancelled the share sheet — nothing to do */ }
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch (e) {} };
+
+  const sendEmail = () => {
     const subject = "You're invited to play Last Man Standing!";
-    const body = `You're invited to play Last Man Standing!\n\nJoin "${tier.name}" — a ${preset.name} tier competition (${tierCapacityLabel(preset)}). ${roundLabel} locks in about ${hoursLeft} hours, so don't wait around!\n\n👉 Your invite code: ${tier.code || "(ask your host)"}\n\nOpen the app, create a free account, choose "Join a competition" and enter that code. Or tap this link:\n${inviteUrl}\n\nHurry — be the last one standing!`;
     const list = emails.split(/[,;\n]/).map((e) => e.trim()).filter(Boolean);
-    const mailto = `mailto:${encodeURIComponent(list.join(","))}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    // Recipients go in BCC so invitees can't see each other's addresses.
+    const mailto = `mailto:?bcc=${encodeURIComponent(list.join(","))}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(shareText)}`;
     window.location.href = mailto;
     onClose();
   };
@@ -1923,14 +1934,25 @@ function InviteModal({ tier, onClose, theme }) {
             <div className="text-[10px] text-neutral-500 mt-1">Players enter this under "Join a competition".</div>
           </div>
         )}
-        <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={3} placeholder="Paste email addresses, separated by commas or new lines"
-          className="w-full rounded-lg bg-black/30 border adapt-border-10 px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none mb-3" />
-        <button onClick={sendInvite} disabled={!emails.trim()} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-3 text-sm`}>Open invite email</button>
-        <p className="text-[10px] text-neutral-500 mt-3 text-center">Opens your email app with the invite ready to go — the link shows them a visual invite card before they sign up.</p>
+        <button onClick={share} className={`w-full flex items-center justify-center gap-2 rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}><UserPlus size={16} /> Share invite</button>
+        <button onClick={copy} className="mt-2 w-full rounded-xl border adapt-border-10 text-neutral-300 font-semibold py-2.5 text-sm adapt-hover">{copied ? "Copied!" : "Copy invite text"}</button>
+        <p className="text-[10px] text-neutral-500 mt-2 text-center">Share sends the code + link straight to WhatsApp, Messages, or wherever you like — nothing goes near your own inbox.</p>
+
+        {!emailOpen ? (
+          <button onClick={() => setEmailOpen(true)} className="mt-3 w-full text-center text-xs text-neutral-500 hover:text-neutral-300 underline">Send by email instead</button>
+        ) : (
+          <div className="mt-3 pt-3 border-t adapt-border-5">
+            <textarea value={emails} onChange={(e) => setEmails(e.target.value)} rows={2} placeholder="Email addresses, separated by commas"
+              className="w-full rounded-lg bg-black/30 border adapt-border-10 px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none mb-2" />
+            <button onClick={sendEmail} disabled={!emails.trim()} className="w-full rounded-lg bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 text-slate-100 font-semibold py-2.5 text-sm">Open email app</button>
+            <p className="text-[10px] text-neutral-500 mt-2 text-center">Opens your email app to send from your account — a copy will appear in your Sent items (that's normal). Addresses are hidden using BCC.</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+function hoursLeft(tier) { return tier.lockTime ? Math.max(1, Math.round((tier.lockTime.getTime() - Date.now()) / (1000 * 60 * 60))) : 24; }
 
 function HostTab({ tiers, uid, isHostMode, isOwnerOf, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, onAddAdmin, onRemoveAdmin, onEnsureCode, now, theme }) {
   const [creating, setCreating] = useState(false);
