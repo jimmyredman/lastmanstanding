@@ -11,7 +11,9 @@
           "homeScore": 12,
           "awayScore": 14,
           "winner": "Broncos",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-16T09:50Z",
+          "venue": "CommBank Stadium"
         },
         {
           "home": "Sharks",
@@ -19,7 +21,9 @@
           "homeScore": 20,
           "awayScore": 18,
           "winner": "Sharks",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-17T08:00Z",
+          "venue": "Ocean Protect Stadium"
         },
         {
           "home": "Roosters",
@@ -27,7 +31,9 @@
           "homeScore": 14,
           "awayScore": 6,
           "winner": "Roosters",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-17T10:00Z",
+          "venue": "Allianz Stadium"
         },
         {
           "home": "Raiders",
@@ -35,7 +41,9 @@
           "homeScore": 34,
           "awayScore": 24,
           "winner": "Raiders",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-18T05:00Z",
+          "venue": "GIO Stadium"
         },
         {
           "home": "Warriors",
@@ -43,7 +51,9 @@
           "homeScore": 20,
           "awayScore": 12,
           "winner": "Warriors",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-18T07:35Z",
+          "venue": "Go Media Stadium"
         },
         {
           "home": "Bulldogs",
@@ -51,7 +61,9 @@
           "homeScore": 32,
           "awayScore": 0,
           "winner": "Bulldogs",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-18T09:35Z",
+          "venue": "Accor Stadium"
         },
         {
           "home": "Titans",
@@ -59,7 +71,9 @@
           "homeScore": 38,
           "awayScore": 32,
           "winner": "Titans",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-19T04:00Z",
+          "venue": "Cbus Super Stadium"
         },
         {
           "home": "Dolphins",
@@ -67,7 +81,9 @@
           "homeScore": 36,
           "awayScore": 16,
           "winner": "Dolphins",
-          "completed": true
+          "completed": true,
+          "date": "2026-07-19T06:05Z",
+          "venue": "Suncorp Stadium"
         }
       ]
     }
