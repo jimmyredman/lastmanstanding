@@ -396,12 +396,37 @@ const TIER_PRESETS = [
 function getTierPreset(id) { return TIER_PRESETS.find((t) => t.id === id) || TIER_PRESETS[0]; }
 function tierCapacityLabel(preset) { return preset.maxPlayers === null ? "100+ players" : `up to ${preset.maxPlayers} players`; }
 
-// ---- Monetisation flag ----
-// Creating a competition will eventually cost a fee (Bronze is free on a user's first ever
-// competition; paid after that). Kept OFF so everything stays free until Stripe is wired up
-// and the app is confirmed. When true, non-free competitions route through the payment step.
-const PAYMENTS_ENABLED = false;
-const FREE_TRIAL_TIER = "bronze"; // the tier a first-time host can create for free
+// ---- Monetisation / payments ----
+// Opening (creating) a competition carries a one-off setup fee per tier — except a host's
+// FIRST ever competition at the free-trial tier, which is on us. Prices are inc. GST.
+//
+// PAYMENTS_LIVE is the single switch: flip it to true once Stripe is wired up. Until then the
+// app runs BETA SIMULATED payments — the full checkout UX shows and behaves exactly as it will
+// in production, but no card is collected and nothing is charged. The Stripe integration point
+// is the clearly-marked block in processCheckout() below (see docs/STRIPE.md for the contract).
+const PAYMENTS_LIVE = false;
+const FREE_TRIAL_TIER = "bronze"; // the tier a first-time host can open for free
+
+// GST is included in every displayed price. In Australia the GST component of a GST-inclusive
+// total is exactly 1/11 of that total.
+function gstOf(incGstAmount) { return Math.round((incGstAmount / 11) * 100) / 100; }
+// What a host pays to open a competition at this tier (0 if it's their free first one).
+function tierUnlockAmount(tierLevel, isFirstFree) { return isFirstFree ? 0 : getTierPreset(tierLevel).unlockPrice; }
+
+// Runs the checkout for a paid competition open. BETA: simulates a successful payment after a
+// short delay (no charge). LIVE: hand off to Stripe. Returns { ok, mode, reference? } or throws.
+async function processCheckout({ tierLevel, amount }) {
+  if (!PAYMENTS_LIVE) {
+    // BETA — simulated payment. No card details are collected and no money moves.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    return { ok: true, mode: "beta-sim", reference: "SIMULATED" };
+  }
+  // ---- STRIPE INTEGRATION POINT --------------------------------------------------------------
+  // TODO(stripe): create a Checkout Session / PaymentIntent for `amount` (AUD, inc. GST) on your
+  // backend, run the confirmation/redirect, and return { ok: true, mode: "stripe", reference }
+  // on success or { ok: false, error } on failure. Full contract in docs/STRIPE.md.
+  throw new Error("Live card payments aren't switched on yet.");
+}
 
 // ---- Host-configurable competition settings ----
 // The CORE rules are locked and never editable: lose = out, pick at least 24h before the
@@ -2192,12 +2217,99 @@ function InviteModal({ tier, onClose, theme }) {
 }
 function hoursLeft(tier) { return tier.lockTime ? Math.max(1, Math.round((tier.lockTime.getTime() - Date.now()) / (1000 * 60 * 60))) : 24; }
 
-function HostTab({ tiers, uid, isHostMode, isOwnerOf, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, onAddAdmin, onRemoveAdmin, onEnsureCode, now, theme }) {
+// Checkout step shown when opening a competition. In beta this simulates the payment; the same
+// component drives the real Stripe charge once PAYMENTS_LIVE is true.
+function CheckoutModal({ tierData, isFirstFree, theme, onCancel, onConfirm }) {
+  const preset = getTierPreset(tierData.tierLevel);
+  const amount = tierUnlockAmount(tierData.tierLevel, isFirstFree);
+  const gst = gstOf(amount);
+  const [state, setState] = useState("review"); // review | processing | error
+  const [error, setError] = useState("");
+  const money = (n) => `$${n.toFixed(2)}`;
+
+  const confirm = async () => {
+    if (amount === 0) {
+      onConfirm({ status: "free", amount: 0, gst: 0, currency: "AUD", tierLevel: tierData.tierLevel, mode: "free", reference: null });
+      return;
+    }
+    setState("processing"); setError("");
+    try {
+      const res = await processCheckout({ tierLevel: tierData.tierLevel, amount });
+      if (!res || !res.ok) throw new Error((res && res.error) || "Payment didn't go through.");
+      onConfirm({ status: PAYMENTS_LIVE ? "paid" : "simulated", amount, gst, currency: "AUD", tierLevel: tierData.tierLevel, mode: res.mode, reference: res.reference || null });
+    } catch (e) {
+      setState("error"); setError(e.message || "Payment didn't go through.");
+    }
+  };
+
+  const primaryLabel = state === "processing" ? "Processing…"
+    : amount === 0 ? "Create competition"
+    : PAYMENTS_LIVE ? `Pay ${money(amount)}` : `Simulate payment · ${money(amount)}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
+      <div className={`w-full max-w-sm rounded-2xl bg-neutral-800 border ${PANEL_BORDER} p-5`}>
+        <div className="flex items-center justify-between mb-3">
+          <h4 className="text-slate-100 font-semibold flex items-center gap-2"><Crown size={16} className="text-amber-400" /> Open your competition</h4>
+          <button onClick={onCancel} disabled={state === "processing"} className="text-neutral-500 hover:text-neutral-300 disabled:opacity-40"><X size={18} /></button>
+        </div>
+
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-black/30 p-3.5`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: preset.color }} />
+              <span className="text-sm font-semibold text-slate-100">{preset.name} tier</span>
+            </div>
+            <span className="text-[11px] text-neutral-500">{tierCapacityLabel(preset)}</span>
+          </div>
+          <p className="text-[11px] text-neutral-500 mt-0.5 truncate">{tierData.name}</p>
+          <div className="border-t adapt-border-10 my-3" />
+          {amount === 0 ? (
+            <>
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-slate-200">One-off setup fee</span>
+                <span className="font-scoreboard text-2xl text-teal-300">Free</span>
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1">Your first competition is on us.</p>
+            </>
+          ) : (
+            <>
+              <div className="flex items-baseline justify-between">
+                <span className="text-sm text-slate-200">One-off setup fee</span>
+                <span className={`font-scoreboard text-2xl ${theme.text}`}>{money(amount)}</span>
+              </div>
+              <p className="text-[11px] text-neutral-500 mt-1">Inc. GST — includes {money(gst)} GST. One-off, per competition.</p>
+            </>
+          )}
+        </div>
+
+        {amount > 0 && !PAYMENTS_LIVE && (
+          <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/5 p-3">
+            <p className="text-[11px] text-amber-300 font-semibold">Beta mode — simulated payment</p>
+            <p className="text-[11px] text-neutral-400 mt-0.5">No card is collected and nothing is charged. This runs the full checkout so it's ready for launch — real card payments go live when we come out of beta.</p>
+          </div>
+        )}
+
+        {error && <p className="text-[11px] text-rose-400 mt-3">{error}</p>}
+
+        <div className="flex gap-2 mt-4">
+          <button onClick={onCancel} disabled={state === "processing"} className="flex-1 rounded-lg border adapt-border-10 text-neutral-300 py-2.5 text-sm disabled:opacity-40">Cancel</button>
+          <button onClick={confirm} disabled={state === "processing"} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-2.5 text-sm disabled:opacity-60`}>{primaryLabel}</button>
+        </div>
+        <p className="text-[10px] text-neutral-500 mt-3 leading-relaxed">The setup fee opens and hosts this competition (it sets the max players). Any prize pool is organised by you outside the app — LMS never handles prize money.</p>
+      </div>
+    </div>
+  );
+}
+
+function HostTab({ tiers, uid, isHostMode, isOwnerOf, hasCreatedComp, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, onAddAdmin, onRemoveAdmin, onEnsureCode, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [cancelling, setCancelling] = useState(null);
   const [managingTierId, setManagingTierId] = useState(null);
   const [invitingTierId, setInvitingTierId] = useState(null);
+  const [pendingCreate, setPendingCreate] = useState(null); // form data awaiting checkout
+  const pendingIsFirstFree = pendingCreate ? (!hasCreatedComp && pendingCreate.tierLevel === FREE_TRIAL_TIER) : false;
   return (
     <div className="space-y-4 pb-6">
       {isHostMode ? (
@@ -2205,11 +2317,16 @@ function HostTab({ tiers, uid, isHostMode, isOwnerOf, onCreate, onUpdate, onDele
       ) : (
         <div className={`rounded-2xl border ${theme.borderSoft} bg-neutral-800 p-4`}>
           <div className="flex items-center gap-2 mb-1"><Crown size={16} className="text-amber-400" /><h4 className="text-sm font-semibold text-slate-100">Become a host</h4></div>
-          <p className="text-xs text-neutral-500">Run your own Last Man Standing for your mates. Pick a tier for how many players you need, set the lives and rules, then share the invite code. {PAYMENTS_ENABLED ? "Your first competition is free — larger tiers have a one-off setup fee." : "Free while we're in beta."} Any prize pool is organised by you outside the app.</p>
+          <p className="text-xs text-neutral-500">Run your own Last Man Standing for your mates. Pick a tier for how many players you need, set the lives and rules, then share the invite code. Your first competition is free — larger tiers have a one-off setup fee (simulated while we're in beta). Any prize pool is organised by you outside the app.</p>
         </div>
       )}
       {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ {isHostMode ? "Create new competition" : "Create my first competition"}</button>)}
-      {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={async (data) => { await onCreate(data); setCreating(false); }} />)}
+      {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={(data) => { setPendingCreate(data); setCreating(false); }} />)}
+      {pendingCreate && (
+        <CheckoutModal tierData={pendingCreate} isFirstFree={pendingIsFirstFree} theme={theme}
+          onCancel={() => { setPendingCreate(null); setCreating(true); }}
+          onConfirm={async (payment) => { const data = pendingCreate; setPendingCreate(null); await onCreate(data, payment); }} />
+      )}
       <div className="space-y-3">
         {tiers.map((tier) => {
           const closeTime = tier.lockTime || tier.startTime;
@@ -2568,22 +2685,15 @@ function AppShell({ user }) {
 
   // Whoever creates a competition owns it. ownerUid = full control; adminUids = co-hosts the
   // owner has authorised to help run it. hostUids covers both for quick permission checks.
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, marginsMode: !!data.marginsMode, code: genCode(), ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const createTier = (data, payment) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, marginsMode: !!data.marginsMode, payment: payment || null, code: genCode(), ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const addAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayUnion(uid) });
   const removeAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayRemove(uid) });
 
-  // Create wrapper with the pay-to-create scaffold. While PAYMENTS_ENABLED is false everything
-  // is free. Once Stripe is wired: a user's FIRST ever competition at the free-trial tier stays
-  // free; anything else routes through checkout for getTierPreset(tierLevel).unlockPrice before
-  // the competition is created. We stamp hasCreatedComp so the free trial can only be used once.
-  const handleCreateTier = async (data) => {
-    const isFreeOne = !profile.hasCreatedComp && data.tierLevel === FREE_TRIAL_TIER;
-    if (PAYMENTS_ENABLED && !isFreeOne) {
-      // TODO(stripe): launch checkout for getTierPreset(data.tierLevel).unlockPrice (inc. GST),
-      // and only create the competition on successful payment. Unreachable while payments are off.
-      return;
-    }
-    await createTier(data);
+  // Called by HostTab AFTER the checkout step resolves (a free open, a simulated beta payment,
+  // or — once PAYMENTS_LIVE is true — a real Stripe charge). `payment` is the record returned by
+  // the checkout; we stamp it on the competition and mark the free trial as used.
+  const handleCreateTier = async (data, payment) => {
+    await createTier(data, payment);
     if (!profile.hasCreatedComp) db.collection("users").doc(user.uid).set({ hasCreatedComp: true }, { merge: true });
   };
   const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, marginsMode: !!data.marginsMode }, { merge: true });
@@ -2693,7 +2803,7 @@ function AppShell({ user }) {
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
         {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} marginsMode={!!currentTier.marginsMode} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
-        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isHostMode={isHostMode} isOwnerOf={isOwnerOf} onCreate={handleCreateTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} onEnsureCode={ensureCode} now={now} theme={theme} />}
+        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isHostMode={isHostMode} isOwnerOf={isOwnerOf} hasCreatedComp={!!profile.hasCreatedComp} onCreate={handleCreateTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} onEnsureCode={ensureCode} now={now} theme={theme} />}
         {tab === "settings" && (
           <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={hostsAnything}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
