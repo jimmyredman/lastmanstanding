@@ -97,6 +97,13 @@
   ::-webkit-scrollbar-track { background: transparent; }
   .font-scoreboard { font-family: 'Teko', sans-serif; }
 
+  /* Brand wordmark — crisp and static (no cheap neon). Subtle depth only. */
+  .brand-word { letter-spacing: 0.015em; color: #f4f0e6; text-shadow: 0 1px 2px rgba(0,0,0,0.45); }
+  .app-light .brand-word { color: #16181d; text-shadow: 0 1px 0 rgba(255,255,255,0.55); }
+  .brand-emblem-wrap { position: relative; display: inline-flex; }
+  .brand-emblem-wrap::before { content: ""; position: absolute; inset: -26%; border-radius: 9999px; background: radial-gradient(circle, rgba(245,200,90,0.22), transparent 68%); filter: blur(10px); z-index: 0; }
+  .brand-emblem-wrap > svg { position: relative; z-index: 1; }
+
   @keyframes smokeDrift1 { 0% { transform: translate(-9%, -6%) scale(1); } 50% { transform: translate(7%, 5%) scale(1.2); } 100% { transform: translate(-9%, -6%) scale(1); } }
   @keyframes smokeDrift2 { 0% { transform: translate(8%, 6%) scale(1.15); } 50% { transform: translate(-7%, -5%) scale(0.92); } 100% { transform: translate(8%, 6%) scale(1.15); } }
   @keyframes glowPulse { 0%, 100% { text-shadow: 0 0 18px rgba(255,90,60,0.55), 0 0 40px rgba(255,60,40,0.3); } 50% { text-shadow: 0 0 28px rgba(255,110,70,0.8), 0 0 60px rgba(255,70,50,0.45); } }
@@ -234,6 +241,57 @@ const Palette = svgIcon(<><rect x="3" y="3" width="7.5" height="7.5" rx="1.2" />
 const User = svgIcon(<><circle cx="12" cy="8" r="3.5" /><path d="M4.5 20c0-4.1 3.4-7 7.5-7s7.5 2.9 7.5 7" /></>);
 const Ban = svgIcon(<><circle cx="12" cy="12" r="9" /><line x1="5.6" y1="5.6" x2="18.4" y2="18.4" /></>);
 const Zap = svgIcon(<polygon points="13 2 4 14 11 14 10 22 20 9 13 9 13 2" />);
+
+// ---- Brand logo ----
+// A crisp gold crown medallion + refined wordmark, used everywhere the brand appears so the logo
+// reads the same across the app. Each emblem gets unique gradient ids so multiple can coexist.
+let __lmsEmblemN = 0;
+function BrandEmblem({ size = 44, ring = true, className = "" }) {
+  const uid = useMemo(() => "be" + (++__lmsEmblemN), []);
+  const g = uid + "g", rg = uid + "r";
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" fill="none" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id={g} x1="24" y1="13" x2="24" y2="34" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#ffe9a8" /><stop offset="1" stopColor="#cf9a34" />
+        </linearGradient>
+        <linearGradient id={rg} x1="7" y1="7" x2="41" y2="41" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#f6d27a" /><stop offset="1" stopColor="#a9761f" />
+        </linearGradient>
+      </defs>
+      {ring && (<>
+        <circle cx="24" cy="24" r="22" stroke={`url(#${rg})`} strokeWidth="1.6" opacity="0.95" />
+        <circle cx="24" cy="24" r="18.5" stroke={`url(#${rg})`} strokeWidth="0.8" opacity="0.28" />
+      </>)}
+      <path d="M13 20 L17.5 25.5 L24 15.5 L30.5 25.5 L35 20 L33 30 L15 30 Z" fill={`url(#${g})`} stroke="#8a6015" strokeWidth="0.6" strokeLinejoin="round" />
+      <rect x="14.5" y="29.6" width="19" height="3.4" rx="1.2" fill={`url(#${g})`} stroke="#8a6015" strokeWidth="0.4" />
+      <circle cx="13" cy="20" r="1.5" fill="#fff3d0" />
+      <circle cx="35" cy="20" r="1.5" fill="#fff3d0" />
+      <circle cx="24" cy="15.5" r="1.9" fill="#2dd4bf" stroke="#0b3b36" strokeWidth="0.5" />
+    </svg>
+  );
+}
+
+function BrandLockup({ layout = "stacked", emblemSize = 48, className = "", showBeta = false }) {
+  if (layout === "inline") {
+    return (
+      <div className={`flex items-center gap-2 ${className}`}>
+        <BrandEmblem size={emblemSize} />
+        <span className="brand-word font-scoreboard text-2xl leading-none">LAST MAN STANDING</span>
+      </div>
+    );
+  }
+  return (
+    <div className={`flex flex-col items-center ${className}`}>
+      <span className="brand-emblem-wrap"><BrandEmblem size={emblemSize} /></span>
+      <div className="brand-word font-scoreboard text-center leading-[0.82] mt-3">
+        <div className="text-4xl sm:text-5xl">LAST MAN</div>
+        <div className="text-4xl sm:text-5xl">STANDING</div>
+      </div>
+      {showBeta && <span className="mt-3 text-[10px] tracking-[0.3em] uppercase text-amber-300/80 border border-amber-400/30 rounded-full px-3 py-1">Beta</span>}
+    </div>
+  );
+}
 
 /* ---- neon-outline nav icons (hand-built SVG, no external assets) ---- */
 function NavSvg({ active, children }) {
@@ -952,13 +1010,8 @@ function AuthScreen() {
       </div>
 
       <div className="max-w-sm mx-auto w-full relative z-10">
-        <div className="flex flex-col items-center gap-3 mb-8">
-          <div className="relative">
-            <div className="absolute inset-0 rounded-full blur-2xl opacity-60" style={{ background: "radial-gradient(circle, rgba(255,80,55,0.55), transparent 70%)" }} />
-            <Crown className="relative text-amber-400 crown-glow" size={34} />
-          </div>
-          <h1 className="neon-title font-scoreboard text-4xl tracking-wide text-center" style={{ color: "#fff1e0" }}>LAST MAN STANDING</h1>
-          <span className="text-[10px] tracking-[0.3em] uppercase text-amber-300/80 border border-amber-400/30 rounded-full px-3 py-1">Beta</span>
+        <div className="mb-8">
+          <BrandLockup layout="stacked" emblemSize={56} showBeta />
         </div>
 
         <div className={`rounded-2xl border adapt-border-10 p-1 mb-6`} style={{ backgroundColor: "rgba(255,255,255,0.03)", backdropFilter: "blur(6px)" }}>
@@ -1703,7 +1756,9 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
   const [lives, setLives] = useState(initial?.lives ?? 1);
   const [reusePolicy, setReusePolicy] = useState(initial?.reusePolicy || "nextRound");
   const [marginsMode, setMarginsMode] = useState(initial?.marginsMode || false);
-  const canSave = name && tierLevel && roundId && lockAt && lives >= 1;
+  const nowLocalValue = toDatetimeLocalValue(new Date());
+  const lockInPast = lockAt ? new Date(lockAt).getTime() <= Date.now() : false;
+  const canSave = name && tierLevel && roundId && lockAt && lives >= 1 && !lockInPast;
   const selectedRound = getRound(roundId);
   const roundAlreadyStarted = selectedRound.firstKickoff.getTime() <= Date.now();
 
@@ -1743,8 +1798,12 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
       </div>
       <div>
         <label className="text-[11px] text-neutral-500 mb-1 block">Select time and date for lockout of picks</label>
-        <input value={lockAt} onChange={(e) => setLockAt(e.target.value)} type="datetime-local" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} />
-        <p className="text-[10px] text-neutral-500 mt-1">Defaults to 24 hours before kickoff of the first game — adjust if you want it earlier or later.</p>
+        <input value={lockAt} min={nowLocalValue} onChange={(e) => setLockAt(e.target.value)} type="datetime-local" className={`w-full rounded-lg bg-black/30 border ${lockInPast ? "border-rose-500/50" : PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} />
+        {lockInPast ? (
+          <p className="text-[11px] text-rose-400 mt-1 flex items-start gap-1"><ShieldAlert size={12} className="mt-0.5 shrink-0" /> That lockout time has already passed — pick a time in the future.</p>
+        ) : (
+          <p className="text-[10px] text-neutral-500 mt-1">Defaults to 24 hours before kickoff of the first game — adjust if you want it earlier or later.</p>
+        )}
       </div>
       <div className="rounded-lg border adapt-border-10 bg-black/20 p-3 space-y-3">
         <div className="text-[11px] font-semibold text-neutral-300">Competition settings</div>
@@ -2239,6 +2298,7 @@ function CheckoutModal({ tierData, isFirstFree, theme, onCancel, onConfirm }) {
 
   const confirm = async () => {
     if (amount === 0) {
+      playDingSound();
       onConfirm({ status: "free", amount: 0, gst: 0, currency: "AUD", tierLevel: tierData.tierLevel, mode: "free", reference: null });
       return;
     }
@@ -2246,6 +2306,7 @@ function CheckoutModal({ tierData, isFirstFree, theme, onCancel, onConfirm }) {
     try {
       const res = await processCheckout({ tierLevel: tierData.tierLevel, amount });
       if (!res || !res.ok) throw new Error((res && res.error) || "Payment didn't go through.");
+      playDingSound(); // noticeable "paid!" chime
       onConfirm({ status: PAYMENTS_LIVE ? "paid" : "simulated", amount, gst, currency: "AUD", tierLevel: tierData.tierLevel, mode: res.mode, reference: res.reference || null });
     } catch (e) {
       setState("error"); setError(e.message || "Payment didn't go through.");
@@ -2767,7 +2828,7 @@ function AppShell({ user }) {
     <div className="min-h-screen text-slate-100 pb-20" style={{ backgroundColor: BG, color: "var(--app-text)" }}>
       <header className="lms-header sticky top-0 z-30 px-5 pt-5 pb-4 flex items-center justify-between">
         <button onClick={() => setScreen("sport")} className="flex items-center gap-1 text-neutral-400 text-xs hover:text-neutral-200 transition"><ChevronLeft size={16} /> Sport</button>
-        <div className="flex items-center gap-2"><Crown className="text-amber-400 crown-glow" size={19} /><h1 className="font-scoreboard text-2xl tracking-wide">LAST MAN STANDING</h1></div>
+        <BrandLockup layout="inline" emblemSize={24} />
         <span className="text-[10px] uppercase tracking-widest text-neutral-500 border adapt-border-10 rounded-full px-2 py-1">{sport}</span>
       </header>
 
@@ -2919,9 +2980,9 @@ function InviteLandingScreen({ params, onContinue }) {
     <div className="min-h-screen text-slate-100 flex flex-col justify-center px-6 relative overflow-hidden" style={{ backgroundColor: "#050506" }}>
       <div className="smoke-layer-a" /><div className="smoke-layer-b" />
       <div className="relative z-10 max-w-sm mx-auto w-full">
-        <div className="text-center mb-6">
-          <span className="text-[11px] uppercase tracking-[0.35em] text-rose-400">You're invited</span>
-          <h1 className="neon-title font-scoreboard text-4xl tracking-wide mt-1" style={{ color: "#fff1e0" }}>LAST MAN STANDING</h1>
+        <div className="mb-6">
+          <p className="text-center text-[11px] uppercase tracking-[0.35em] text-amber-300/80 mb-3">You're invited</p>
+          <BrandLockup layout="stacked" emblemSize={48} />
         </div>
 
         <div className="relative overflow-hidden rounded-2xl border border-teal-400/40 bg-neutral-800 p-5" style={{ boxShadow: "0 0 30px rgba(45,212,191,0.15)" }}>
@@ -2962,7 +3023,7 @@ function TapToEnterScreen({ onEnter }) {
       <div className="smoke-layer-a" style={{ filter: "blur(24px) grayscale(1)" }} />
       <div className="smoke-layer-b" style={{ filter: "blur(30px) grayscale(1)" }} />
       <div className="relative z-10 text-center px-6">
-        <Crown className="text-amber-400 crown-glow mx-auto mb-5" size={30} />
+        <div className="flex justify-center mb-5"><span className="brand-emblem-wrap"><BrandEmblem size={38} /></span></div>
         <p className="tap-pulse text-neutral-300 text-sm tracking-[0.35em] uppercase">Tap to enter</p>
       </div>
     </div>
