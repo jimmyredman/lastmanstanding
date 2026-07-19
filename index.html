@@ -439,6 +439,9 @@ const NRL_ROUNDS = [
   },
 ];
 function getRound(roundId) { return NRL_ROUNDS.find((r) => r.id === roundId) || NRL_ROUNDS[0]; }
+// Rounds a host can still open a competition for — their first game hasn't kicked off yet.
+function upcomingRounds() { return NRL_ROUNDS.filter((r) => r.firstKickoff.getTime() > Date.now()); }
+function firstUpcomingRoundId() { const u = upcomingRounds(); return (u[0] || NRL_ROUNDS[NRL_ROUNDS.length - 1]).id; }
 const ALL_TEAMS = [...new Set(NRL_ROUNDS.flatMap((r) => r.fixtures.flatMap((f) => [f.home, f.away])))];
 
 // Fixed tier presets. The host pays the unlock price once (outside the app) to run a
@@ -836,6 +839,28 @@ function playDingSound() {
     const now = ctx.currentTime;
     playBellStrike(ctx, now, 850);
     playBellStrike(ctx, now + 0.32, 850);
+  } catch (e) { /* audio blocked or unavailable */ }
+}
+
+// Apple Pay-style confirmation — two clean ascending tones, short and crisp.
+function playPaySuccessSound() {
+  try {
+    const ctx = getSharedAudioCtx();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const notes = [[783.99, 0.0, 0.13], [1174.66, 0.11, 0.22]]; // G5 → D6, quick rise
+    notes.forEach(([freq, t0, dur]) => {
+      const t = now + t0;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
   } catch (e) { /* audio blocked or unavailable */ }
 }
 
@@ -1746,10 +1771,10 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
 function HostTierForm({ initial, onSave, onCancel, theme }) {
   const [name, setName] = useState(initial?.name || "");
   const [tierLevel, setTierLevel] = useState(initial?.tierLevel || "bronze");
-  const [roundId, setRoundId] = useState(initial?.roundId || NRL_ROUNDS[0].id);
+  const [roundId, setRoundId] = useState(initial?.roundId || firstUpcomingRoundId());
   const [lockAt, setLockAt] = useState(() => {
     if (initial?.lockTime) return toDatetimeLocalValue(initial.lockTime);
-    const round = getRound(initial?.roundId || NRL_ROUNDS[0].id);
+    const round = getRound(initial?.roundId || firstUpcomingRoundId());
     return toDatetimeLocalValue(new Date(round.firstKickoff.getTime() - 1000 * 60 * 60 * 24));
   });
   const [rules, setRules] = useState(initial ? (initial.rules || "") : DEFAULT_RULES);
@@ -1767,6 +1792,9 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
     const round = getRound(id);
     setLockAt(toDatetimeLocalValue(new Date(round.firstKickoff.getTime() - 1000 * 60 * 60 * 24)));
   };
+  // Only offer rounds that haven't kicked off yet — but if we're editing a competition that's
+  // already on a past round, keep that one in the list so the selection stays valid.
+  const roundOptions = NRL_ROUNDS.filter((r) => r.firstKickoff.getTime() > Date.now() || r.id === roundId);
 
   return (
     <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 space-y-3`}>
@@ -1790,10 +1818,10 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
       <div>
         <label className="text-[11px] text-neutral-500 mb-1 block">Select round to start</label>
         <select value={roundId} onChange={(e) => onRoundChange(e.target.value)} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`}>
-          {NRL_ROUNDS.map((r) => <option key={r.id} value={r.id}>{r.label} — kicks off {formatStartLabel(r.firstKickoff)}</option>)}
+          {roundOptions.map((r) => <option key={r.id} value={r.id}>{r.label} — kicks off {formatStartLabel(r.firstKickoff)}</option>)}
         </select>
         {roundAlreadyStarted && (
-          <p className="text-[11px] text-rose-400 mt-1 flex items-start gap-1"><ShieldAlert size={12} className="mt-0.5 shrink-0" /> This round's first game has already kicked off — entries will show as closed immediately. Pick a later round, or this is likely fine if you're intentionally running a mid-round test.</p>
+          <p className="text-[11px] text-rose-400 mt-1 flex items-start gap-1"><ShieldAlert size={12} className="mt-0.5 shrink-0" /> This round's first game has already kicked off — entries will show as closed immediately. Pick a later round.</p>
         )}
       </div>
       <div>
@@ -2298,7 +2326,7 @@ function CheckoutModal({ tierData, isFirstFree, theme, onCancel, onConfirm }) {
 
   const confirm = async () => {
     if (amount === 0) {
-      playDingSound();
+      playPaySuccessSound();
       onConfirm({ status: "free", amount: 0, gst: 0, currency: "AUD", tierLevel: tierData.tierLevel, mode: "free", reference: null });
       return;
     }
@@ -2306,7 +2334,7 @@ function CheckoutModal({ tierData, isFirstFree, theme, onCancel, onConfirm }) {
     try {
       const res = await processCheckout({ tierLevel: tierData.tierLevel, amount });
       if (!res || !res.ok) throw new Error((res && res.error) || "Payment didn't go through.");
-      playDingSound(); // noticeable "paid!" chime
+      playPaySuccessSound(); // Apple Pay-style confirmation chime
       onConfirm({ status: PAYMENTS_LIVE ? "paid" : "simulated", amount, gst, currency: "AUD", tierLevel: tierData.tierLevel, mode: res.mode, reference: res.reference || null });
     } catch (e) {
       setState("error"); setError(e.message || "Payment didn't go through.");
@@ -2958,7 +2986,7 @@ function SplashScreen({ onFinish }) {
         {stage >= 1 && (
           <div className="crown-bloom absolute" style={{ left: CX, top: CY }}>
             <div style={{ position: "absolute", inset: -16, borderRadius: "9999px", background: "radial-gradient(circle, rgba(255,190,90,0.45), transparent 70%)", filter: "blur(9px)" }} />
-            <Crown className="relative text-amber-400" size={46} style={{ filter: "drop-shadow(0 0 16px rgba(255,190,90,0.65))" }} />
+            <div className="relative" style={{ filter: "drop-shadow(0 0 16px rgba(255,190,90,0.55))" }}><BrandEmblem size={54} /></div>
           </div>
         )}
         {stage >= 2 && <h1 className="lms-mark font-scoreboard text-4xl sm:text-5xl whitespace-nowrap absolute text-center" style={{ left: "50%", top: 214, transform: "translateX(-50%)", color: "#f4f1ea" }}>LAST MAN STANDING</h1>}
