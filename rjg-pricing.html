@@ -166,9 +166,9 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v44 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
-const SEED_PRICES_DATE = "18 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
-const MASTER_PRICES_TS = Date.parse("2026-07-18");   // release time of the current master list; devices last updated before this are flagged out of date
+const APP_VERSION = "v45 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
+const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -358,15 +358,19 @@ function SettingsScreen(){
   // Re-load the built-in RJG price register. Merge-by-code refreshes rates on
   // existing items and adds any that are missing — no duplicates.
   const restoreDefaults = async () => {
-    if (items.length && !confirm("Load the built-in RJG price list? Existing items with matching codes are refreshed; nothing is deleted.")) return;
+    if (items.length && !confirm("Replace your price list with the built-in RJG list (" + SEED_PRICES_DATE + ")? Your current items are removed and replaced — anything not in the built-in list will be gone.")) return;
     try {
       const res = await fetch("./vendor/seed-items.json", { cache: "no-cache" });
       if (!res.ok) throw new Error("fetch");
       const raw = await res.json();
-      const r = await bulkUpsertItems(raw.map(a => ({ ...a, rate: num(a.rate) })));
+      for (const it of items) await dbDel("items", it.id);   // full replace — clear then load
+      const t0 = now();
+      const fresh = raw.map((a, i) => ({ ...a, rate: num(a.rate), id: uid() + "-" + i, updatedAt: t0 }));
+      for (const r of fresh) await dbPut("items", r);
+      setItems(fresh);
       await dbPut("kv", true, "seeded");
-      await saveSettings({ pricesUpdatedAt: now(), pricesSource: "Built-in RJG list (" + SEED_PRICES_DATE + ")" });
-      notify("Default price list loaded — " + r.created + " added, " + r.updated + " updated");
+      await saveSettings({ pricesUpdatedAt: MASTER_PRICES_TS, pricesSource: "Built-in RJG list (" + SEED_PRICES_DATE + ")" });
+      notify("Price list replaced — " + fresh.length + " items");
     } catch (e) { alert("Couldn't load the default price list."); }
   };
   // Clear the offline cache + service worker and reload the newest build.
@@ -457,7 +461,7 @@ function SettingsScreen(){
         <div className="flex gap-2 flex-wrap">
           <button className="btn btn-ghost" onClick={backup}><IcUpload size={16} /> Export backup</button>
           <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} style={{ transform: "rotate(180deg)" }} /> Restore backup<input type="file" accept="application/json" className="hidden" onChange={restore} /></label>
-          <button className="btn btn-ghost" onClick={restoreDefaults}><IcPrice size={16} /> Load default price list</button>
+          <button className="btn btn-ghost" onClick={restoreDefaults}><IcPrice size={16} /> Load / reset to built-in price list</button>
         </div>
         <div className="text-xs" style={{ color: "var(--muted)" }}>{items.length} price items · {projects.length} jobs stored.</div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -561,7 +565,7 @@ function ImportModal({ open, onClose }){
 
   const guess = (hs) => {
     const find = (...keys) => { const i = hs.findIndex(h => keys.some(k => String(h).toLowerCase().replace(/[^a-z0-9]/g, "").includes(k))); return i === -1 ? "" : String(i); };
-    return { code: find("code", "sku", "itemno", "ref"), description: find("desc", "item", "name", "product"), category: find("categ", "group", "trade", "classific"), type: find("costtype", "type", "kind"), unit: find("unit", "uom", "measure"), rate: find("rate", "cost", "price", "unitcost", "sell", "amount", "hourly"), supplier: find("supplier", "vendor", "brand") };
+    return { code: find("code", "sku", "itemno", "ref"), description: find("desc", "item", "name", "product"), category: find("categ", "group", "trade", "classific"), type: find("costtype", "type", "kind"), unit: find("unit", "uom", "measure"), rate: find("rateexgst", "rate", "unitcost", "unitprice", "sell", "price", "amount", "hourly"), supplier: find("supplier", "vendor", "brand") };
   };
   const normType = (v) => { const s = String(v || "").toLowerCase(); return COST_TYPES.find(t => s.includes(t.toLowerCase())) || (/labou?r|hour|wage/.test(s) ? "Labour" : /equip|plant|machine/.test(s) ? "Equipment" : /crew|gang/.test(s) ? "Crew" : /sub|contractor/.test(s) ? "Subcontractor" : ""); };
 
@@ -732,7 +736,7 @@ function PricingScreen(){
       {pricesOutOfDate && (
         <div className="rounded-lg p-2.5 mb-3 text-xs flex items-start gap-2" style={{ background: "rgba(234,179,8,.12)", border: "1px solid rgba(234,179,8,.5)", color: "#92640a" }}>
           <span style={{ fontSize: 15, lineHeight: "16px" }}>⚠️</span>
-          <span>Your price list may be out of date — the current master is dated <b>{SEED_PRICES_DATE}</b>. Import the latest file (<b>Import</b>), or load the built-in list under <b>Settings → Load default price list</b>.</span>
+          <span>Your price list may be out of date — the current master is dated <b>{SEED_PRICES_DATE}</b>. Import the latest file (<b>Import</b>), or reset to the built-in list under <b>Settings → Load / reset to built-in price list</b>.</span>
         </div>
       )}
 
