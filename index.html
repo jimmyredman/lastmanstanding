@@ -428,6 +428,16 @@ async function processCheckout({ tierLevel, amount }) {
   throw new Error("Live card payments aren't switched on yet.");
 }
 
+// A short badge describing what a host paid to open a competition. Competitions created before
+// the payment step existed have no `payment` field — they were opened for free.
+function paymentStatusBadge(payment) {
+  if (!payment || payment.status === "free" || !payment.amount) return { text: "Free", tone: "teal" };
+  const amt = `$${Number(payment.amount).toFixed(0)}`;
+  if (payment.status === "paid") return { text: `${amt} paid`, tone: "teal" };
+  if (payment.status === "simulated") return { text: `${amt} · simulated`, tone: "amber" };
+  return { text: amt, tone: "neutral" };
+}
+
 // ---- Host-configurable competition settings ----
 // The CORE rules are locked and never editable: lose = out, pick at least 24h before the
 // round's first game, no pick = random team auto-assigned, and a team-reuse restriction
@@ -2340,8 +2350,11 @@ function HostTab({ tiers, uid, isHostMode, isOwnerOf, hasCreatedComp, onCreate, 
               <>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-slate-100 font-medium flex items-center gap-2">{tier.name}
+                    <div className="text-slate-100 font-medium flex items-center gap-2 flex-wrap">{tier.name}
                       {!owner && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-400/10 text-sky-300">Co-host</span>}
+                      {owner && (() => { const pay = paymentStatusBadge(tier.payment); return (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${pay.tone === "teal" ? "bg-teal-400/10 text-teal-300" : pay.tone === "amber" ? "bg-amber-400/10 text-amber-300" : "bg-neutral-700 text-neutral-300"}`}>{pay.text}</span>
+                      ); })()}
                       {tier.cancelled && <span className="text-[10px] text-rose-400">(Cancelled)</span>}
                     </div>
                     <div className="text-xs text-neutral-500">{getTierPreset(tier.tierLevel).name} · {tier.entries}{getTierPreset(tier.tierLevel).maxPlayers === null ? "" : `/${getTierPreset(tier.tierLevel).maxPlayers}`} entered · starts {tier.startLabel}</div>

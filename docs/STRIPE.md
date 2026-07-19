@@ -28,23 +28,34 @@ Called only for paid opens (free opens skip it). It must:
 
 `amount` is the GST-inclusive total in **dollars** (convert to cents for Stripe: `amount * 100`).
 
+## Already written for you
+
+- **`stripe/create-payment-intent.js`** — a complete Vercel serverless function that creates a
+  PaymentIntent for the chosen tier (prices set server-side, in cents, inc. GST). It's parked in
+  `/stripe` so it does **not** affect the current static deploy.
+- **`stripe/package.snippet.json`** — the one dependency (`stripe`) to add to a root `package.json`.
+
 ## Steps to go live
 
 1. **Stripe account** — create one, grab the publishable + secret keys (test keys first).
-2. **Backend endpoint** — Stripe needs a server; the app is currently static. Options:
-   - a Vercel Serverless Function (requires the project to allow functions), or
-   - a small Cloud Function / other backend.
-   It creates a Checkout Session or PaymentIntent for `amount * 100` AUD and returns the client
-   secret / session URL. **Never** put the secret key in `index.html`.
-3. **Wire `processCheckout`** — replace the `TODO(stripe)` block: call your endpoint, run
-   `stripe.confirmPayment` (or redirect to Checkout), and return the contract shape above.
-4. **Verify server-side** — confirm the PaymentIntent succeeded (webhook or a status check) before
-   trusting the client. For hard enforcement, gate competition creation behind a verified payment
-   in Firestore rules or a Cloud Function rather than the client alone.
-5. **Flip the switch** — set `PAYMENTS_LIVE = true`. The checkout button changes from
-   "Simulate payment" to "Pay $X" automatically; no other code changes needed.
-6. **Test** — Stripe test cards (e.g. `4242 4242 4242 4242`), confirm the `payment` record on the
-   created competition reads `status: "paid"`, then switch to live keys.
+2. **Activate the backend** — move `stripe/create-payment-intent.js` to `api/create-payment-intent.js`,
+   add the dep from `stripe/package.snippet.json` to a root `package.json`, and set
+   `STRIPE_SECRET_KEY` in Vercel → Project → Settings → Environment Variables. **Never** put the
+   secret key in `index.html`. (Adding an `/api` folder turns the project into a functions project;
+   Vercel keeps serving `index.html` statically and builds `/api` as functions — no build script.)
+3. **Load Stripe.js** — add `<script src="https://js.stripe.com/v3"></script>` to `index.html`
+   (and allow `js.stripe.com` / `api.stripe.com` if you add a CSP).
+4. **Wire `processCheckout`** — replace the `TODO(stripe)` block: `POST` to
+   `/api/create-payment-intent` with `{ tierLevel }`, then confirm the returned `clientSecret` with
+   Stripe Elements (`stripe.confirmPayment`). Return `{ ok: true, mode: "stripe", reference }` on
+   success (use the PaymentIntent id as `reference`) or `{ ok: false, error }` on failure.
+5. **Verify server-side** — confirm the PaymentIntent actually succeeded (a Stripe webhook, or a
+   status re-check) before trusting the client. For hard enforcement, gate competition creation
+   behind a verified payment in a Cloud Function rather than the client alone.
+6. **Flip the switch** — set `PAYMENTS_LIVE = true` in `index.html`. The checkout button changes
+   from "Simulate payment · $X" to "Pay $X" automatically; no other client changes needed.
+7. **Test** — Stripe test cards (e.g. `4242 4242 4242 4242`), confirm the `payment` record on the
+   created competition reads `status: "paid"` with the PaymentIntent id, then switch to live keys.
 
 ## Notes
 

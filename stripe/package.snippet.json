@@ -1,0 +1,6 @@
+{
+  "_comment": "Merge these into (or create) a root package.json when you move the function into /api. No build script is needed — Vercel serves index.html statically and builds /api as serverless functions. Client-side needs Stripe.js loaded from https://js.stripe.com/v3 (add it to index.html's CSP/script tags when going live).",
+  "dependencies": {
+    "stripe": "^17.0.0"
+  }
+}
