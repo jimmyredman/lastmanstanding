@@ -136,6 +136,13 @@
   .shock-ring { position: absolute; left: 50%; bottom: -6px; width: 220px; height: 56px; border-radius: 50%; border: 2px solid rgba(220,210,195,0.5); animation: shockRing 0.75s cubic-bezier(.2,.7,.3,1) both; }
   @keyframes crackIn { 0% { stroke-dashoffset: 130; opacity: 0; } 25% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0.85; } }
   .crack-line { stroke-dasharray: 130; animation: crackIn 0.4s ease-out both; }
+  /* Heavy 3D stone-block lettering — extruded edges + cast shadow so words read as solid
+     concrete raised out of the cracked slab, not flat glowing text. */
+  .stone-word { color: #938c7f; -webkit-text-stroke: 0.6px rgba(20,17,13,0.55);
+    text-shadow: 0 1px 0 #575249, 0 2px 0 #4d483f, 0 3px 0 #443f37, 0 4px 0 #3a362e, 0 5px 0 #312d26, 0 6px 2px rgba(0,0,0,0.4), 0 11px 22px rgba(0,0,0,0.78); }
+  @keyframes crackGrow { 0% { stroke-dashoffset: var(--len); opacity: 0.12; } 100% { stroke-dashoffset: 0; opacity: 1; } }
+  .crack { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: crackGrow 0.5s cubic-bezier(.15,.85,.3,1) both; }
+  .concrete-base { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 42%, #34302a 0%, #24211b 45%, #16130e 100%); }
 
   @keyframes groundShake1 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
   @keyframes groundShake2 { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-5px, 2px); } 40% { transform: translate(4px, -3px); } 60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); } }
@@ -482,6 +489,11 @@ const SPORTS = [
 
 const BG = "var(--app-bg)";
 const PANEL_BORDER = "adapt-border-10";
+const FONT_SIZES = [
+  { id: "small", label: "Small", px: "16px" },
+  { id: "medium", label: "Medium", px: "17.5px" },
+  { id: "large", label: "Large", px: "19px" },
+];
 
 function formatCountdown(ms) {
   if (ms <= 0) return "Started";
@@ -1198,10 +1210,31 @@ function FixtureRow({ home, away, myPick, lockedTeams, locked, onSelect, theme }
   return (<div className="flex items-center gap-2">{renderSide(home, "left")}<span className="text-[11px] text-neutral-500 shrink-0">vs</span>{renderSide(away, "right")}</div>);
 }
 
+function LeaveCompetition({ active, onForfeit, onLeave }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4">
+      {!open ? (
+        <button onClick={() => setOpen(true)} className="w-full text-center text-xs text-neutral-500 hover:text-neutral-300 underline">Forfeit or leave this competition</button>
+      ) : (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-4 space-y-2">
+          <p className="text-xs text-neutral-400 leading-relaxed">This only affects your spot in the app. Any buy-in or prize is between you and your host — sort that out with them directly.</p>
+          {active && (
+            <button onClick={() => { if (confirm("Forfeit this competition? You'll be marked out for good, but stay listed in the standings. This can't be undone.")) onForfeit(); }} className="w-full rounded-lg bg-neutral-700 hover:bg-neutral-600 text-slate-100 py-2.5 text-sm font-semibold">Forfeit — concede, I'm out</button>
+          )}
+          <button onClick={() => { if (confirm("Leave and remove yourself from this competition entirely? You'll disappear from it and free up your spot. This can't be undone.")) onLeave(); }} className="w-full rounded-lg bg-rose-500/90 hover:bg-rose-500 text-white py-2.5 text-sm font-semibold">Leave &amp; remove me</button>
+          <button onClick={() => setOpen(false)} className="w-full text-center text-xs text-neutral-500 py-1">Cancel</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving, stamping }) {
   if (eliminated) {
     const copy = {
       eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who's last standing." },
+      forfeited: { title: "You forfeited", body: "You conceded this competition. You can join another one from Compete." },
       kicked: { title: "You've been removed from this competition", body: "Your host has removed you from this competition. Reach out to them if you think this is a mistake." },
       cancelled: { title: "This competition was cancelled", body: "Your host cancelled this competition. Head to Compete to join another one." },
     }[entryStatus] || { title: "You're out this round", body: "You're no longer active in this competition." };
@@ -1238,7 +1271,7 @@ function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown,
       ) : (
         <>
           <div className="flex items-center justify-between">
-            <p className="text-xs text-neutral-500">Tap a team to make it your pick. You can't reuse a team you've already won with.</p>
+            <p className="text-xs text-neutral-500">Tap a team to pick them. If they lose you lose a life — greyed-out teams can't be reused under this competition's rules.</p>
             <span className="text-[10px] uppercase tracking-widest text-neutral-500 shrink-0 ml-2">{round.label}</span>
           </div>
           <div className="space-y-3">
@@ -1512,18 +1545,34 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
 
       <div>
         <h4 className="text-sm font-semibold text-neutral-300 mb-2 flex items-center gap-2"><Palette size={14} /> Appearance</h4>
-        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
-          <p className="text-xs text-neutral-500 mb-3">Choose how the app looks.</p>
-          <div className="grid grid-cols-2 gap-2">
-            {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((opt) => {
-              const active = (profile.theme || (profile.bgMode === "white" || profile.bgMode === "sky" ? "light" : "dark")) === opt.id;
-              return (
-                <button key={opt.id} onClick={() => onProfileChange({ theme: opt.id })}
-                  className={`rounded-lg border py-2.5 text-sm font-semibold transition ${active ? `${theme.borderHalf} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300 adapt-hover"}`}>
-                  {opt.label}
-                </button>
-              );
-            })}
+        <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4 space-y-4`}>
+          <div>
+            <p className="text-xs text-neutral-500 mb-2">Theme</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[{ id: "dark", label: "Dark" }, { id: "light", label: "Light" }].map((opt) => {
+                const active = (profile.theme || (profile.bgMode === "white" || profile.bgMode === "sky" ? "light" : "dark")) === opt.id;
+                return (
+                  <button key={opt.id} onClick={() => onProfileChange({ theme: opt.id })}
+                    className={`rounded-lg border py-2.5 text-sm font-semibold transition ${active ? `${theme.borderHalf} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300 adapt-hover"}`}>
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs text-neutral-500 mb-2">Text size</p>
+            <div className="grid grid-cols-3 gap-2">
+              {FONT_SIZES.map((fs) => {
+                const active = (profile.fontSize || "small") === fs.id;
+                return (
+                  <button key={fs.id} onClick={() => onProfileChange({ fontSize: fs.id })}
+                    className={`rounded-lg border py-2.5 text-sm font-semibold transition ${active ? `${theme.borderHalf} ${theme.bgSoft} ${theme.text}` : "adapt-border-10 text-neutral-300 adapt-hover"}`}>
+                    {fs.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -1538,18 +1587,24 @@ function SettingsTab({ profile, uid, onSaveNameEmail, onProfileChange, accent, o
                   <div className="text-slate-200">{h.tierName}</div>
                   <div className="text-[10px] text-neutral-500">
                     {h.status === "eliminated" && "Eliminated"}
+                    {h.status === "forfeited" && "Forfeited"}
                     {h.status === "kicked" && "Removed by host"}
                     {h.status === "cancelled" && "Competition cancelled"}
                   </div>
                 </div>
                 <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${h.status === "cancelled" ? "bg-sky-400/10 text-sky-300" : h.status === "kicked" ? "bg-rose-500/10 text-rose-400" : "bg-neutral-700 text-neutral-300"}`}>
-                  {h.status === "cancelled" ? "Cancelled" : h.status === "kicked" ? "Kicked" : "Lost"}
+                  {h.status === "cancelled" ? "Cancelled" : h.status === "kicked" ? "Kicked" : h.status === "forfeited" ? "Forfeited" : "Lost"}
                 </span>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      <div className={`rounded-xl border ${PANEL_BORDER} bg-neutral-800 p-4`}>
+        <h4 className="text-xs font-semibold text-neutral-300 mb-1">About Last Man Standing</h4>
+        <p className="text-[11px] text-neutral-500 leading-relaxed">Last Man Standing is a free service that only hosts and tracks tipping competitions. It doesn't run, hold, collect or pay out any money or prizes. Any buy-in, prize pool or payment is arranged privately between you and your host — outside this app, at your own cost and risk. For entertainment only. You must be 18+ to use the app.</p>
+      </div>
 
       <PinSettings uid={uid} theme={theme} onChange={setHasPinForDevice} />
 
@@ -2087,9 +2142,12 @@ function AppShell({ user }) {
   const accent = "teal";
   // Two themes only. Back-compat: earlier light-ish bg choices map to light, everything else dark.
   const themePref = profile?.theme || ((profile?.bgMode === "white" || profile?.bgMode === "sky") ? "light" : "dark");
+  const fontSize = profile?.fontSize || "small";
   useEffect(() => {
     document.documentElement.classList.toggle("app-light", themePref === "light");
-  }, [themePref]);
+    const fs = FONT_SIZES.find((s) => s.id === fontSize) || FONT_SIZES[0];
+    document.documentElement.style.fontSize = fs.px;
+  }, [themePref, fontSize]);
   const theme = useAccentTheme(accent);
 
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(id); }, []);
@@ -2296,6 +2354,14 @@ function AppShell({ user }) {
     return res;
   };
 
+  // A player can forfeit (concede — marked out but stays listed) or leave entirely.
+  const forfeitEntry = (tierId) => db.collection("entries").doc(`${tierId}_${user.uid}`).update({ status: "forfeited" });
+  const leaveEntry = async (tierId) => {
+    await db.collection("entries").doc(`${tierId}_${user.uid}`).delete();
+    if (viewingTierId === tierId) setViewingTierId(null);
+    setTab("compete");
+  };
+
   const submitPick = async () => {
     if (!myPick || !joinedTierId || !currentTier) return;
     const chosenTeam = myPick;
@@ -2424,9 +2490,14 @@ function AppShell({ user }) {
           </div>
         )}
         {tab === "pick" && currentTier && currentRound && (
-          <PickTab round={currentRound} myPick={myPick} lockedTeams={lockedTeams} submitted={pickSubmitted} locked={tipsLocked} stamping={!!pickStamp}
-            lockCountdown={lockCountdown} lockUrgent={lockUrgent} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
-            onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
+          <>
+            <PickTab round={currentRound} myPick={myPick} lockedTeams={lockedTeams} submitted={pickSubmitted} locked={tipsLocked} stamping={!!pickStamp}
+              lockCountdown={lockCountdown} lockUrgent={lockUrgent} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
+              onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
+            {myEntryStatus && myEntryStatus !== "cancelled" && (
+              <LeaveCompetition active={myEntryStatus === "active"} onForfeit={() => forfeitEntry(currentTier.id)} onLeave={() => leaveEntry(currentTier.id)} />
+            )}
+          </>
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
         {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} />}
@@ -2519,40 +2590,65 @@ function SplashScreen({ onFinish }) {
     return () => timers.forEach(clearTimeout);
   }, []);
 
+  const cracks = [
+    "M200,360 L182,332 L188,300 L160,270 L168,232 L138,196 L146,150",
+    "M200,360 L224,338 L258,344 L286,312 L330,300 L360,262 L392,236",
+    "M200,360 L206,398 L184,428 L196,472 L168,512 L178,566 L150,628",
+    "M200,360 L232,392 L246,436 L286,468 L300,524 L342,566 L356,632",
+    "M200,360 L166,368 L128,356 L92,378 L52,368 L18,392",
+    "M200,360 L246,356 L298,368 L342,352 L388,372",
+    "M188,300 L150,296 L120,268",
+    "M258,344 L268,308 L300,286",
+    "M196,472 L232,486 L252,520",
+    "M128,356 L104,332 L96,300",
+  ];
   return (
-    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden transition-all duration-[700ms] ease-out ${phase === "out" ? "opacity-0 scale-105" : "opacity-100 scale-100"}`} style={{ backgroundColor: "#08080a" }}>
-      <div className="smoke-layer-a" style={{ opacity: 0.35, filter: "blur(34px) grayscale(1)" }} />
-      <div className="smoke-layer-b" style={{ opacity: 0.28, filter: "blur(40px) grayscale(1)" }} />
+    <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden transition-all duration-[700ms] ease-out ${phase === "out" ? "opacity-0 scale-105" : "opacity-100 scale-100"}`} style={{ backgroundColor: "#16130e" }}>
+      {/* Weathered concrete slab: dark base + fractal-noise mottle + fine grain. */}
+      <div className="concrete-base" />
+      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice" style={{ mixBlendMode: "soft-light", opacity: 0.6 }}>
+        <filter id="concreteMottle"><feTurbulence type="fractalNoise" baseFrequency="0.013 0.018" numOctaves="4" seed="9" stitchTiles="stitch" />
+          <feColorMatrix type="matrix" values="0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0 0 0 0 1" /></filter>
+        <rect width="100%" height="100%" filter="url(#concreteMottle)" />
+      </svg>
+      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="xMidYMid slice" style={{ mixBlendMode: "overlay", opacity: 0.35 }}>
+        <filter id="concreteGrain"><feTurbulence type="fractalNoise" baseFrequency="0.7" numOctaves="2" seed="4" stitchTiles="stitch" />
+          <feColorMatrix type="matrix" values="0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0.33 0.33 0.33 0 0  0 0 0 0 1" /></filter>
+        <rect width="100%" height="100%" filter="url(#concreteGrain)" />
+      </svg>
       <div className="splash-vignette" />
+
+      {/* Fracture lines spreading across the slab on the final impact. */}
+      {revealCount >= 3 && (
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 400 720" preserveAspectRatio="xMidYMid slice">
+          <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+            {cracks.map((d, i) => <path key={`h${i}`} className="crack" d={d} stroke="rgba(210,202,186,0.28)" strokeWidth="3.4" style={{ "--len": 640, animationDelay: `${i * 0.015}s`, transform: "translateY(-1.5px)" }} />)}
+            {cracks.map((d, i) => <path key={`d${i}`} className="crack" d={d} stroke="rgba(8,6,4,0.85)" strokeWidth="2.2" style={{ "--len": 640, animationDelay: `${i * 0.015}s` }} />)}
+          </g>
+        </svg>
+      )}
+
       <div className={`flex flex-col items-center gap-1 relative z-10 ${revealCount > 0 ? `ground-shake-${revealCount}` : ""}`}>
         {revealCount >= 1 && (
           <div className="relative">
-            <div className="word-slam word-carved font-scoreboard text-5xl tracking-wide">LAST.</div>
+            <div className="word-slam stone-word font-scoreboard text-5xl tracking-wide">LAST.</div>
             <ImpactBurst />
           </div>
         )}
         {revealCount >= 2 && (
           <div className="relative">
-            <div className="word-slam word-carved font-scoreboard text-5xl tracking-wide">MAN.</div>
+            <div className="word-slam stone-word font-scoreboard text-5xl tracking-wide">MAN.</div>
             <ImpactBurst />
           </div>
         )}
         {revealCount >= 3 && (
           <div className="relative">
-            <div className="word-slam-big word-carved font-scoreboard text-6xl tracking-wide">STANDING!</div>
+            <div className="word-slam-big stone-word font-scoreboard text-6xl tracking-wide">STANDING!</div>
             <div className="shock-ring" />
-            <svg className="absolute left-1/2 bottom-0 pointer-events-none" width="280" height="44" viewBox="0 0 280 44" style={{ transform: "translateX(-50%)" }}>
-              <g stroke="rgba(205,195,180,0.55)" strokeWidth="1.4" fill="none" strokeLinecap="round">
-                <polyline className="crack-line" points="140,5 126,18 100,25 74,38" />
-                <polyline className="crack-line" style={{ animationDelay: "0.03s" }} points="140,5 156,16 186,22 214,36" />
-                <polyline className="crack-line" style={{ animationDelay: "0.06s" }} points="140,5 137,22 128,40" />
-                <polyline className="crack-line" style={{ animationDelay: "0.05s" }} points="140,5 146,24 162,41" />
-              </g>
-            </svg>
             <ImpactBurst big />
           </div>
         )}
-        {showSub && <p className="splash-sub text-[11px] tracking-[0.45em] uppercase text-neutral-500 mt-5 text-center relative">Beta</p>}
+        {showSub && <p className="splash-sub text-[11px] tracking-[0.45em] uppercase text-neutral-400 mt-5 text-center relative">Beta</p>}
       </div>
     </div>
   );
