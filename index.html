@@ -1637,7 +1637,7 @@ function HostResultsPanel({ tier, now, theme }) {
   );
 }
 
-function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onMarkWinner, onClose }) {
+function EntrantsModal({ tier, theme, isOwner, onKick, onRestore, onMarkEliminated, onMarkWinner, onAddAdmin, onRemoveAdmin, onClose }) {
   const [entrants, setEntrants] = useState([]);
   useEffect(() => {
     const unsub = db.collection("entries").where("tierId", "==", tier.id).onSnapshot((snap) => {
@@ -1646,6 +1646,8 @@ function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onMar
     return unsub;
   }, [tier.id]);
   const liveProfiles = useLiveProfiles(useMemo(() => entrants.map((e) => e.uid), [entrants]));
+  const ownerUid = tier.ownerUid || tier.createdBy;
+  const adminUids = tier.adminUids || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
@@ -1662,13 +1664,17 @@ function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onMar
             const name = live?.name || e.name;
             const avatarPreset = live ? (live.avatarPreset || null) : (e.avatarPreset || null);
             const isWinner = tier.winnerUid === e.uid;
+            const isTheOwner = e.uid === ownerUid;
+            const isCoHost = adminUids.includes(e.uid);
             return (
               <div key={e.id} className={`rounded-lg bg-black/30 px-3 py-2.5 ${isWinner ? "border border-amber-400/40" : ""}`}>
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <UserAvatar preset={avatarPreset} name={name} size={22} />
                     <span className="text-sm text-slate-200">{name}</span>
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${e.status === "active" ? `${theme.bgSoft} ${theme.text}` : "bg-neutral-700 text-neutral-400"}`}>{e.status}</span>
+                    {isTheOwner && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/15 text-amber-300"><Crown size={10} /> Host</span>}
+                    {isCoHost && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-400/10 text-sky-300">Co-host</span>}
                     {isWinner && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400/15 text-amber-300"><Crown size={10} /> Winner</span>}
                   </div>
                   <div className="flex gap-1.5">
@@ -1686,6 +1692,13 @@ function EntrantsModal({ tier, theme, onKick, onRestore, onMarkEliminated, onMar
                   <button onClick={() => onMarkWinner(tier.id, e.uid, name)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold bg-amber-400/10 text-amber-300 hover:bg-amber-400/20">
                     <Crown size={12} /> Mark winner of competition
                   </button>
+                )}
+                {isOwner && !isTheOwner && (
+                  isCoHost ? (
+                    <button onClick={() => onRemoveAdmin(tier.id, e.uid)} className="mt-2 w-full rounded-lg px-2.5 py-1.5 text-[11px] font-medium bg-neutral-700 text-neutral-300 hover:bg-neutral-600">Remove co-host access</button>
+                  ) : (
+                    <button onClick={() => onAddAdmin(tier.id, e.uid)} className="mt-2 w-full flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold bg-sky-400/10 text-sky-300 hover:bg-sky-400/20"><UserPlus size={12} /> Make co-host</button>
+                  )
                 )}
               </div>
             );
@@ -1730,7 +1743,7 @@ function InviteModal({ tier, onClose, theme }) {
   );
 }
 
-function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, now, theme }) {
+function HostTab({ tiers, uid, isOwnerOf, onCreate, onUpdate, onDelete, onKick, onRestore, onMarkEliminated, onMarkWinner, onCancel, onAddAdmin, onRemoveAdmin, now, theme }) {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [cancelling, setCancelling] = useState(null);
@@ -1738,12 +1751,14 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
   const [invitingTierId, setInvitingTierId] = useState(null);
   return (
     <div className="space-y-4 pb-6">
+      <p className="text-sm text-neutral-500">Create a competition — you'll run it as its host. You can appoint co-hosts to help from Manage entrants.</p>
       {!creating && !editingId && (<button onClick={() => setCreating(true)} className={`w-full rounded-xl ${theme.bg} ${theme.bgHover} text-neutral-950 font-semibold py-3 text-sm`}>+ Create new competition</button>)}
       {creating && (<HostTierForm theme={theme} onCancel={() => setCreating(false)} onSave={async (data) => { await onCreate(data); setCreating(false); }} />)}
       <div className="space-y-3">
         {tiers.map((tier) => {
           const closeTime = tier.lockTime || tier.startTime;
           const entriesClosed = now.getTime() >= closeTime.getTime();
+          const owner = isOwnerOf(tier);
           return (
           <div key={tier.id} className={`rounded-xl border ${tier.cancelled ? "border-rose-500/20" : PANEL_BORDER} bg-neutral-800 p-4`}>
             {editingId === tier.id ? (
@@ -1752,20 +1767,25 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
               <>
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-slate-100 font-medium">{tier.name}{tier.cancelled && <span className="ml-2 text-[10px] text-rose-400">(Cancelled)</span>}</div>
+                    <div className="text-slate-100 font-medium flex items-center gap-2">{tier.name}
+                      {!owner && <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-sky-400/10 text-sky-300">Co-host</span>}
+                      {tier.cancelled && <span className="text-[10px] text-rose-400">(Cancelled)</span>}
+                    </div>
                     <div className="text-xs text-neutral-500">{getTierPreset(tier.tierLevel).name} · {tier.entries}{getTierPreset(tier.tierLevel).maxPlayers === null ? "" : `/${getTierPreset(tier.tierLevel).maxPlayers}`} entered · starts {tier.startLabel}</div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEditingId(tier.id)} className="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600"><Pencil size={14} /></button>
-                    <button onClick={() => { if (confirm(`Delete "${tier.name}"?`)) onDelete(tier.id); }} className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"><Trash size={14} /></button>
-                  </div>
+                  {owner && (
+                    <div className="flex gap-2">
+                      <button onClick={() => setEditingId(tier.id)} className="p-2 rounded-lg bg-neutral-700 hover:bg-neutral-600"><Pencil size={14} /></button>
+                      <button onClick={() => { if (confirm(`Delete "${tier.name}"?`)) onDelete(tier.id); }} className="p-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"><Trash size={14} /></button>
+                    </div>
+                  )}
                 </div>
                 {tier.rules && <p className="mt-2 text-xs text-neutral-400 whitespace-pre-wrap">{tier.rules}</p>}
                 {!tier.cancelled && (
                   <>
                     <div className="mt-3 grid grid-cols-1 gap-2">
                       <button onClick={() => setManagingTierId(tier.id)} className={`w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-semibold py-2.5 text-sm`}>
-                        <Users size={15} /> Manage entrants
+                        <Users size={15} /> Manage entrants{owner ? " & co-hosts" : ""}
                       </button>
                       {!entriesClosed && (
                         <button onClick={() => setInvitingTierId(tier.id)} className="w-full flex items-center justify-center gap-2 rounded-lg border adapt-border-10 bg-neutral-800 text-slate-100 hover:bg-neutral-700 font-semibold py-2.5 text-sm">
@@ -1774,7 +1794,7 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                       )}
                     </div>
                     <HostResultsPanel tier={tier} now={now} theme={theme} />
-                    {cancelling === tier.id ? (
+                    {owner && (cancelling === tier.id ? (
                       <div className="mt-3 rounded-lg bg-rose-500/10 border border-rose-500/30 p-3">
                         <p className="text-[11px] text-rose-300 mb-2">This closes the competition for everyone still in it. Sort out any buy-in refunds with your entrants directly. This can't be undone.</p>
                         <div className="flex gap-2">
@@ -1786,7 +1806,7 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
                       <button onClick={() => setCancelling(tier.id)} className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 font-semibold py-2.5 text-sm">
                         <Ban size={15} /> Cancel competition
                       </button>
-                    )}
+                    ))}
                   </>
                 )}
               </>
@@ -1794,10 +1814,10 @@ function HostTab({ tiers, onCreate, onUpdate, onDelete, onKick, onRestore, onMar
           </div>
           );
         })}
-        {tiers.length === 0 && <p className="text-center text-sm text-neutral-500 py-6">No competitions yet — create the first one above.</p>}
+        {tiers.length === 0 && <p className="text-center text-sm text-neutral-500 py-6">You're not hosting any competitions yet — create one above to get started.</p>}
       </div>
       {managingTierId && (
-        <EntrantsModal tier={tiers.find((t) => t.id === managingTierId)} theme={theme} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} onMarkWinner={onMarkWinner} onClose={() => setManagingTierId(null)} />
+        <EntrantsModal tier={tiers.find((t) => t.id === managingTierId)} theme={theme} isOwner={isOwnerOf(tiers.find((t) => t.id === managingTierId))} onKick={onKick} onRestore={onRestore} onMarkEliminated={onMarkEliminated} onMarkWinner={onMarkWinner} onAddAdmin={onAddAdmin} onRemoveAdmin={onRemoveAdmin} onClose={() => setManagingTierId(null)} />
       )}
       {invitingTierId && (
         <InviteModal tier={tiers.find((t) => t.id === invitingTierId)} theme={theme} onClose={() => setInvitingTierId(null)} />
@@ -1902,6 +1922,11 @@ function AppShell({ user }) {
 
   const joinedTierIds = Object.keys(myEntries);
   const tiers = useMemo(() => rawTiers.map((t) => ({ ...t, startLabel: formatStartLabel(t.startTime), entries: entryCounts[t.id] || 0 })), [rawTiers, entryCounts]);
+  // Per-competition host model: the creator owns it; owners can appoint co-hosts (adminUids).
+  // Legacy competitions created before this model fall back to createdBy for ownership.
+  const isOwnerOf = (t) => !!t && (t.ownerUid ? t.ownerUid === user.uid : t.createdBy === user.uid);
+  const isHostOf = (t) => !!t && (isOwnerOf(t) || (t.adminUids || []).includes(user.uid));
+  const hostedTiers = useMemo(() => tiers.filter(isHostOf), [tiers, user.uid]);
   // viewingTierId is which joined competition you're actively looking at on My Pick / Standings —
   // falls back to whichever joined competition comes first if nothing's been explicitly chosen yet.
   const joinedTierId = (viewingTierId && myEntries[viewingTierId]) ? viewingTierId : (joinedTierIds[0] || null);
@@ -2030,7 +2055,11 @@ function AppShell({ user }) {
     }
   };
 
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  // Whoever creates a competition owns it. ownerUid = full control; adminUids = co-hosts the
+  // owner has authorised to help run it. hostUids covers both for quick permission checks.
+  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const addAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayUnion(uid) });
+  const removeAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayRemove(uid) });
   const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
   const kickEntrant = (tierId, uid, name) => {
@@ -2067,12 +2096,14 @@ function AppShell({ user }) {
   if (screen === "howtoplay") return <HowToPlayScreen onAccept={() => { updateProfile({ hasSeenHowToPlay: true }); setScreen("sport"); }} />;
   if (screen === "sport") return <SportScreen userName={profile.name} showBack={!!sport} onBack={() => setScreen("app")} onPick={(s) => { setSport(s); setScreen("app"); }} />;
 
-  const isHost = profile.role === "host";
+  // Anyone can host — the Host tab is always available. It's where you create a competition
+  // (which makes you its host) and manage the ones you already host.
+  const hostsAnything = hostedTiers.length > 0;
   const navTabs = [
     { id: "compete", label: "Compete", Icon: NavTrophy },
     { id: "pick", label: "My Pick", Icon: NavTarget },
     { id: "standings", label: "Standings", Icon: NavBars },
-    ...(isHost ? [{ id: "host", label: "Host", Icon: NavClipboard }] : []),
+    { id: "host", label: "Host", Icon: NavClipboard },
     { id: "settings", label: "Settings", Icon: NavGear },
   ];
 
@@ -2115,9 +2146,9 @@ function AppShell({ user }) {
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
         {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
-        {tab === "host" && isHost && <HostTab tiers={tiers} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} now={now} theme={theme} />}
+        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isOwnerOf={isOwnerOf} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} now={now} theme={theme} />}
         {tab === "settings" && (
-          <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={isHost}
+          <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={hostsAnything}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
         )}
       </main>

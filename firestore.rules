@@ -1,0 +1,94 @@
+rules_version = '2';
+
+// Last Man Standing — Firestore security rules.
+//
+// Enforces the per-competition host model server-side:
+//   • Anyone signed in can create a competition, and must set themselves as its owner.
+//   • Only the owner (or an owner-appointed co-host) can run/modify a competition.
+//   • Only the owner can appoint/remove co-hosts, delete, or transfer ownership.
+//   • Players can only ever create/edit their OWN entry and their OWN pick.
+//
+// Deploy: Firebase Console → Firestore Database → Rules → paste → Publish.
+// (or `firebase deploy --only firestore:rules` with the Firebase CLI)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+
+    // The tierId is the first underscore-separated segment of entry/result/pick doc ids.
+    // Firestore auto-ids and Firebase uids contain no underscores, so this split is safe.
+    function tierData(tierId) {
+      return get(/databases/$(database)/documents/tiers/$(tierId)).data;
+    }
+    // Owner = ownerUid, falling back to createdBy for competitions made before the
+    // ownership model existed. `.get(key, default)` avoids errors on missing fields.
+    function ownerOf(t) { return t.get('ownerUid', t.get('createdBy', '')); }
+    function adminsOf(t) { return t.get('adminUids', []); }
+    function isHostOfData(t) {
+      return signedIn() && (ownerOf(t) == uid() || uid() in adminsOf(t));
+    }
+    function isCompHost(tierId) { return isHostOfData(tierData(tierId)); }
+
+    // ---- User profiles ----
+    // Any signed-in user can read basic profiles (names/avatars shown across the app).
+    // A user can only write their own profile document.
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow write: if signedIn() && userId == uid();
+    }
+
+    // ---- Competitions ----
+    match /tiers/{tierId} {
+      allow read: if signedIn();
+
+      // Create: must stamp yourself as owner, start with no co-hosts, and no winner.
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.adminUids == []
+        && !("winnerUid" in request.resource.data);
+
+      // Update: owner or co-host. Ownership can never change here, and only the OWNER
+      // may edit the co-host list.
+      allow update: if isHostOfData(resource.data)
+        && request.resource.data.get('ownerUid', '') == resource.data.get('ownerUid', '')
+        && (ownerOf(resource.data) == uid()
+            || adminsOf(request.resource.data) == adminsOf(resource.data));
+
+      // Delete: owner only.
+      allow delete: if signedIn() && ownerOf(resource.data) == uid();
+    }
+
+    // ---- Entries (doc id = `${tierId}_${uid}`) ----
+    match /entries/{entryId} {
+      allow read: if signedIn();
+
+      // A player joins by creating their own entry, active, keyed to themselves.
+      allow create: if signedIn()
+        && request.resource.data.uid == uid()
+        && request.resource.data.status == 'active'
+        && entryId == request.resource.data.tierId + '_' + uid();
+
+      // Status changes (kick / eliminate / restore / cancel) are host-only.
+      allow update: if isCompHost(resource.data.tierId);
+
+      allow delete: if false;
+    }
+
+    // ---- Picks (doc id = `${tierId}_${roundId}_${uid}`) ----
+    match /picks/{pickId} {
+      allow read: if signedIn();
+      // You may only write your own pick.
+      allow create, update: if signedIn() && request.resource.data.uid == uid();
+      allow delete: if false;
+    }
+
+    // ---- Results (doc id = `${tierId}_${roundId}`, host-entered fixture outcomes) ----
+    match /results/{resultId} {
+      allow read: if signedIn();
+      allow create, update: if isCompHost(resultId.split('_')[0]);
+      allow delete: if false;
+    }
+  }
+}
