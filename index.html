@@ -358,6 +358,26 @@ const TIER_PRESETS = [
 function getTierPreset(id) { return TIER_PRESETS.find((t) => t.id === id) || TIER_PRESETS[0]; }
 function tierCapacityLabel(preset) { return preset.maxPlayers === null ? "100+ players" : `up to ${preset.maxPlayers} players`; }
 
+// ---- Monetisation flag ----
+// Creating a competition will eventually cost a fee (Bronze is free on a user's first ever
+// competition; paid after that). Kept OFF so everything stays free until Stripe is wired up
+// and the app is confirmed. When true, non-free competitions route through the payment step.
+const PAYMENTS_ENABLED = false;
+const FREE_TRIAL_TIER = "bronze"; // the tier a first-time host can create for free
+
+// ---- Host-configurable competition settings ----
+// The CORE rules are locked and never editable: lose = out, pick at least 24h before the
+// round's first game, no pick = random team auto-assigned, and a team-reuse restriction
+// applies. What a host CAN tune per competition lives here.
+const REUSE_POLICIES = [
+  { id: "nextRound", label: "Sit a round before reusing a team", blurb: "Once you pick a team you can't pick them again the very next round." },
+  { id: "none",      label: "Never reuse a team",                  blurb: "Each team can only ever be picked once by a player." },
+  { id: "free",      label: "Reuse teams freely",                 blurb: "No restriction — pick any team any round." },
+];
+function reusePolicyLabel(id) { return (REUSE_POLICIES.find((r) => r.id === id) || REUSE_POLICIES[0]).label; }
+function tierLives(tier) { return Math.max(1, tier && tier.lives ? tier.lives : 1); }
+function tierReusePolicy(tier) { return (tier && tier.reusePolicy) || "nextRound"; }
+
 const DEFAULT_RULES = `HOW TO PLAY
 
 Each round, pick one NRL team. If they win, you move through to the next round. If they lose — or draw — you're eliminated.
@@ -941,6 +961,7 @@ function TierCard({ tier, now, onJoin, onInvite, joined, theme }) {
       <div className="inline-flex items-center gap-1 mb-2 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-neutral-950" style={{ backgroundColor: preset.color }}><Crown size={12} /> {preset.name}</div>
       <div className="flex items-center justify-between"><h3 className="text-lg font-semibold text-slate-100">{tier.name}</h3><span className="text-xs text-neutral-500">{roundLabel}</span></div>
       <p className="text-sm text-neutral-400 mt-1">{preset.name} tier · {tierCapacityLabel(preset)} · prize pool run by your host</p>
+      <p className="text-[11px] text-neutral-500 mt-0.5">{tierLives(tier)} {tierLives(tier) === 1 ? "life" : "lives"} · {reusePolicyLabel(tierReusePolicy(tier))}</p>
       <div className={`mt-4 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-medium ${entriesClosed ? "bg-rose-500/10 text-rose-400" : isUrgent ? "bg-rose-500/15 text-rose-300 animate-pulse" : "bg-amber-400/10 text-amber-300"}`}>
         <Clock size={13} />{isFull && msToClose > 0 ? "Competition full — no spots left" : entriesClosed ? (started ? "Entries closed — round underway" : "Entries closed — picks have locked for this round") : isUrgent ? `Locking in ${countdown} — last chance to join!` : `Entries close in ${countdown} (picks lock 24h before the round's first game)`}
       </div>
@@ -996,10 +1017,11 @@ function EntryConfirmModal({ tier, onClose, onConfirm, theme, error }) {
   );
 }
 
-function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme }) {
+function FixtureRow({ home, away, myPick, lockedTeams, locked, onSelect, theme }) {
+  const isLocked = (team) => (lockedTeams || []).includes(team);
   const renderSide = (team, align) => {
     const selected = myPick === team;
-    const disabled = team === lockedTeam || locked;
+    const disabled = isLocked(team) || locked;
     return (
       <button onClick={() => !disabled && onSelect(team)} disabled={disabled}
         className={`flex-1 flex items-center gap-2 rounded-xl px-3 py-3 border transition ${align === "right" ? "flex-row-reverse text-right" : "text-left"} ${selected ? `${theme.border} ${theme.bgSoft}` : disabled ? "adapt-border-5 opacity-40 cursor-not-allowed" : `adapt-border-10 hover:${theme.borderHalf}`}`}>
@@ -1007,7 +1029,7 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
         <div className="min-w-0">
           <div className="text-sm font-medium text-slate-100 truncate">{team}</div>
           {selected && <div className={`text-[10px] ${theme.text} flex items-center gap-1 justify-start`}>{align !== "right" && <Check size={10} />}Tipped{align === "right" && <Check size={10} />}</div>}
-          {team === lockedTeam && <div className="text-[10px] text-rose-400">Used last round</div>}
+          {isLocked(team) && <div className="text-[10px] text-rose-400">Already used</div>}
         </div>
       </button>
     );
@@ -1015,7 +1037,7 @@ function FixtureRow({ home, away, myPick, lockedTeam, locked, onSelect, theme })
   return (<div className="flex items-center gap-2">{renderSide(home, "left")}<span className="text-[11px] text-neutral-500 shrink-0">vs</span>{renderSide(away, "right")}</div>);
 }
 
-function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving, stamping }) {
+function PickTab({ round, myPick, lockedTeams, submitted, locked, lockCountdown, lockUrgent, eliminated, entryStatus, onPick, onSubmit, onEdit, theme, saving, stamping }) {
   if (eliminated) {
     const copy = {
       eliminated: { title: "You're out this round", body: "Your team came up short. Follow the standings to see who's last standing." },
@@ -1062,7 +1084,7 @@ function PickTab({ round, myPick, lockedTeam, submitted, locked, lockCountdown, 
             {round.fixtures.map((f, i) => (
               <div key={i}>
                 {f.kickoff && <div className="text-[10px] text-neutral-500 mb-1 px-1">{f.kickoff}</div>}
-                <FixtureRow home={f.home} away={f.away} myPick={myPick} lockedTeam={lockedTeam} locked={locked} onSelect={onPick} theme={theme} />
+                <FixtureRow home={f.home} away={f.away} myPick={myPick} lockedTeams={lockedTeams} locked={locked} onSelect={onPick} theme={theme} />
               </div>
             ))}
           </div>
@@ -1436,7 +1458,9 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
     return toDatetimeLocalValue(new Date(round.firstKickoff.getTime() - 1000 * 60 * 60 * 24));
   });
   const [rules, setRules] = useState(initial ? (initial.rules || "") : DEFAULT_RULES);
-  const canSave = name && tierLevel && roundId && lockAt;
+  const [lives, setLives] = useState(initial?.lives ?? 1);
+  const [reusePolicy, setReusePolicy] = useState(initial?.reusePolicy || "nextRound");
+  const canSave = name && tierLevel && roundId && lockAt && lives >= 1;
   const selectedRound = getRound(roundId);
   const roundAlreadyStarted = selectedRound.firstKickoff.getTime() <= Date.now();
 
@@ -1479,10 +1503,30 @@ function HostTierForm({ initial, onSave, onCancel, theme }) {
         <input value={lockAt} onChange={(e) => setLockAt(e.target.value)} type="datetime-local" className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`} />
         <p className="text-[10px] text-neutral-500 mt-1">Defaults to 24 hours before kickoff of the first game — adjust if you want it earlier or later.</p>
       </div>
+      <div className="rounded-lg border adapt-border-10 bg-black/20 p-3 space-y-3">
+        <div className="text-[11px] font-semibold text-neutral-300">Competition settings</div>
+        <div>
+          <label className="text-[11px] text-neutral-500 mb-1 block">Lives (2nd chances) — players are out after this many losses</label>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setLives((n) => Math.max(1, n - 1))} className="h-8 w-8 rounded-lg bg-black/30 border adapt-border-10 text-slate-100 text-lg leading-none">−</button>
+            <span className="font-scoreboard text-xl text-slate-100 w-8 text-center tabular-nums">{lives}</span>
+            <button type="button" onClick={() => setLives((n) => Math.min(10, n + 1))} className="h-8 w-8 rounded-lg bg-black/30 border adapt-border-10 text-slate-100 text-lg leading-none">+</button>
+            <span className="text-[10px] text-neutral-500 ml-1">{lives === 1 ? "One loss and you're out (classic)." : `${lives} lives — survive ${lives} losses before elimination.`}</span>
+          </div>
+        </div>
+        <div>
+          <label className="text-[11px] text-neutral-500 mb-1 block">Team reuse</label>
+          <select value={reusePolicy} onChange={(e) => setReusePolicy(e.target.value)} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 outline-none`}>
+            {REUSE_POLICIES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          <p className="text-[10px] text-neutral-500 mt-1">{(REUSE_POLICIES.find((r) => r.id === reusePolicy) || REUSE_POLICIES[0]).blurb}</p>
+        </div>
+        <p className="text-[10px] text-neutral-500 leading-relaxed">Locked rules (can't be changed): lose and you're out (once lives run out), pick before lockout or get a random team, and the reuse rule above applies. Margin tiebreaks arrive with live NRL scores.</p>
+      </div>
       <div><label className="text-[11px] text-neutral-500 mb-1 block">Rules / description</label><textarea value={rules} onChange={(e) => setRules(e.target.value)} rows={4} className={`w-full rounded-lg bg-black/30 border ${PANEL_BORDER} px-3 py-2 text-sm text-slate-100 placeholder:text-neutral-500 outline-none resize-none`} /></div>
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel} className="flex-1 rounded-lg border adapt-border-10 text-neutral-300 py-2 text-sm">Cancel</button>
-        <button disabled={!canSave} onClick={() => onSave({ name, tierLevel, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
+        <button disabled={!canSave} onClick={() => onSave({ name, tierLevel, roundId, startTime: getRound(roundId).firstKickoff, lockTime: new Date(lockAt), rules, lives, reusePolicy })} className={`flex-1 rounded-lg ${theme.bg} ${theme.bgHover} disabled:opacity-40 text-neutral-950 font-semibold py-2 text-sm`}>{initial ? "Save changes" : "Create competition"}</button>
       </div>
     </div>
   );
@@ -1558,38 +1602,59 @@ function HostResultsPanel({ tier, now, theme }) {
 
   const setFixtureResult = (i, winner) => db.collection("results").doc(resultsDocId).set({ fixtureResults: { ...results, [i]: winner } }, { merge: true });
 
-  // Re-runnable on purpose: hosts can come back and correct a result any time, even after
-  // confirming once — this both eliminates new losers and restores anyone wrongly eliminated
-  // by a previous (mistaken) confirmation, without touching anyone kicked or refunded.
+  // Re-runnable on purpose: hosts can correct a result any time. Rather than incrementally
+  // toggling status (which can't be undone cleanly), we recompute each player's status from
+  // the FULL history every time — a player is eliminated once their total losses reach the
+  // competition's lives count. Wipeout rounds (everyone still in loses) cost nobody a life.
   const applyResults = async () => {
+    const lives = tierLives(tier);
+    // Every pick in the competition, grouped by round → uid → team.
+    const picksSnap = await db.collection("picks").where("tierId", "==", tier.id).get();
+    const picksByRound = {}; const roundIds = new Set([tier.roundId]);
+    picksSnap.docs.forEach((d) => { const p = d.data(); roundIds.add(p.roundId); (picksByRound[p.roundId] = picksByRound[p.roundId] || {})[p.uid] = p.team; });
+    const roundList = [...roundIds];
+    // Results for every round: current round from local state, earlier rounds fetched.
+    const resByRound = {};
+    await Promise.all(roundList.map(async (rid) => {
+      if (rid === tier.roundId) { resByRound[rid] = { fixtureResults: results, fixtures: effectiveFixtures, wipeoutSurvived: false }; return; }
+      const doc = await db.collection("results").doc(`${tier.id}_${rid}`).get();
+      const d = doc.exists ? doc.data() : {};
+      resByRound[rid] = { fixtureResults: d.fixtureResults || {}, fixtures: d.fixtures || getRound(rid).fixtures, wipeoutSurvived: !!d.wipeoutSurvived };
+    }));
+
+    const lostRound = (rid, uid) => {
+      const rr = resByRound[rid]; if (!rr || rr.wipeoutSurvived) return false;
+      const team = (picksByRound[rid] || {})[uid]; if (!team) return false;
+      const fi = (rr.fixtures || []).findIndex((f) => f.home === team || f.away === team);
+      const w = rr.fixtureResults[fi];
+      return !!w && w !== team;
+    };
+
+    // Never touch kicked/cancelled entrants — only players still in the running or eliminated.
     const eligible = entries.filter((e) => e.status === "active" || e.status === "eliminated");
-    const decided = picks.filter((p) => eligible.some((e) => e.uid === p.uid)).map((p) => {
-      const fi = effectiveFixtures.findIndex((f) => f.home === p.team || f.away === p.team);
-      const winner = results[fi];
-      return { uid: p.uid, status: winner ? (winner === p.team ? "W" : "L") : null };
-    }).filter((p) => p.status);
-    if (decided.length === 0) return;
 
-    const allLost = decided.every((p) => p.status === "L");
+    // Wipeout check: did every still-active player who has a decided pick lose THIS round?
+    const curDecided = eligible.filter((e) => e.status === "active").map((e) => {
+      const team = (picksByRound[tier.roundId] || {})[e.uid]; if (!team) return null;
+      const fi = effectiveFixtures.findIndex((f) => f.home === team || f.away === team);
+      const w = results[fi]; if (!w) return null;
+      return w === team;
+    }).filter((v) => v !== null);
+    if (curDecided.length === 0) return;
+    const allLost = curDecided.every((won) => won === false);
+    resByRound[tier.roundId].wipeoutSurvived = allLost; // a wipeout round costs nobody a life
+
     const batch = db.batch();
-    if (allLost) {
-      // Special rule: if literally everyone loses, restore anyone this round had eliminated and
-      // redo the same round — don't advance, since nobody actually survived to move forward.
-      decided.forEach((p) => {
-        const entry = eligible.find((e) => e.uid === p.uid);
-        if (entry.status === "eliminated") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "active" });
-      });
-      batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: true }, { merge: true });
-    } else {
-      decided.forEach((p) => {
-        const entry = eligible.find((e) => e.uid === p.uid);
-        if (p.status === "L" && entry.status === "active") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "eliminated" });
-        if (p.status === "W" && entry.status === "eliminated") batch.update(db.collection("entries").doc(`${tier.id}_${p.uid}`), { status: "active" });
-      });
-      batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: false }, { merge: true });
+    eligible.forEach((e) => {
+      let losses = 0;
+      roundList.forEach((rid) => { if (lostRound(rid, e.uid)) losses++; });
+      const target = losses >= lives ? "eliminated" : "active";
+      if (e.status !== target) batch.update(db.collection("entries").doc(`${tier.id}_${e.uid}`), { status: target });
+    });
+    batch.set(db.collection("results").doc(resultsDocId), { finalized: true, wipeoutSurvived: allLost, fixtures: effectiveFixtures }, { merge: true });
 
-      // Automatically move the competition to the next round now that results are in —
-      // survivors carry forward, losers stay eliminated, no manual step needed.
+    // Advance to the next round unless it was a wipeout (nobody survived to move forward).
+    if (!allLost) {
       const idx = NRL_ROUNDS.findIndex((r) => r.id === tier.roundId);
       const next = NRL_ROUNDS[idx + 1];
       if (next) {
@@ -1975,17 +2040,30 @@ function AppShell({ user }) {
   const myEntryStatus = myEntries[joinedTierId]?.status;
   const eliminated = !!myEntryStatus && myEntryStatus !== "active"; // covers eliminated, kicked, and refunded alike
 
-  // The team you can't reuse is whatever you picked in this competition's *previous* round
-  // (only relevant once a host has advanced the competition past round 1).
-  const [lockedTeam, setLockedTeam] = useState(null);
+  // Teams you can't reuse this round, driven by the competition's reuse policy:
+  //   • free      → none
+  //   • nextRound → just last round's pick (must sit a round before reusing)
+  //   • none      → every team you've already used in this competition
+  const [lockedTeams, setLockedTeams] = useState([]);
   useEffect(() => {
-    if (!joinedTierId || !currentTier?.previousRoundId) { setLockedTeam(null); return; }
+    if (!joinedTierId || !currentTier) { setLockedTeams([]); return; }
+    const policy = tierReusePolicy(currentTier);
+    if (policy === "free") { setLockedTeams([]); return; }
     let cancelled = false;
-    db.collection("picks").doc(`${joinedTierId}_${currentTier.previousRoundId}_${user.uid}`).get().then((doc) => {
-      if (!cancelled) setLockedTeam(doc.exists ? doc.data().team : null);
-    }).catch(() => { if (!cancelled) setLockedTeam(null); });
+    if (policy === "nextRound") {
+      if (!currentTier.previousRoundId) { setLockedTeams([]); return; }
+      db.collection("picks").doc(`${joinedTierId}_${currentTier.previousRoundId}_${user.uid}`).get().then((doc) => {
+        if (!cancelled) setLockedTeams(doc.exists ? [doc.data().team] : []);
+      }).catch(() => { if (!cancelled) setLockedTeams([]); });
+    } else { // "none" — every team used in a round other than the one being picked now
+      db.collection("picks").where("tierId", "==", joinedTierId).where("uid", "==", user.uid).get().then((snap) => {
+        if (cancelled) return;
+        const teams = snap.docs.map((d) => d.data()).filter((p) => p.roundId !== effectiveRoundId).map((p) => p.team);
+        setLockedTeams([...new Set(teams)]);
+      }).catch(() => { if (!cancelled) setLockedTeams([]); });
+    }
     return () => { cancelled = true; };
-  }, [joinedTierId, currentTier?.previousRoundId, user.uid]);
+  }, [joinedTierId, currentTier?.previousRoundId, currentTier?.reusePolicy, effectiveRoundId, user.uid]);
 
   // If tips have locked and this user never submitted a pick, auto-assign a random
   // team on their behalf (excluding whichever team they can't reuse), per the rules.
@@ -2001,7 +2079,7 @@ function AppShell({ user }) {
   // only decides *whether to try*, never *whether it's safe to overwrite*.
   useEffect(() => {
     if (!picksLoaded || !tipsLocked || !joinedTierId || !currentRound || eliminated || myPick || pickSubmitted) return;
-    const available = currentRound.fixtures.flatMap((f) => [f.home, f.away]).filter((t) => t !== lockedTeam);
+    const available = currentRound.fixtures.flatMap((f) => [f.home, f.away]).filter((t) => !lockedTeams.includes(t));
     if (available.length === 0) return;
     const pickRef = db.collection("picks").doc(`${joinedTierId}_${effectiveRoundId}_${user.uid}`);
     let cancelled = false;
@@ -2020,7 +2098,7 @@ function AppShell({ user }) {
       setPickSubmitted(true);
     }).catch(() => {});
     return () => { cancelled = true; };
-  }, [picksLoaded, tipsLocked, joinedTierId, currentRound, eliminated, myPick, pickSubmitted, lockedTeam]);
+  }, [picksLoaded, tipsLocked, joinedTierId, currentRound, eliminated, myPick, pickSubmitted, lockedTeams.join(",")]);
 
   const updateProfile = (patch) => db.collection("users").doc(user.uid).set(patch, { merge: true });
 
@@ -2057,10 +2135,25 @@ function AppShell({ user }) {
 
   // Whoever creates a competition owns it. ownerUid = full control; adminUids = co-hosts the
   // owner has authorised to help run it. hostUids covers both for quick permission checks.
-  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
+  const createTier = (data) => db.collection("tiers").add({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy, ownerUid: user.uid, adminUids: [], createdBy: user.uid, createdAt: FieldValue.serverTimestamp() });
   const addAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayUnion(uid) });
   const removeAdmin = (tierId, uid) => db.collection("tiers").doc(tierId).update({ adminUids: FieldValue.arrayRemove(uid) });
-  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules }, { merge: true });
+
+  // Create wrapper with the pay-to-create scaffold. While PAYMENTS_ENABLED is false everything
+  // is free. Once Stripe is wired: a user's FIRST ever competition at the free-trial tier stays
+  // free; anything else routes through checkout for getTierPreset(tierLevel).unlockPrice before
+  // the competition is created. We stamp hasCreatedComp so the free trial can only be used once.
+  const handleCreateTier = async (data) => {
+    const isFreeOne = !profile.hasCreatedComp && data.tierLevel === FREE_TRIAL_TIER;
+    if (PAYMENTS_ENABLED && !isFreeOne) {
+      // TODO(stripe): launch checkout for getTierPreset(data.tierLevel).unlockPrice (inc. GST),
+      // and only create the competition on successful payment. Unreachable while payments are off.
+      return;
+    }
+    await createTier(data);
+    if (!profile.hasCreatedComp) db.collection("users").doc(user.uid).set({ hasCreatedComp: true }, { merge: true });
+  };
+  const updateTier = (id, data) => db.collection("tiers").doc(id).set({ name: data.name, tierLevel: data.tierLevel, roundId: data.roundId, startTime: Timestamp.fromDate(data.startTime), lockTime: Timestamp.fromDate(data.lockTime), rules: data.rules, lives: data.lives, reusePolicy: data.reusePolicy }, { merge: true });
   const deleteTier = (id) => db.collection("tiers").doc(id).delete();
   const kickEntrant = (tierId, uid, name) => {
     if (!confirm(`Kick ${name || "this entrant"} from the competition? They'll be marked as kicked and won't be able to submit further picks. You can restore them afterward if needed.`)) return;
@@ -2139,14 +2232,14 @@ function AppShell({ user }) {
           </div>
         )}
         {tab === "pick" && currentTier && currentRound && (
-          <PickTab round={currentRound} myPick={myPick} lockedTeam={lockedTeam} submitted={pickSubmitted} locked={tipsLocked} stamping={!!pickStamp}
+          <PickTab round={currentRound} myPick={myPick} lockedTeams={lockedTeams} submitted={pickSubmitted} locked={tipsLocked} stamping={!!pickStamp}
             lockCountdown={lockCountdown} lockUrgent={lockUrgent} eliminated={eliminated} entryStatus={myEntryStatus} onPick={(team) => { setMyPick(team); setPickSubmitted(false); }}
             onSubmit={submitPick} onEdit={() => setPickSubmitted(false)} theme={theme} saving={pickSaving} />
         )}
         {tab === "pick" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition first to make a pick.</div>}
         {tab === "standings" && currentTier && <StandingsTab players={players} locked={tipsLocked} lockCountdown={lockCountdown} lockUrgent={lockUrgent} entryCount={currentTier.entries} winnerUid={currentTier.winnerUid} winnerName={currentTier.winnerName} myUid={user.uid} />}
         {tab === "standings" && !currentTier && <div className="text-center text-neutral-500 text-sm py-12">Join a competition to see the field.</div>}
-        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isOwnerOf={isOwnerOf} onCreate={createTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} now={now} theme={theme} />}
+        {tab === "host" && <HostTab tiers={hostedTiers} uid={user.uid} isOwnerOf={isOwnerOf} onCreate={handleCreateTier} onUpdate={updateTier} onDelete={deleteTier} onKick={kickEntrant} onRestore={restoreEntrant} onMarkEliminated={markEliminated} onMarkWinner={markWinner} onCancel={cancelCompetition} onAddAdmin={addAdmin} onRemoveAdmin={removeAdmin} now={now} theme={theme} />}
         {tab === "settings" && (
           <SettingsTab profile={profile} uid={user.uid} onSaveNameEmail={updateProfile} onProfileChange={updateProfile} accent={accent} onAccentChange={(a) => updateProfile({ accent: a })} theme={theme} onSignOut={() => auth.signOut()} isHost={hostsAnything}
             history={Object.values(myEntries).filter((e) => e.status && e.status !== "active").map((e) => ({ id: e.id, tierName: tiers.find((t) => t.id === e.tierId)?.name || "Unknown competition", status: e.status }))} />
