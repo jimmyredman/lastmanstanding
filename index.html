@@ -146,12 +146,15 @@
   .intro-dot { width: 11px; height: 11px; border-radius: 9999px; background: #2dd4bf; box-shadow: 0 0 10px rgba(45,212,191,0.9), 0 0 22px rgba(45,212,191,0.45); }
   @keyframes dotIn { from { opacity: 0; transform: scale(0); } to { opacity: 1; transform: scale(1); } }
   .dot-in { animation: dotIn 0.45s ease-out both; }
-  @keyframes dotDie { 0% { transform: scale(1.7); filter: brightness(2.3); } 28% { transform: scale(1.7); } 100% { transform: scale(0); opacity: 0; } }
-  .dot-dead { animation: dotDie 0.42s cubic-bezier(.3,.6,.3,1) forwards; }
-  @keyframes winFlare { 0% { transform: scale(1); } 45% { transform: scale(2.3); filter: brightness(2.6); } 100% { transform: scale(0); opacity: 0; } }
-  .dot-win { background: #ffcf6a; box-shadow: 0 0 16px rgba(255,200,110,0.95), 0 0 34px rgba(255,180,80,0.6); animation: winFlare 0.65s cubic-bezier(.2,.7,.3,1) forwards; }
+  @keyframes dotDie { 0% { transform: scale(1); } 30% { transform: scale(1.75); } 100% { transform: scale(0); opacity: 0; } }
+  .dot-dead { animation: dotDie 0.5s cubic-bezier(.3,.6,.3,1) forwards; }
+  @keyframes winFlare { 0% { transform: scale(1); } 45% { transform: scale(2.4); } 100% { transform: scale(0); opacity: 0; } }
+  .dot-win { background: #ffcf6a; box-shadow: 0 0 16px rgba(255,200,110,0.95), 0 0 34px rgba(255,180,80,0.6); animation: winFlare 0.7s cubic-bezier(.2,.7,.3,1) forwards; }
   @keyframes winRing { 0% { transform: translate(-50%,-50%) scale(0.2); opacity: 0.75; } 100% { transform: translate(-50%,-50%) scale(3.6); opacity: 0; } }
-  .win-ring { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; border-radius: 9999px; border: 2px solid rgba(255,200,110,0.7); animation: winRing 0.75s ease-out forwards; }
+  .win-ring { position: absolute; left: 50%; top: 50%; width: 60px; height: 60px; border-radius: 9999px; border: 2px solid rgba(255,200,110,0.7); animation: winRing 0.8s ease-out forwards; }
+  /* Crown blooms in — translate baked into the keyframe so it stays centred through the anim. */
+  @keyframes crownBloom { 0% { opacity: 0; transform: translate(-50%,-50%) scale(0.5); } 100% { opacity: 1; transform: translate(-50%,-50%) scale(1); } }
+  .crown-bloom { animation: crownBloom 0.85s cubic-bezier(.2,.8,.3,1) both; }
   @keyframes shockRing { 0% { transform: translateX(-50%) scale(0.15); opacity: 0.5; } 100% { transform: translateX(-50%) scale(2.7); opacity: 0; } }
   .shock-ring { position: absolute; left: 50%; bottom: -6px; width: 220px; height: 56px; border-radius: 50%; border: 2px solid rgba(220,210,195,0.5); animation: shockRing 0.75s cubic-bezier(.2,.7,.3,1) both; }
   @keyframes crackIn { 0% { stroke-dashoffset: 130; opacity: 0; } 25% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0.85; } }
@@ -2643,21 +2646,24 @@ function SplashScreen({ onFinish }) {
 
   useEffect(() => {
     playIntroRiser();
-    const start = 420, gap = 72;
+    const start = 480, gap = 98;
     const timers = order.map((_, idx) => setTimeout(() => setK(idx + 1), start + idx * gap));
     const doneElim = start + order.length * gap;
-    timers.push(setTimeout(() => { setStage(1); playSoftReveal(); }, doneElim + 110));
-    timers.push(setTimeout(() => setStage(2), doneElim + 470));
-    timers.push(setTimeout(() => setStage(3), doneElim + 880));
-    timers.push(setTimeout(() => setPhase("out"), doneElim + 1780));
-    timers.push(setTimeout(() => onFinish(), doneElim + 2330));
+    timers.push(setTimeout(() => { setStage(1); playSoftReveal(); }, doneElim + 260));
+    timers.push(setTimeout(() => setStage(2), doneElim + 760));
+    timers.push(setTimeout(() => setStage(3), doneElim + 1180));
+    timers.push(setTimeout(() => setPhase("out"), doneElim + 2250));
+    timers.push(setTimeout(() => onFinish(), doneElim + 2850));
     return () => timers.forEach(clearTimeout);
   }, []);
 
   const isDead = (i) => i !== SURV && order.indexOf(i) < k;
+  // Everything is absolutely placed inside a fixed-size stage so nothing reflows or drifts
+  // when the wordmark appears — the crown centre stays put. CX/CY = the ring/crown centre.
+  const CX = 150, CY = 138;
   const dots = Array.from({ length: N }, (_, i) => {
     const ang = (-90 + i * (360 / N)) * Math.PI / 180;
-    return { i, x: Math.round(Math.cos(ang) * R), y: Math.round(Math.sin(ang) * R) };
+    return { i, x: CX + Math.round(Math.cos(ang) * R), y: CY + Math.round(Math.sin(ang) * R) };
   });
 
   return (
@@ -2665,32 +2671,26 @@ function SplashScreen({ onFinish }) {
       <div className="lms-glow" style={{ position: "absolute", width: 520, height: 520, borderRadius: "9999px", background: "radial-gradient(circle, rgba(45,212,191,0.16), transparent 68%)", filter: "blur(20px)" }} />
       <div className="splash-vignette" />
 
-      <div className="relative z-10 flex flex-col items-center">
-        {/* Contenders ring → one remains → crown */}
-        <div className="relative" style={{ width: 260, height: 260 }}>
-          {dots.map(({ i, x, y }) => {
-            const survivor = i === SURV;
-            const cls = survivor ? (stage >= 1 ? "dot-win" : "dot-in") : (isDead(i) ? "dot-dead" : "dot-in");
-            return (
-              <div key={i} className="absolute" style={{ left: "50%", top: "50%", transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))` }}>
-                <div className={`intro-dot ${cls}`} style={{ animationDelay: survivor ? "0s" : `${i * 0.02}s` }} />
-                {survivor && stage >= 1 && <div className="win-ring" />}
-              </div>
-            );
-          })}
-          {stage >= 1 && (
-            <div className="lms-crown absolute" style={{ left: "50%", top: "50%", transform: "translate(-50%,-50%)" }}>
-              <div style={{ position: "absolute", inset: -16, borderRadius: "9999px", background: "radial-gradient(circle, rgba(255,190,90,0.45), transparent 70%)", filter: "blur(9px)" }} />
-              <Crown className="relative text-amber-400" size={46} style={{ filter: "drop-shadow(0 0 16px rgba(255,190,90,0.65))" }} />
+      <div className="relative z-10" style={{ width: 300, height: 320 }}>
+        {dots.map(({ i, x, y }) => {
+          const survivor = i === SURV;
+          const cls = survivor ? (stage >= 1 ? "dot-win" : "dot-in") : (isDead(i) ? "dot-dead" : "dot-in");
+          return (
+            <div key={i} className="absolute" style={{ left: x, top: y, transform: "translate(-50%,-50%)" }}>
+              <div className={`intro-dot ${cls}`} style={{ animationDelay: survivor ? "0s" : `${0.3 + i * 0.02}s` }} />
+              {survivor && stage >= 1 && <div className="win-ring" />}
             </div>
-          )}
-        </div>
-
-        <div className="flex flex-col items-center -mt-4">
-          {stage >= 2 && <h1 className="lms-mark font-scoreboard text-[9vw] sm:text-5xl text-center whitespace-nowrap" style={{ color: "#f4f1ea" }}>LAST MAN STANDING</h1>}
-          {stage >= 2 && <div className="lms-line mt-3 h-px w-40" style={{ background: "linear-gradient(90deg, transparent, rgba(45,212,191,0.9), transparent)", animationDelay: "0.45s" }} />}
-          {stage >= 3 && <p className="lms-fade text-[11px] tracking-[0.45em] uppercase text-neutral-500 mt-4">Beta</p>}
-        </div>
+          );
+        })}
+        {stage >= 1 && (
+          <div className="crown-bloom absolute" style={{ left: CX, top: CY }}>
+            <div style={{ position: "absolute", inset: -16, borderRadius: "9999px", background: "radial-gradient(circle, rgba(255,190,90,0.45), transparent 70%)", filter: "blur(9px)" }} />
+            <Crown className="relative text-amber-400" size={46} style={{ filter: "drop-shadow(0 0 16px rgba(255,190,90,0.65))" }} />
+          </div>
+        )}
+        {stage >= 2 && <h1 className="lms-mark font-scoreboard text-4xl sm:text-5xl whitespace-nowrap absolute text-center" style={{ left: "50%", top: 214, transform: "translateX(-50%)", color: "#f4f1ea" }}>LAST MAN STANDING</h1>}
+        {stage >= 2 && <div className="lms-line absolute h-px w-40" style={{ left: "calc(50% - 80px)", top: 266, transformOrigin: "center", background: "linear-gradient(90deg, transparent, rgba(45,212,191,0.9), transparent)", animationDelay: "0.45s" }} />}
+        {stage >= 3 && <p className="lms-fade absolute text-[11px] tracking-[0.45em] uppercase text-neutral-500 text-center" style={{ left: 0, right: 0, top: 284 }}>Beta</p>}
       </div>
     </div>
   );
