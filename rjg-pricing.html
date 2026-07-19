@@ -104,6 +104,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 function shoelace(pts){ let s = 0; for (let i = 0; i < pts.length; i++){ const j = (i + 1) % pts.length; s += pts[i].x * pts[j].y - pts[j].x * pts[i].y; } return Math.abs(s) / 2; }
 function perimeter(pts, closed){ let s = 0; for (let i = 0; i < pts.length - 1; i++) s += dist(pts[i], pts[i+1]); if (closed && pts.length > 2) s += dist(pts[pts.length-1], pts[0]); return s; }
 function centroid(pts){ let x = 0, y = 0; pts.forEach(p => { x += p.x; y += p.y; }); return { x: x / pts.length, y: y / pts.length }; }
+function pointInPoly(p, pts){ let inside = false; for (let i = 0, j = pts.length - 1; i < pts.length; j = i++){ const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y; if (((yi > p.y) !== (yj > p.y)) && (p.x < (xj - xi) * (p.y - yi) / ((yj - yi) || 1e-9) + xi)) inside = !inside; } return inside; }
 function download(filename, blob){ const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 2000); }
 
 /* =========================================================================
@@ -131,7 +132,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v24 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v25 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -1384,6 +1385,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [drag, setDrag] = useState(null);       // {kind:'stamp'|'vertex'|'rotate'|'resize', id, idx}
   const [preview, setPreview] = useState(null); // live {rooms, stamps} during a move-drag
   const [sel, setSel] = useState(null);         // selected stamp id (for rotate/resize handles)
+  const [selShape, setSelShape] = useState(null); // selected room/wall id (for add/remove corner, move, delete)
   const [labels, setLabels] = useState(true);   // show object labels on the plan
   const [lockLen, setLockLen] = useState(0);    // fixed wall-segment length in metres (0 = off)
   const [zoom, setZoom] = useState(1);
@@ -1429,6 +1431,10 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (!STAMP_LINEAR.has(s.type)) h.depth = at(0, d/2 + gap);   // linear objects: length only
     return h;
   };
+  // edit handles for a selected room/wall: "+" at each edge midpoint (add corner),
+  // "✕" offset from each corner (remove corner)
+  const edgeMids = (r) => { const pts = r.points, edges = r.wall ? pts.length - 1 : pts.length, out = []; for (let i = 0; i < edges; i++){ const a = pts[i], b = pts[(i+1) % pts.length]; out.push({ i, x: (a.x+b.x)/2, y: (a.y+b.y)/2 }); } return out; };
+  const cornerDels = (r) => { const pts = r.points, min = r.wall ? 2 : 3; if (pts.length <= min) return []; const c = centroid(pts); return pts.map((p, i) => { const dx = p.x - c.x, dy = p.y - c.y, L = Math.hypot(dx, dy) || 1; return { i, x: p.x + dx/L * 16/S, y: p.y + dy/L * 16/S }; }); };
   // next corner while chaining a wall: fixed length if locked, else ortho/snap/corner-snap
   const chainNext = (last, e) => {
     if (lockLen > 0){
@@ -1494,6 +1500,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       ctx.beginPath(); ctx.moveTo(bx, by-5); ctx.lineTo(bx, by+5); ctx.moveTo(bx+len, by-5); ctx.lineTo(bx+len, by+5); ctx.stroke();
       ctx.font = "600 11px system-ui"; ctx.textAlign = "left"; ctx.fillText("0", bx-2, by+16); ctx.fillText(barM + " m", bx + len - 8, by+16); ctx.restore(); })();
     if (tool === "move"){ // draggable corner/stamp handles
+      // highlight + edit handles for the selected room/wall
+      const rsel = rooms.find(r => r.id === selShape);
+      if (rsel){
+        ctx.save(); ctx.strokeStyle = "#e8792b"; ctx.lineWidth = 4; ctx.setLineDash([7,5]); ctx.lineJoin = "round";
+        ctx.beginPath(); rsel.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); if (!rsel.wall) ctx.closePath(); ctx.stroke();
+        if (!rsel.wall){ ctx.setLineDash([]); ctx.fillStyle = "rgba(232,121,43,.10)"; ctx.fill(); }
+        ctx.restore(); ctx.setLineDash([]);
+        edgeMids(rsel).forEach(m => { ctx.fillStyle = "#16a34a"; ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(m.x-4,m.y); ctx.lineTo(m.x+4,m.y); ctx.moveTo(m.x,m.y-4); ctx.lineTo(m.x,m.y+4); ctx.stroke(); });   // + add corner
+        cornerDels(rsel).forEach(dh => { ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(dh.x, dh.y, 7, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(dh.x-3,dh.y-3); ctx.lineTo(dh.x+3,dh.y+3); ctx.moveTo(dh.x+3,dh.y-3); ctx.lineTo(dh.x-3,dh.y+3); ctx.stroke(); });          // ✕ remove corner
+      }
       ctx.fillStyle = "#fff"; ctx.strokeStyle = "#e8792b"; ctx.lineWidth = 2;
       rooms.forEach(r => r.points.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill(); ctx.stroke(); }));
       stamps.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, 7); ctx.fill(); ctx.stroke(); });
@@ -1525,7 +1541,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
       else drawWall(draft.points, draft.tool === "curve");
     }
-  }, [rooms, stamps, draft, tool, sel, labels, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
+  }, [rooms, stamps, draft, tool, sel, selShape, labels, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
 
   const commitStamp = (p, type) => {
     const size = STAMP_DEFAULT_M[type] * pxPerM;
@@ -1562,10 +1578,20 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         if (h.width && dist(praw, h.width) < R){ setDrag({ kind: "resizeW", id: s.id, ax: s.x - ex.x*w/2, ay: s.y - ex.y*w/2, ex }); setPreview(base); return; }
         if (h.depth && dist(praw, h.depth) < R){ setDrag({ kind: "resizeD", id: s.id, ax: s.x - ey.x*d/2, ay: s.y - ey.y*d/2, ey }); setPreview(base); return; }
       }
+      const R = 18/S;
+      // selected room/wall edit handles: remove corner (✕) and add corner (+)
+      const rs = rooms.find(r => r.id === selShape);
+      if (rs){
+        for (const dh of cornerDels(rs)){ if (dist(praw, dh) < R){ removeCorner(rs.id, dh.i); return; } }
+        for (const mh of edgeMids(rs)){ if (dist(praw, mh) < R){ addCornerAt(rs.id, mh.i); setDrag({ kind: "vertex", id: rs.id, idx: mh.i + 1 }); setPreview({ rooms: rooms.map(r => r.id === rs.id ? { ...r, points: [...r.points.slice(0, mh.i+1), { x: mh.x, y: mh.y }, ...r.points.slice(mh.i+1)] } : r), stamps }); return; } }
+      }
       const hit = hitTest(praw);
-      if (hit && hit.kind === "stamp"){ setSel(hit.id); setDrag(hit); setPreview(base); return; }
-      if (hit){ setDrag(hit); setPreview(base); return; }
-      setSel(null); return;
+      if (hit && hit.kind === "stamp"){ setSel(hit.id); setSelShape(null); setDrag(hit); setPreview(base); return; }
+      if (hit && hit.kind === "vertex"){ setSelShape(hit.id); setSel(null); setDrag(hit); setPreview(base); return; }
+      // tap inside a room/wall → select it and allow dragging the whole shape
+      const inRoom = [...rooms].reverse().find(r => !r.wall && r.points.length >= 3 && pointInPoly(praw, r.points));
+      if (inRoom){ setSelShape(inRoom.id); setSel(null); setDrag({ kind: "shapeMove", id: inRoom.id, ox: praw.x, oy: praw.y, pts0: inRoom.points.map(p => ({ ...p })) }); setPreview(base); return; }
+      setSel(null); setSelShape(null); return;
     }
     if (tool === "room"){ const p = placePoint(e); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
     if (STAMP_DEFAULT_M[tool]){ commitStamp(toWorld(e, true), tool); return; }
@@ -1587,6 +1613,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         const base = prev || { rooms: plan.rooms || [], stamps: plan.stamps || [] };
         if (drag.kind === "stamp"){ const p = toWorld(e, true); return { rooms: base.rooms, stamps: base.stamps.map(s => s.id === drag.id ? { ...s, x: p.x, y: p.y } : s) }; }
         if (drag.kind === "vertex"){ const p = toWorld(e, true); return { stamps: base.stamps, rooms: base.rooms.map(r => r.id === drag.id ? { ...r, points: r.points.map((pt, k) => k === drag.idx ? p : pt) } : r) }; }
+        if (drag.kind === "shapeMove"){ const p = toWorld(e, false); let dx = p.x - drag.ox, dy = p.y - drag.oy; if (snap){ dx = Math.round(dx / gridPx) * gridPx; dy = Math.round(dy / gridPx) * gridPx; } return { stamps: base.stamps, rooms: base.rooms.map(r => r.id === drag.id ? { ...r, points: drag.pts0.map(pt => ({ x: clamp(pt.x + dx, 0, worldW), y: clamp(pt.y + dy, 0, worldH) })) } : r) }; }
         const praw = toWorld(e, false); const s = base.stamps.find(x => x.id === drag.id); if (!s) return base;
         if (drag.kind === "rotate"){ let deg = Math.atan2(praw.y - s.y, praw.x - s.x) * 180 / Math.PI + 90; if (snap) deg = Math.round(deg / 15) * 15; deg = ((Math.round(deg) % 360) + 360) % 360; return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, angle: deg } : x) }; }
         if (drag.kind === "resizeW"){ let proj = (praw.x - drag.ax)*drag.ex.x + (praw.y - drag.ay)*drag.ex.y; if (snap) proj = Math.round(proj / gridPx) * gridPx; const nw = Math.max(0.2 * pxPerM, proj); const cx = drag.ax + drag.ex.x*nw/2, cy = drag.ay + drag.ex.y*nw/2; return { rooms: base.rooms, stamps: base.stamps.map(x => x.id === drag.id ? { ...x, w: nw, size: nw, x: cx, y: cy } : x) }; }
@@ -1618,6 +1645,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const finishWall = () => { if (draft && draft.tool === "wall" && draft.points.length >= 2){ const pts = draft.points; onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Wall " + (rooms.filter(r => r.wall).length + 1), points: pts, wall: true, perim: round2(perimeter(pts, false) * mPerPx) }] }); } setDraft(null); };
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
+  const addCornerAt = (id, edgeIdx) => onChange({ ...plan, rooms: rooms.map(r => { if (r.id !== id) return r; const pts = r.points, a = pts[edgeIdx], b = pts[(edgeIdx+1) % pts.length]; const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 }; return { ...r, points: [...pts.slice(0, edgeIdx+1), mid, ...pts.slice(edgeIdx+1)] }; }) });
+  const removeCorner = (id, idx) => onChange({ ...plan, rooms: rooms.map(r => { if (r.id !== id) return r; const min = r.wall ? 2 : 3; if (r.points.length <= min) return r; return { ...r, points: r.points.filter((_, k) => k !== idx) }; }) });
   const renameShape = (id, name) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, name } : r) });
   const setHeight = (id, h) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, height: Math.max(0.1, num(h)) } : r) });
   const save3dRender = (dataUrl) => { onChange({ ...plan, render3d: dataUrl, include: true }); setShow3d(false); notify("3D render saved to quote"); };
@@ -1644,8 +1673,9 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room. Corners snap to nearby corners so rooms close cleanly."
     : tool === "wall" ? "Tap to drop each corner and keep going around bends (drag works too); Finish when done. Set a length below to fix each segment."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
-    : tool === "move" ? "Tap an object to select it: drag it to move, drag a side square to stretch that side (width / depth), the round knob to rotate, the red ✕ to delete. Drag room/wall corners to reshape."
+    : tool === "move" ? "Tap a room to select it — drag inside to move it, the green + to add a wall corner, the red ✕ to remove one, or drag any corner to reshape. Tap an object to move/resize/rotate it."
     : "Tap the plan to drop a " + stampLabel + ". Then use Edit to move, rotate, resize or delete it by hand.";
+  const selShapeObj = rooms.find(r => r.id === selShape);
 
   return (
     <div className="space-y-3">
@@ -1659,7 +1689,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       </div>
       <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
-          {DRAW_TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{l}</button>)}
+          {DRAW_TOOLS.map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); setSelShape(null); }}>{l}</button>)}
         </div>
         <select className="inp !py-1.5 !w-auto" value={STAMP_DEFAULT_M[tool] ? tool : ""} onChange={e => { if (e.target.value){ setTool(e.target.value); setDraft(null); } }}>
           <option value="">+ Add object…</option>
@@ -1683,6 +1713,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
         <canvas ref={canvasRef} className="editor" style={{ touchAction: "none" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
+      {tool === "move" && selShapeObj && (
+        <div className="flex items-center gap-2 flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
+          <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>{selShapeObj.wall ? (selShapeObj.curved ? "Curve" : "Wall") : "Room"} selected{selShapeObj.name ? " · " + selShapeObj.name : ""}</span>
+          <span className="text-xs" style={{ color: "var(--muted)" }}>green + adds a wall corner · red ✕ removes one · drag inside to move</span>
+          <button className="btn btn-ghost !py-1 ml-auto" style={{ color: "#dc2626" }} onClick={() => { delShape(selShape); setSelShape(null); }}><IcTrash size={15} /> Delete {selShapeObj.wall ? "wall" : "room"}</button>
+        </div>
+      )}
       {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-primary w-full" onClick={() => setShow3d(true)}><IcGrid size={16} /> 3D view / render</button>}
 
       {rooms.length > 0 && (
