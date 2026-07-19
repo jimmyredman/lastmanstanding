@@ -132,7 +132,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v27 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v28 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -706,7 +706,7 @@ function PricingScreen(){
    TAKEOFF CANVAS (PDF / photo measure + markup)
    ========================================================================= */
 const MEASURE_TOOLS = ["length", "area", "count"];
-const TOOL_LABELS = { pan: "Pan / zoom", calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
+const TOOL_LABELS = { pan: "Pan / zoom", edit: "Adjust points", calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
 const MARKUP_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#ea580c", "#eab308", "#111827", "#ffffff"];
 
 function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
@@ -723,10 +723,12 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   const [areaMode, setAreaMode] = useState("polygon");   // polygon | box | circle
   const [draft, setDraft] = useState(null); // {tool, points:[]}
   const [wrapW, setWrapW] = useState(360);
+  const [editDrag, setEditDrag] = useState(null); // {kind:'scale'|'ann', key/id, idx}
   const [, force] = useState(0);
 
   const anns = drawing.annotations || [];
-  const mpp = drawing.scaleMpp || null; // metres per (image-space) pixel
+  const scaleLine = drawing.scaleLine || null;   // { a, b, real } — keep the calibration line so it can be re-adjusted
+  const mpp = scaleLine ? (scaleLine.real / (dist(scaleLine.a, scaleLine.b) || 1)) : (drawing.scaleMpp || null);
 
   // load bg image
   useEffect(() => {
@@ -752,7 +754,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       const cw = wrap.scrollWidth || 1, ch = wrap.scrollHeight || 1;
       const fx = (wrap.scrollLeft + sx) / cw, fy = (wrap.scrollTop + sy) / ch;   // content fraction under cursor
       zoomAnchor.current = { fx, fy, sx, sy };
-      setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.5, 8));
+      setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.5, 16));
     };
     wrap.addEventListener("wheel", onWheel, { passive: false });
     return () => wrap.removeEventListener("wheel", onWheel);
@@ -783,7 +785,73 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     return round2(v).toFixed(2) + " m";
   };
 
-  // draw
+  const measIds = anns.filter(x => MEASURE_TOOLS.includes(x.tool)).map(x => x.id);
+  // draw one annotation. S = image→canvas scale for point positions; k = stroke/font
+  // scale so lines stay a constant screen size live and scale up in the snapshot.
+  const drawOne = (ctx, a, S, isDraft, k) => {
+    ctx.save();
+    ctx.lineWidth = 2.2*k; ctx.strokeStyle = a.color || color; ctx.fillStyle = a.color || color;
+    ctx.font = "600 " + (13*k) + "px system-ui"; ctx.textAlign = "center";
+    const P = a.points.map(p => ({ x: p.x * S, y: p.y * S }));
+    if (a.tool === "count") {
+      P.forEach((p, i) => { ctx.beginPath(); ctx.arc(p.x, p.y, 8*k, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.fillText(i + 1, p.x, p.y + 4*k); ctx.fillStyle = a.color || color; });
+    } else if (a.tool === "text") {
+      ctx.textAlign = "left"; ctx.font = "700 " + (15*k) + "px system-ui"; if (P[0]) ctx.fillText(a.text || "Text", P[0].x, P[0].y);
+    } else if (a.tool === "rect" && P.length >= 2) {
+      ctx.strokeRect(P[0].x, P[0].y, P[1].x - P[0].x, P[1].y - P[0].y);
+    } else if (a.tool === "area") {
+      ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (!isDraft) ctx.closePath();
+      ctx.globalAlpha = 0.16; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
+      P.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3.5*k, 0, 7); ctx.fill(); });
+    } else {
+      ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
+      P.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3.5*k, 0, 7); ctx.fill(); });
+      if (a.tool === "arrow" && P.length >= 2) {
+        const p2 = P[P.length - 1], p1 = P[P.length - 2], ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12*k * Math.cos(ang - .4), p2.y - 12*k * Math.sin(ang - .4)); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12*k * Math.cos(ang + .4), p2.y - 12*k * Math.sin(ang + .4)); ctx.stroke();
+      }
+    }
+    if (!isDraft && MEASURE_TOOLS.includes(a.tool) && mpp) {
+      const c = a.tool === "count" ? P[0] : centroid(P);
+      const no = measIds.indexOf(a.id) + 1;
+      if (c) {
+        const t = (a.name ? a.name + " · " : "") + valLabel(a);
+        ctx.font = "700 " + (12*k) + "px system-ui"; ctx.textAlign = "left";
+        const tw = ctx.measureText(t).width, badge = 20*k, pad = 6*k, w = badge + pad + tw + 8*k, bx = c.x - w/2, by = c.y - 24*k;
+        ctx.fillStyle = "rgba(17,24,39,.85)"; ctx.fillRect(bx, by, w, 20*k);
+        ctx.fillStyle = a.color || color; ctx.beginPath(); ctx.arc(bx + 10*k, by + 10*k, 8*k, 0, 7); ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.fillText(no, bx + 10*k, by + 14*k);
+        ctx.textAlign = "left"; ctx.fillText(t, bx + badge + pad, by + 14*k);
+      }
+    }
+    ctx.restore();
+  };
+  const drawScale = (ctx, S, k) => {
+    if (!scaleLine) return; const a = { x: scaleLine.a.x*S, y: scaleLine.a.y*S }, b = { x: scaleLine.b.x*S, y: scaleLine.b.y*S };
+    ctx.save(); ctx.strokeStyle = "#0ea5b7"; ctx.fillStyle = "#0ea5b7"; ctx.lineWidth = 2*k; ctx.setLineDash([6*k,4*k]);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); ctx.setLineDash([]);
+    [a,b].forEach(p => { ctx.beginPath(); ctx.arc(p.x,p.y,4*k,0,7); ctx.fill(); });
+    const m = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 }, t = "scale " + round2(scaleLine.real) + " m";
+    ctx.font = "700 " + (12*k) + "px system-ui"; ctx.textAlign = "center"; const tw = ctx.measureText(t).width;
+    ctx.fillStyle = "rgba(14,165,183,.9)"; ctx.fillRect(m.x-tw/2-4*k, m.y-20*k, tw+8*k, 16*k); ctx.fillStyle = "#fff"; ctx.fillText(t, m.x, m.y-8*k);
+    ctx.restore();
+  };
+  // full paint used by both the live canvas and the offscreen snapshot
+  const paint = (ctx, S, k, live) => {
+    if (imgRef.current) ctx.drawImage(imgRef.current, 0, 0, natW*S, natH*S);
+    else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, natW*S, natH*S); }
+    drawScale(ctx, S, k);
+    anns.forEach(a => drawOne(ctx, a, S, false, k));
+    if (live && draft) drawOne(ctx, draft, S, true, k);
+    if (live && tool === "edit"){
+      ctx.save(); ctx.fillStyle = "#fff"; ctx.lineWidth = 2;
+      const dot = (p) => { ctx.beginPath(); ctx.arc(p.x*S, p.y*S, 7, 0, 7); ctx.fill(); ctx.stroke(); };
+      if (scaleLine){ ctx.strokeStyle = "#0ea5b7"; dot(scaleLine.a); dot(scaleLine.b); }
+      ctx.strokeStyle = "#e8792b"; anns.forEach(a => a.points.forEach(dot));
+      ctx.restore();
+    }
+  };
+  // draw the live canvas (strokes stay constant screen size → k = 1, points scaled by displayScale)
   useEffect(() => {
     const cv = canvasRef.current; if (!cv) return;
     const dpr = window.devicePixelRatio || 1;
@@ -791,60 +859,33 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
     const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
-    if (imgRef.current) ctx.drawImage(imgRef.current, 0, 0, cssW, cssH);
-    else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, cssW, cssH); }
-    const S = displayScale;
-    const measIds = anns.filter(x => MEASURE_TOOLS.includes(x.tool)).map(x => x.id);
-    const drawAnn = (a, isDraft) => {
-      ctx.save();
-      ctx.lineWidth = 2.2; ctx.strokeStyle = a.color || color; ctx.fillStyle = a.color || color;
-      ctx.font = "600 13px system-ui"; ctx.textAlign = "center";
-      const P = a.points.map(p => ({ x: p.x * S, y: p.y * S }));
-      if (a.tool === "count") {
-        P.forEach((p, i) => { ctx.beginPath(); ctx.arc(p.x, p.y, 8, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.fillText(i + 1, p.x, p.y + 4); ctx.fillStyle = a.color || color; });
-      } else if (a.tool === "text") {
-        ctx.textAlign = "left"; ctx.font = "700 15px system-ui"; if (P[0]) ctx.fillText(a.text || "Text", P[0].x, P[0].y);
-      } else if (a.tool === "rect" && P.length >= 2) {
-        ctx.strokeRect(P[0].x, P[0].y, P[1].x - P[0].x, P[1].y - P[0].y);
-      } else if (a.tool === "area") {
-        ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (!isDraft) ctx.closePath();
-        ctx.globalAlpha = 0.16; ctx.fill(); ctx.globalAlpha = 1; ctx.stroke();
-        P.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 7); ctx.fill(); });
-      } else { // length, arrow, pen
-        ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.stroke();
-        P.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 3.5, 0, 7); ctx.fill(); });
-        if (a.tool === "arrow" && P.length >= 2) {
-          const p2 = P[P.length - 1], p1 = P[P.length - 2], ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-          ctx.beginPath(); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12 * Math.cos(ang - .4), p2.y - 12 * Math.sin(ang - .4)); ctx.moveTo(p2.x, p2.y); ctx.lineTo(p2.x - 12 * Math.cos(ang + .4), p2.y - 12 * Math.sin(ang + .4)); ctx.stroke();
-        }
-      }
-      // measurement number badge + label
-      if (!isDraft && MEASURE_TOOLS.includes(a.tool) && mpp) {
-        const c = a.tool === "count" ? P[0] : centroid(P);
-        const no = measIds.indexOf(a.id) + 1;
-        if (c) {
-          const t = (a.name ? a.name + " · " : "") + valLabel(a);
-          ctx.font = "700 12px system-ui"; ctx.textAlign = "left";
-          const tw = ctx.measureText(t).width, badge = 20, pad = 6, w = badge + pad + tw + 8, bx = c.x - w/2, by = c.y - 24;
-          ctx.fillStyle = "rgba(17,24,39,.85)"; ctx.fillRect(bx, by, w, 20);
-          ctx.fillStyle = a.color || color; ctx.beginPath(); ctx.arc(bx + 10, by + 10, 8, 0, 7); ctx.fill();
-          ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.fillText(no, bx + 10, by + 14);
-          ctx.textAlign = "left"; ctx.fillText(t, bx + badge + pad, by + 14);
-        }
-      }
-      ctx.restore();
-    };
-    anns.forEach(a => drawAnn(a, false));
-    if (draft) drawAnn(draft, true);
-  }, [anns, draft, cssW, cssH, displayScale, mpp, color]);
+    paint(ctx, displayScale, 1, true);
+  }, [anns, draft, scaleLine, editDrag, tool, cssW, cssH, displayScale, mpp, color]);
+
+  // keep a full-resolution marked-up snapshot so the quote/report always show the takeoff lines
+  const snapKey = JSON.stringify({ a: anns.map(x => [x.tool, x.name, x.color, x.points]), s: scaleLine });
+  const lastSnap = useRef("");
+  useEffect(() => {
+    if (!imgRef.current || !anns.length) return;
+    if (lastSnap.current === snapKey) return;
+    const id = setTimeout(() => {
+      try {
+        const oc = document.createElement("canvas"); oc.width = natW; oc.height = natH;
+        const octx = oc.getContext("2d"); paint(octx, 1, Math.max(1.6, natW/700), false);
+        lastSnap.current = snapKey;
+        onChange({ ...drawing, snapshot: oc.toDataURL("image/jpeg", 0.85) });
+      } catch(e){}
+    }, 700);
+    return () => clearTimeout(id);
+  }, [snapKey]);
 
   const toImg = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: (e.clientX - r.left) / displayScale, y: (e.clientY - r.top) / displayScale }; };
 
   const commit = (d) => {
     if (d.tool === "calibrate") {
       const px = dist(d.points[0], d.points[1]);
-      const real = parseFloat(prompt("Real length of the line you drew, in metres:", "1"));
-      if (real && px > 0) { onChange({ ...drawing, scaleMpp: real / px }); }
+      const real = parseFloat(prompt("Real length of the line you drew, in metres:", scaleLine ? String(scaleLine.real) : "1"));
+      if (real && px > 0) { onChange({ ...drawing, scaleLine: { a: d.points[0], b: d.points[1], real }, scaleMpp: real / px }); }
       setDraft(null); return;
     }
     const ann = { id: uid(), tool: d.tool, points: d.points, color };
@@ -866,6 +907,12 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     if (tool === "pan") { const wrap = wrapRef.current; panRef.current = { x: e.clientX, y: e.clientY, sl: wrap.scrollLeft, st: wrap.scrollTop }; return; }
     e.preventDefault();
     const p = toImg(e);
+    if (tool === "edit") {   // grab the nearest scale endpoint or annotation vertex
+      const thr = 14 / displayScale;
+      if (scaleLine){ if (dist(p, scaleLine.a) < thr){ setEditDrag({ kind: "scale", key: "a" }); return; } if (dist(p, scaleLine.b) < thr){ setEditDrag({ kind: "scale", key: "b" }); return; } }
+      for (let i = anns.length - 1; i >= 0; i--){ const a = anns[i]; for (let j = 0; j < a.points.length; j++){ if (dist(p, a.points[j]) < thr){ setEditDrag({ kind: "ann", id: a.id, idx: j }); return; } } }
+      return;
+    }
     const twoPt = ["calibrate", "length", "arrow", "rect"].includes(tool);
     const multi = ["area", "pen"].includes(tool);
     if (tool === "count") {
@@ -892,10 +939,16 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
       const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
       zoomAnchor.current = { fx: pinch.current.fx, fy: pinch.current.fy, sx: mx, sy: my };   // keep midpoint under fingers
-      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.5, 8));
+      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.5, 16));
       return;
     }
     if (panRef.current) { const wrap = wrapRef.current; wrap.scrollLeft = panRef.current.sl - (e.clientX - panRef.current.x); wrap.scrollTop = panRef.current.st - (e.clientY - panRef.current.y); return; }
+    if (editDrag) {
+      const p = toImg(e);
+      if (editDrag.kind === "scale"){ onChange({ ...drawing, scaleLine: { ...scaleLine, [editDrag.key]: p } }); return; }
+      onChange({ ...drawing, annotations: anns.map(a => a.id === editDrag.id ? { ...a, points: a.points.map((pt, k) => k === editDrag.idx ? p : pt) } : a) });
+      return;
+    }
     if (!draft) return;
     if (draft.dragging && draft.shape) {
       const p = toImg(e), a = draft.start;
@@ -912,6 +965,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     gPointers.current.delete(e.pointerId);
     if (gPointers.current.size < 2) pinch.current = null;
     if (gPointers.current.size === 0) panRef.current = null;
+    if (editDrag) { setEditDrag(null); return; }
     if (wasGesture || tool === "pan") return;
     if (!draft) return;
     if (draft.dragging && draft.shape) { const pts = draft.points; setDraft(null); if (pts.length >= 3 && shoelace(pts) * displayScale * displayScale > 60) commit({ tool: "area", points: pts }); return; }
@@ -926,13 +980,14 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
   const linkItem = (id, itemId) => onChange({ ...drawing, annotations: anns.map(a => a.id === id ? { ...a, priceItemId: itemId } : a) });
   const renameAnn = (id, name) => onChange({ ...drawing, annotations: anns.map(a => a.id === id ? { ...a, name } : a) });
 
-  const saveSnapshot = () => {
-    const cv = canvasRef.current; if (!cv) return;
-    onChange({ ...drawing, snapshot: cv.toDataURL("image/jpeg", 0.8) });
+  const buildSnapshot = () => {
+    const oc = document.createElement("canvas"); oc.width = natW; oc.height = natH;
+    paint(oc.getContext("2d"), 1, Math.max(1.6, natW/700), false);
+    return oc.toDataURL("image/jpeg", 0.85);
   };
+  const saveSnapshot = () => { try { lastSnap.current = snapKey; onChange({ ...drawing, snapshot: buildSnapshot() }); } catch(e){} };
   const addCopyToQuote = () => {
-    const cv = canvasRef.current; if (!cv) return;
-    onChange({ ...drawing, snapshot: cv.toDataURL("image/jpeg", 0.85), include: true });
+    try { lastSnap.current = snapKey; onChange({ ...drawing, snapshot: buildSnapshot(), include: true }); } catch(e){ return; }
     notify("Marked-up copy attached to quote");
   };
 
@@ -954,17 +1009,19 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
     notify(lines.length + " sent to quote" + (priced < lines.length ? " · " + (lines.length - priced) + " need a rate" : ""));
   };
 
+  const setScaleLength = () => { if (!scaleLine) return; const real = parseFloat(prompt("Real length of the scale line, in metres:", String(scaleLine.real))); if (real > 0) onChange({ ...drawing, scaleLine: { ...scaleLine, real } }); };
   const measured = anns.filter(a => MEASURE_TOOLS.includes(a.tool));
-  const tools = ["pan", "calibrate", "length", "area", "count", "arrow", "rect", "pen", "text"];
+  const tools = ["pan", "edit", "calibrate", "length", "area", "count", "arrow", "rect", "pen", "text"];
 
   return (
     <div className="space-y-3">
       {!mpp && <div className="card p-3 text-sm flex items-center gap-2" style={{ background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" }}><IcRuler size={18} /> Set the scale first: pick <b>Set scale</b>, draw a line over a known dimension, then enter its real length.</div>}
-      {mpp && <div className="chip"><IcCheck size={14} /> Scale set · 1 px = {round2(mpp * 1000)} mm</div>}
+      {mpp && <div className="flex items-center gap-2 flex-wrap"><div className="chip"><IcCheck size={14} /> Scale set · 1 m = {round2(1/mpp)} px</div>{scaleLine && <button className="btn btn-ghost !py-1 text-xs" onClick={setScaleLength}>Set scale length…</button>}</div>}
 
       <div className="scroll-x flex gap-1.5 pb-1">
-        {tools.map(t => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); }}>{TOOL_LABELS[t]}</button>)}
+        {tools.map(t => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setEditDrag(null); }}>{TOOL_LABELS[t]}</button>)}
       </div>
+      {tool === "edit" && <div className="text-sm" style={{ color: "var(--muted)" }}>Drag any point to adjust it — the scale line (teal), or any length / area / count corner. Measurements update as you drag.</div>}
       {tool === "area" && (
         <div className="flex items-center gap-2 text-sm">
           <span style={{ color: "var(--muted)" }}>Area shape:</span>
@@ -974,7 +1031,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       )}
 
       <div className="flex items-center gap-3 flex-wrap text-sm">
-        <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="8" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /> <span style={{ color: "var(--muted)" }}>{Math.round(zoom*100)}%</span></label>
+        <label className="flex items-center gap-1">Zoom <input type="range" min="0.5" max="16" step="0.1" value={zoom} onChange={e => setZoom(num(e.target.value))} /> <span style={{ color: "var(--muted)" }}>{Math.round(zoom*100)}%</span></label>
         <span className="text-xs" style={{ color: "var(--muted)" }}>pinch or scroll to zoom · two-finger or Pan tool to move</span>
         {tool !== "calibrate" && (
           <div className="flex items-center gap-1">
@@ -986,7 +1043,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
       </div>
 
       <div ref={wrapRef} className="card" style={{ maxHeight: "62vh", overflow: "auto" }}>
-        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", cursor: tool === "pan" ? "grab" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
+        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", cursor: tool === "pan" ? "grab" : tool === "edit" ? "move" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
 
       {measured.length > 0 && (
@@ -1727,10 +1784,18 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
   const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.85) }); };
   const shapeQty = (r) => r.wall ? perimeter(r.points, false)*mPerPx : shoelace(r.points)*mPerPx*mPerPx;
+  // Send rooms/walls to the quote. Linking a rate is optional — unlinked ones
+  // come through with the area/length + a blank rate to enter on the quote.
   const addToQuote = () => {
-    const lines = rooms.filter(r => r.priceItemId).map(r => { const it = items.find(i => i.id === r.priceItemId); if (!it) return null; return { id: uid(), desc: it.description + " — " + r.name, unit: it.unit, rateEx: it.rate, category: it.category, qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name }; }).filter(Boolean);
-    if (!lines.length) { alert("Link a price item to a room or wall first."); return; }
+    if (!rooms.length) { alert("Draw a room or wall first."); return; }
+    const lines = rooms.map(r => {
+      const it = r.priceItemId ? items.find(i => i.id === r.priceItemId) : null;
+      const nm = r.name || (r.wall ? "Wall" : "Room");
+      return { id: uid(), desc: it ? (it.description + " — " + nm) : nm, unit: it ? it.unit : (r.wall ? "m" : "m2"), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name };
+    });
     saveSnapshot(); onAddToQuote(lines);
+    const priced = lines.filter(l => l.rateEx > 0).length;
+    notify(lines.length + " sent to quote" + (priced < lines.length ? " · " + (lines.length - priced) + " need a rate" : ""));
   };
   const totalArea = rooms.filter(r => !r.wall).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
 
@@ -2253,6 +2318,8 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
           <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
           <Field label="Scope / notes (shown on quote)"><textarea className="inp" rows="4" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
           <Field label="Exclusions (shown on quote after scope)"><textarea className="inp" rows="4" placeholder="e.g. Services disconnection excluded. Replacement cladding not included. Full-time air monitoring excluded." value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
+          <button className="btn btn-primary w-full" onClick={() => { upd({ updatedAt: now() }); notify("Job details saved"); }}><IcCheck size={16} /> Save details</button>
+          <p className="text-xs text-center" style={{ color: "var(--muted)" }}>Changes save automatically as you type — this just confirms it.</p>
           <button className="btn btn-danger w-full" onClick={onDelete}><IcTrash size={16} /> Delete job</button>
         </div>
       )}
