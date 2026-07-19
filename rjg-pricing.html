@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v20 · 18 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v21 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -302,6 +302,15 @@ function SettingsScreen(){
   const save = () => { saveSettings(f); notify("Settings saved"); };
 
   const backup = () => download("rjg-backup-" + new Date().toISOString().slice(0,10) + ".json", new Blob([JSON.stringify({ settings, items, projects }, null, 2)], { type: "application/json" }));
+  // Clear the offline cache + service worker and reload the newest build.
+  // Only wipes caches/SW — your price items and jobs (IndexedDB) are untouched.
+  const forceUpdate = async () => {
+    try {
+      if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }
+      if (navigator.serviceWorker) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); }
+    } catch (e) {}
+    location.reload(true);
+  };
   const restore = (e) => {
     const file = e.target.files[0]; if (!file) return;
     const r = new FileReader();
@@ -377,7 +386,11 @@ function SettingsScreen(){
           <label className="btn btn-ghost cursor-pointer"><IcUpload size={16} style={{ transform: "rotate(180deg)" }} /> Restore backup<input type="file" accept="application/json" className="hidden" onChange={restore} /></label>
         </div>
         <div className="text-xs" style={{ color: "var(--muted)" }}>{items.length} price items · {projects.length} jobs stored.</div>
-        <div className="text-xs" style={{ color: "var(--muted)" }}>App version <b>{APP_VERSION}</b></div>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-xs" style={{ color: "var(--muted)" }}>App version <b>{APP_VERSION}</b></div>
+          <button className="btn btn-ghost !py-1 text-xs" onClick={forceUpdate}><IcGrid size={14} /> Force update</button>
+        </div>
+        <p className="text-xs" style={{ color: "var(--muted)" }}>Seeing an old version? Tap Force update — it clears the cache and reloads the latest build. Your saved data stays.</p>
       </div>
     </div>
   );
@@ -2147,8 +2160,22 @@ ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
   var s = document.createElement("script");
   s.textContent = out;
   document.body.appendChild(s);
-  // register offline service worker
-  if ("serviceWorker" in navigator) { window.addEventListener("load", function(){ navigator.serviceWorker.register("./sw.js").catch(function(){}); }); }
+  // register offline service worker + keep it fresh so new builds always arrive
+  if ("serviceWorker" in navigator) {
+    var reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function(){ if (reloaded) return; reloaded = true; location.reload(); });
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("./sw.js").then(function(reg){
+        reg.update();
+        // if a new worker is waiting, activate it immediately
+        function nudge(w){ if (w && w.state === "installed" && navigator.serviceWorker.controller) w.postMessage && reg.waiting && reg.waiting.postMessage({ type: "SKIP_WAITING" }); }
+        if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        reg.addEventListener("updatefound", function(){ var nw = reg.installing; if (nw) nw.addEventListener("statechange", function(){ nudge(nw); }); });
+        setInterval(function(){ reg.update().catch(function(){}); }, 60 * 60 * 1000);  // hourly check while open
+      }).catch(function(){});
+    });
+    document.addEventListener("visibilitychange", function(){ if (!document.hidden && navigator.serviceWorker.controller) navigator.serviceWorker.getRegistration().then(function(r){ r && r.update().catch(function(){}); }); });
+  }
 </script>
 </body>
 </html>
