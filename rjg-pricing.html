@@ -166,8 +166,9 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v42 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v43 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "18 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
+const MASTER_PRICES_TS = Date.parse("2026-07-18");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -221,7 +222,7 @@ function StoreProvider({ children }){
       // First run on a fresh device: pre-load the RJG price register so it's there
       // by default — no manual import needed. The "seeded" flag means we only ever
       // do this once, so clearing items on purpose won't bring them back.
-      if (!it.length && !seeded) { it = await seedDefaultItems(); }
+      if (!it.length && !seeded) { it = await seedDefaultItems(); if (it.length){ kv = { ...(kv || {}), pricesUpdatedAt: MASTER_PRICES_TS, pricesSource: "Built-in RJG list (" + SEED_PRICES_DATE + ")" }; await dbPut("kv", kv, "settings"); } }
       setItems(it);
       setProjects(pr.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
       if (kv) setSettings({ ...DEFAULT_SETTINGS, ...kv });
@@ -692,6 +693,7 @@ function ImportModal({ open, onClose }){
 function PricingScreen(){
   const { items, deleteItem, clearItems, notify, settings } = useStore();
   const pricesDate = settings.pricesUpdatedAt ? fmtDate(settings.pricesUpdatedAt) : SEED_PRICES_DATE;
+  const pricesOutOfDate = items.length > 0 && (settings.pricesUpdatedAt || MASTER_PRICES_TS) < MASTER_PRICES_TS;
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [typeF, setTypeF] = useState("");
@@ -706,9 +708,11 @@ function PricingScreen(){
       .sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.description || "").localeCompare(b.description || ""));
   }, [items, q, cat, typeF]);
 
+  // Export the price list as a dated Excel the team re-imports (round-trips with
+  // the importer: same columns → merge-by-code updates rates without duplicates).
   const exportXlsx = () => {
     const ws = XLSX.utils.json_to_sheet(items.map(i => ({ Code: i.code, Description: i.description, Category: i.category, "Cost type": i.type || "Material", Unit: i.unit, "Rate (ex GST)": i.rate, Supplier: i.supplier })));
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-cost-register.xlsx");
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Cost Register"); XLSX.writeFile(wb, "RJG-Prices-" + new Date().toISOString().slice(0,10) + ".xlsx");
   };
   const TYPE_COLOR = { Material: "#2563eb", Labour: "#16a34a", Equipment: "#ea580c", Plant: "#ea580c", Crew: "#7c3aed", Subcontractor: "#0891b2", Prelim: "#64748b", Other: "#64748b" };
 
@@ -722,9 +726,15 @@ function PricingScreen(){
           <button className="btn btn-primary !px-3" onClick={() => setEditing(null)}><IcPlus size={16} /> Item</button>
         </div>
       </div>
-      <div className="flex items-center gap-2 mb-3 text-xs" style={{ color: "var(--muted)" }}>
+      <div className="flex items-center gap-2 mb-2 text-xs" style={{ color: "var(--muted)" }}>
         <IcPrice size={13} /><span>Prices updated <b style={{ color: "var(--ink)" }}>{pricesDate}</b> · {items.length} items{settings.pricesSource ? " · from " + settings.pricesSource : ""}</span>
       </div>
+      {pricesOutOfDate && (
+        <div className="rounded-lg p-2.5 mb-3 text-xs flex items-start gap-2" style={{ background: "rgba(234,179,8,.12)", border: "1px solid rgba(234,179,8,.5)", color: "#92640a" }}>
+          <span style={{ fontSize: 15, lineHeight: "16px" }}>⚠️</span>
+          <span>Your price list may be out of date — the current master is dated <b>{SEED_PRICES_DATE}</b>. Import the latest file (<b>Import</b>), or load the built-in list under <b>Settings → Load default price list</b>.</span>
+        </div>
+      )}
 
       <div className="flex gap-2 mb-3">
         <div className="relative flex-1">
@@ -772,7 +782,7 @@ function PricingScreen(){
 
       {items.length > 0 && (
         <div className="flex gap-2 mt-3 flex-wrap">
-          <button className="btn btn-ghost" onClick={exportXlsx}><IcUpload size={16} /> Export to Excel</button>
+          <button className="btn btn-ghost" onClick={exportXlsx}><IcUpload size={16} /> Export price list (Excel)</button>
           <button className="btn btn-ghost" onClick={() => { if (confirm("Delete ALL price items? This cannot be undone.")) { clearItems(); notify("Database cleared"); } }}><IcTrash size={16} /> Clear database</button>
         </div>
       )}
