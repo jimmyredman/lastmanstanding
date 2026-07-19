@@ -1,0 +1,22 @@
+name: NRL results (dry run)
+
+# Manual trigger only for now — this just fetches ESPN and logs the shape of the data.
+# Once we've confirmed the feed, we'll add a schedule and the Firestore write step.
+on:
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: "Optional day to query (YYYYMMDD). Leave blank for today."
+        required: false
+        default: ""
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Fetch NRL scoreboard (dry run)
+        run: node scripts/fetch-nrl.mjs "${{ github.event.inputs.dates }}"
