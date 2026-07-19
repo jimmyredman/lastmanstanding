@@ -1,14 +1,21 @@
-name: NRL results (dry run)
+name: NRL results
 
-# Manual trigger only for now — this just fetches ESPN and logs the shape of the data.
-# Once we've confirmed the feed, we'll add a schedule and the Firestore write step.
+# Fetches the latest NRL results from ESPN's public feed and commits nrl-results.json
+# back to the repo. Vercel serves it at /nrl-results.json, and the host results panel
+# reads it to pre-fill winners (the host still reviews and confirms). No secrets needed.
 on:
   workflow_dispatch:
     inputs:
       dates:
-        description: "Optional day to query (YYYYMMDD). Leave blank for today."
+        description: "Optional day/range to query (YYYYMMDD or YYYYMMDD-YYYYMMDD). Blank = current week."
         required: false
         default: ""
+  schedule:
+    # Daily at 08:00 and 20:00 UTC (~6pm / 6am AEST) — catches results after each round.
+    - cron: "0 8,20 * * *"
+
+permissions:
+  contents: write
 
 jobs:
   fetch:
@@ -17,6 +24,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - name: Fetch NRL scoreboard (dry run)
+          node-version: "22"
+      - name: Fetch NRL results
         run: node scripts/fetch-nrl.mjs "${{ github.event.inputs.dates }}"
+      - name: Commit updated results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- nrl-results.json; then
+            echo "No changes to nrl-results.json."
+          else
+            git add nrl-results.json
+            git commit -m "chore: update NRL results feed"
+            git push
+          fi

@@ -233,6 +233,7 @@ const EyeOff = svgIcon(<><path d="M3 3l18 18" /><path d="M10.6 5.2A10.6 10.6 0 0
 const Palette = svgIcon(<><rect x="3" y="3" width="7.5" height="7.5" rx="1.2" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.2" /></>);
 const User = svgIcon(<><circle cx="12" cy="8" r="3.5" /><path d="M4.5 20c0-4.1 3.4-7 7.5-7s7.5 2.9 7.5 7" /></>);
 const Ban = svgIcon(<><circle cx="12" cy="12" r="9" /><line x1="5.6" y1="5.6" x2="18.4" y2="18.4" /></>);
+const Zap = svgIcon(<polygon points="13 2 4 14 11 14 10 22 20 9 13 9 13 2" />);
 
 /* ---- neon-outline nav icons (hand-built SVG, no external assets) ---- */
 function NavSvg({ active, children }) {
@@ -1791,6 +1792,30 @@ function HostResultsPanel({ tier, now, theme }) {
   }, [open, tier.id, tier.roundId]);
 
   const setFixtureResult = (i, winner) => db.collection("results").doc(resultsDocId).set({ fixtureResults: { ...results, [i]: winner } }, { merge: true });
+  const [autoMsg, setAutoMsg] = useState("");
+  // Pre-fill winners from the auto-updated NRL feed (host still reviews + confirms below).
+  const autoFillFromNRL = async () => {
+    setAutoMsg("Checking NRL results…");
+    try {
+      const res = await fetch("nrl-results.json?t=" + tier.roundId, { cache: "no-store" });
+      if (!res.ok) throw new Error("feed unavailable");
+      const store = await res.json();
+      const rd = (store.rounds || {})[tier.roundId];
+      if (!rd || !rd.games) { setAutoMsg("No NRL results yet for this round."); return; }
+      const next = { ...results }; let filled = 0, pending = 0;
+      effectiveFixtures.forEach((f, i) => {
+        const g = rd.games.find((x) =>
+          (x.home === f.home && x.away === f.away) || (x.home === f.away && x.away === f.home));
+        if (g && g.completed && g.winner) { next[i] = g.winner; filled++; }
+        else if (g && !g.completed) pending++;
+      });
+      if (!filled) { setAutoMsg(pending ? "Games not finished yet — check back after kickoff." : "No matching NRL results found for these fixtures."); return; }
+      await db.collection("results").doc(resultsDocId).set({ fixtureResults: next }, { merge: true });
+      setAutoMsg(`Filled ${filled} result${filled === 1 ? "" : "s"} from NRL${pending ? ` (${pending} still to play)` : ""}. Review, then Confirm.`);
+    } catch (e) {
+      setAutoMsg("Couldn't reach the NRL feed. Enter results manually below.");
+    }
+  };
   // Host allocates a team to a player who didn't submit a pick for this round.
   const assignPick = (uid, name, team) => db.collection("picks").doc(`${tier.id}_${tier.roundId}_${uid}`).set({ tierId: tier.id, roundId: tier.roundId, uid, name, team, submittedAt: FieldValue.serverTimestamp(), assignedByHost: true }, { merge: true });
   const pickedUids = new Set(picks.map((p) => p.uid));
@@ -1903,6 +1928,10 @@ function HostResultsPanel({ tier, now, theme }) {
               </div>
             </div>
           )}
+          <button onClick={autoFillFromNRL} className={`w-full flex items-center justify-center gap-2 rounded-lg border ${theme.borderSoft} ${theme.bgSoft} ${theme.text} font-medium py-2 text-[13px]`}>
+            <Zap size={14} /> Auto-fill from NRL results
+          </button>
+          {autoMsg && <p className="text-[11px] text-neutral-400">{autoMsg}</p>}
           <FixtureEditor tier={tier} effectiveFixtures={effectiveFixtures} theme={theme} />
           {effectiveFixtures.map((f, i) => (
             <div key={i} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
