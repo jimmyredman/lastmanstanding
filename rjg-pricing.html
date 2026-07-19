@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v43 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v44 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "18 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-18");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -800,7 +800,7 @@ const MEASURE_TOOLS = ["length", "area", "count"];
 const TOOL_LABELS = { pan: "Pan / zoom", edit: "Adjust points", calibrate: "Set scale", length: "Length", area: "Area", count: "Count", pen: "Draw", arrow: "Arrow", rect: "Box", text: "Text" };
 const MARKUP_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#ea580c", "#eab308", "#111827", "#ffffff"];
 
-function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
+function TakeoffCanvas({ drawing, onChange, onAddToQuote, priced = true }){
   const { items, notify } = useStore();
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1139,8 +1139,8 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
 
       {measured.length > 0 && (
         <div className="card p-3 space-y-2">
-          <div className="font-semibold text-sm brand-text">Measurements → quote</div>
-          <div className="text-xs" style={{ color: "var(--muted)" }}>Attaching a rate is optional — send measurements straight through and enter values on the quote if you prefer.</div>
+          <div className="font-semibold text-sm brand-text">Measurements → {priced ? "quote" : "price request"}</div>
+          <div className="text-xs" style={{ color: "var(--muted)" }}>{priced ? "Attaching a rate is optional — send measurements straight through and enter values on the quote if you prefer." : "These measurements go to the subcontractor as quantities to price — no rates are attached."}</div>
           {measured.map((a, mi) => {
             const it = items.find(i => i.id === a.priceItemId);
             const qty = mpp ? measureVal(a) : 0;
@@ -1152,6 +1152,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
                   <span className="font-semibold whitespace-nowrap">{valLabel(a)}</span>
                   <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
                 </div>
+                {priced && (
                 <div className="flex items-center gap-2 text-sm">
                   {(() => {
                     const want = toolUnitFamily(a.tool);
@@ -1166,6 +1167,7 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
                   })()}
                   {it && <span className="text-xs whitespace-nowrap" style={{ color: "var(--muted)" }}>= <b style={{ color: "var(--ink)" }}>{money(qty * it.rate)}</b></span>}
                 </div>
+                )}
               </div>
             );
           })}
@@ -1748,6 +1750,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [surfMode, setSurfMode] = useState("rect");   // ground areas: "rect" drag or "poly" dot-to-dot
   const [wallKind, setWallKind] = useState("ext");    // external 200mm vs internal 90mm
   const [fenceStyle, setFenceStyle] = useState("fence");  // timber / black steel / glass (drawn like a wall)
+  const [mkColor, setMkColor] = useState("#e11d48");   // reference markup colour (line / arrow / text)
   const [drag, setDrag] = useState(null);       // {kind:'stamp'|'vertex'|'rotate'|'resize', id, idx}
   const [preview, setPreview] = useState(null); // live {rooms, stamps} during a move-drag
   const [sel, setSel] = useState(null);         // selected stamp id (for rotate/resize handles)
@@ -1763,6 +1766,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
   const rooms = (preview && preview.rooms) || plan.rooms || [];
   const stamps = (preview && preview.stamps) || plan.stamps || [];
+  const markups = plan.markups || [];   // reference lines / arrows / text (2D only, not in 3D)
   const cols = 60, rowsN = 46;   // larger drawable site; zoom out to see it all
   const worldW = cols * gridPx, worldH = rowsN * gridPx;
   const pxPerM = gridPx / gridM;
@@ -1865,6 +1869,14 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
     if (labels){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
+    // reference markups (lines / arrows / text) — on top; captured in the report snapshot but not shown in 3D
+    const drawMk = (m) => {
+      ctx.strokeStyle = m.color || "#e11d48"; ctx.fillStyle = m.color || "#e11d48"; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.lineCap = "round";
+      if (m.mk === "text"){ ctx.font = "700 14px system-ui"; ctx.textAlign = "left"; ctx.fillText(m.text || "", m.a.x, m.a.y); return; }
+      ctx.beginPath(); ctx.moveTo(m.a.x, m.a.y); ctx.lineTo(m.b.x, m.b.y); ctx.stroke();
+      if (m.mk === "arrow"){ const ang = Math.atan2(m.b.y - m.a.y, m.b.x - m.a.x), hl = 13; ctx.beginPath(); ctx.moveTo(m.b.x, m.b.y); ctx.lineTo(m.b.x - hl*Math.cos(ang - 0.42), m.b.y - hl*Math.sin(ang - 0.42)); ctx.lineTo(m.b.x - hl*Math.cos(ang + 0.42), m.b.y - hl*Math.sin(ang + 0.42)); ctx.closePath(); ctx.fill(); }
+    };
+    markups.forEach(drawMk);
     // north arrow (top-right)
     (() => { const nx = worldW - 34, ny = 34; ctx.save(); ctx.translate(nx, ny); ctx.fillStyle = brand; ctx.strokeStyle = brand; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(6,8); ctx.lineTo(0,3); ctx.lineTo(-6,8); ctx.closePath(); ctx.fill();
@@ -1907,7 +1919,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
     }
     if (draft){
-      if (draft.tool === "surfacerect"){ const a=draft.start, c=draft.cur, sc=SURFACE_STROKE[draft.surface]||brand, sf=SURFACE_FILL[draft.surface]||"rgba(2,34,75,.08)"; const x=Math.min(a.x,c.x), y=Math.min(a.y,c.y), w2=Math.abs(c.x-a.x), h2=Math.abs(c.y-a.y); ctx.fillStyle=sf; ctx.fillRect(x,y,w2,h2); ctx.strokeStyle=sc; ctx.lineWidth=3; ctx.strokeRect(x,y,w2,h2); const wm=round2(w2*mPerPx).toFixed(2), hm=round2(h2*mPerPx).toFixed(2); ctx.fillStyle=sc; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillText(wm+" × "+hm+" m",x+w2/2,y+h2/2); }
+      if (draft.tool === "markup"){ ctx.strokeStyle=draft.color||"#e11d48"; ctx.fillStyle=draft.color||"#e11d48"; ctx.lineWidth=3; ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(draft.a.x,draft.a.y); ctx.lineTo(draft.b.x,draft.b.y); ctx.stroke(); if (draft.mk==="arrow"){ const ang=Math.atan2(draft.b.y-draft.a.y,draft.b.x-draft.a.x),hl=13; ctx.beginPath(); ctx.moveTo(draft.b.x,draft.b.y); ctx.lineTo(draft.b.x-hl*Math.cos(ang-0.42),draft.b.y-hl*Math.sin(ang-0.42)); ctx.lineTo(draft.b.x-hl*Math.cos(ang+0.42),draft.b.y-hl*Math.sin(ang+0.42)); ctx.closePath(); ctx.fill(); } }
+      else if (draft.tool === "surfacerect"){ const a=draft.start, c=draft.cur, sc=SURFACE_STROKE[draft.surface]||brand, sf=SURFACE_FILL[draft.surface]||"rgba(2,34,75,.08)"; const x=Math.min(a.x,c.x), y=Math.min(a.y,c.y), w2=Math.abs(c.x-a.x), h2=Math.abs(c.y-a.y); ctx.fillStyle=sf; ctx.fillRect(x,y,w2,h2); ctx.strokeStyle=sc; ctx.lineWidth=3; ctx.strokeRect(x,y,w2,h2); const wm=round2(w2*mPerPx).toFixed(2), hm=round2(h2*mPerPx).toFixed(2); ctx.fillStyle=sc; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillText(wm+" × "+hm+" m",x+w2/2,y+h2/2); }
       else if (draft.tool === "room" || draft.tool === "surface"){ const dc = draft.tool === "surface" ? (SURFACE_STROKE[draft.surface] || brand) : brand; ctx.strokeStyle=dc; ctx.lineWidth=4; ctx.beginPath(); draft.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.fillStyle=dc; draft.points.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
       else if (draft.tool === "wall"){ // chained wall with per-segment lengths
         const pts = draft.preview ? [...draft.points, draft.preview] : draft.points;
@@ -1987,6 +2000,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       if (inRoom){ setSelShape(inRoom.id); setSel(null); setDrag({ kind: "shapeMove", id: inRoom.id, ox: praw.x, oy: praw.y, pts0: inRoom.points.map(p => ({ ...p })) }); setPreview(base); return; }
       setSel(null); setSelShape(null); return;
     }
+    if (tool === "mk_text"){ const p = toWorld(e, false); const txt = prompt("Note text:", ""); if (txt) onChange({ ...plan, markups: [...markups, { id: uid(), mk: "text", a: p, text: txt, color: mkColor }] }); return; }
+    if (tool === "mk_line" || tool === "mk_arrow"){ const p = toWorld(e, false); setDraft({ tool: "markup", mk: tool === "mk_arrow" ? "arrow" : "line", a: p, b: p, color: mkColor }); return; }
     if (tool === "room"){ const p = placePoint(e); setDraft(d => d && d.tool === "room" ? { ...d, points: [...d.points, p] } : { tool: "room", points: [p] }); return; }
     if (SURFACE_SET.has(tool)){
       if (surfMode === "rect"){ const p = toWorld(e, true); setDraft({ tool: "surfacerect", surface: tool, start: p, cur: p }); return; }
@@ -2023,6 +2038,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     }
     if (draft && draft.tool === "wall" && draft.chain){ const last = draft.points[draft.points.length-1]; const pv = draft.points.length ? chainNext(last, e) : placePoint(e); setDraft({ ...draft, preview: pv }); return; }
     if (draft && draft.tool === "surfacerect"){ setDraft({ ...draft, cur: toWorld(e, true) }); return; }
+    if (draft && draft.tool === "markup"){ setDraft({ ...draft, b: toWorld(e, false) }); return; }
     if (!draft || !draft.dragging) return;
     if (draft.tool === "curve"){ const p = toWorld(e, false); const last = draft.points[draft.points.length-1]; if (!last || dist(last,p) > 3) setDraft({ ...draft, points: [...draft.points, p] }); }
   };
@@ -2033,6 +2049,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (wasPinch) return;
     if (drag){ if (preview){ let st = preview.stamps; if (drag.kind === "stamp" && snap){ const s0 = st.find(s => s.id === drag.id); if (s0 && !NO_WALL_SNAP.has(s0.type)){ const snapped = snapStampToWall(s0); st = st.map(s => s.id === drag.id ? snapped : s); } } onChange({ ...plan, rooms: preview.rooms, stamps: st }); } setDrag(null); setPreview(null); return; }
     if (draft && draft.tool === "wall" && draft.chain){ const last = draft.points[draft.points.length-1]; const pt = draft.points.length ? chainNext(last, e) : placePoint(e); setDraft({ ...draft, points: [...draft.points, pt], preview: null }); return; }
+    if (draft && draft.tool === "markup"){
+      const { a, b: bb, mk, color } = draft; setDraft(null);
+      if (dist(a, bb) * mPerPx > 0.05) onChange({ ...plan, markups: [...markups, { id: uid(), mk, a, b: bb, color }] });
+      return;
+    }
     if (draft && draft.tool === "surfacerect"){
       const a = draft.start, c = draft.cur, kind = draft.surface; setDraft(null);
       if (Math.abs(c.x - a.x) * mPerPx < 0.1 || Math.abs(c.y - a.y) * mPerPx < 0.1) return;   // ignore a tap / tiny drag
@@ -2066,8 +2087,9 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const renameShape = (id, name) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, name } : r) });
   const setHeight = (id, h) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, height: Math.max(0.1, num(h)) } : r) });
   const save3dRender = (dataUrl) => { onChange({ ...plan, render3d: dataUrl, include: true }); setShow3d(false); notify("3D render saved to quote"); };
-  const clearAll = () => { if ((rooms.length || stamps.length) && confirm("Clear everything on this floor plan?")){ setDraft(null); setSel(null); onChange({ ...plan, rooms: [], stamps: [], snapshot: undefined }); } };
+  const clearAll = () => { if ((rooms.length || stamps.length || markups.length) && confirm("Clear everything on this floor plan?")){ setDraft(null); setSel(null); onChange({ ...plan, rooms: [], stamps: [], markups: [], snapshot: undefined }); } };
   const delStamp = (id) => onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) });
+  const delMarkup = (id) => onChange({ ...plan, markups: markups.filter(m => m.id !== id) });
   const rotStamp = (id, delta) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: (((s.angle||0)+delta)%360+360)%360 } : s) });
   const flipStamp = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, flip: !s.flip } : s) });
   const setAngle = (id, deg) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, angle: ((Math.round(num(deg))%360)+360)%360 } : s) });
@@ -2107,6 +2129,9 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     : tool === "fenceline" ? "Tap to drop each fence corner and keep going — Finish when done. Pick the fence style below."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
     : SURFACE_SET.has(tool) ? (surfMode === "rect" ? "Drag a rectangle for the " + SURFACE_LABEL[tool].toLowerCase() + " area — measured in m², can be sent to the quote." : "Tap the grid to outline the " + SURFACE_LABEL[tool].toLowerCase() + " area, then Finish. Measured in m².")
+    : tool === "mk_line" ? "Drag to draw a reference line. Shows on the plan/report, not in 3D."
+    : tool === "mk_arrow" ? "Drag to draw a reference arrow. Shows on the plan/report, not in 3D."
+    : tool === "mk_text" ? "Tap where you want a note, then type it. Shows on the plan/report, not in 3D."
     : tool === "move" ? "Tap a room to select it — drag inside to move it, the green + to add a wall corner, the red ✕ to remove one, or drag any corner to reshape. Tap an object to move/resize/rotate it."
     : "Tap the plan to drop a " + stampLabel + ". Then use Edit to move, rotate, resize or delete it by hand.";
   const selShapeObj = rooms.find(r => r.id === selShape);
@@ -2139,6 +2164,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
           <button className={"tab " + (surfMode === "rect" ? "tab-active" : "card")} onClick={() => { setSurfMode("rect"); setDraft(null); }}>▭ Rectangle</button>
           <button className={"tab " + (surfMode === "poly" ? "tab-active" : "card")} onClick={() => { setSurfMode("poly"); setDraft(null); }}>⬠ Dot-to-dot</button>
         </>}
+      </div>
+      <div className="flex gap-1.5 items-center flex-wrap">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Markup (reference):</span>
+        {[["mk_line","／ Line"],["mk_arrow","➔ Arrow"],["mk_text","T Text"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); setSelShape(null); }}>{l}</button>)}
+        <input type="color" value={mkColor} onChange={e => setMkColor(e.target.value)} className="h-7 w-8 rounded border" title="Markup colour" style={{ borderColor: "var(--line)" }} />
       </div>
       {tool === "wall" && <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Wall:</span>
@@ -2238,6 +2268,20 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         </div>
       )}
 
+      {markups.length > 0 && (
+        <div className="card p-3 space-y-2">
+          <div className="font-semibold text-sm brand-text">Reference markups <span className="font-normal" style={{ color: "var(--muted)" }}>(plan & report only — not in 3D)</span></div>
+          {markups.map(m => (
+            <div key={m.id} className="flex items-center gap-2 text-sm">
+              <span className="inline-block rounded" style={{ width: 12, height: 12, background: m.color || "#e11d48" }} />
+              <span className="chip">{m.mk === "arrow" ? "Arrow" : m.mk === "text" ? "Text" : "Line"}</span>
+              <span className="flex-1 truncate" style={{ color: "var(--muted)" }}>{m.mk === "text" ? m.text : ""}</span>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delMarkup(m.id)}><IcTrash size={15} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {show3d && <Plan3D plan={plan} onClose={() => setShow3d(false)} onSave={save3dRender} onPersist={(patch) => onChange({ ...plan, ...patch })} />}
     </div>
   );
@@ -2322,16 +2366,16 @@ function QuoteEditor({ project, onChange, priced = true, kind = "new" }){
         <div className="flex justify-between border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-semibold">Total (ex GST)</span><span className="font-bold brand-text">{money(totalEx)}</span></div>
         <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>GST ({gst}%)</span><span className="font-semibold">{money(gstAmt)}</span></div>
         <div className="flex justify-between text-base border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-bold">Total (inc GST)</span><span className="font-bold">{money(totalInc)}</span></div>
-        {kind === "new" && margin > 0 && (
+        {(kind === "new" || kind === "variation") && margin > 0 && (() => { const mm = project.marginMode || (kind === "variation" ? "spread" : "show"); return (
           <div className="border-t pt-2" style={{ borderColor: "var(--line)" }}>
-            <div className="text-xs font-semibold mb-1">Margin on the client's quote</div>
-            <select className="inp" value={project.marginMode || "show"} onChange={e => onChange({ ...project, marginMode: e.target.value })}>
+            <div className="text-xs font-semibold mb-1">Margin on the client's {kind === "variation" ? "variation" : "quote"}</div>
+            <select className="inp" value={mm} onChange={e => onChange({ ...project, marginMode: e.target.value })}>
               <option value="show">Show margin — list Subtotal + Margin + Total</option>
-              <option value="spread">Hide margin — spread it through the item prices</option>
+              <option value="spread">Hide margin — spread it through the {kind === "variation" ? "price" : "item prices"}</option>
             </select>
-            <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>{project.marginMode === "spread" ? "Each item's rate on the quote includes the margin; no subtotal or margin line is shown." : "The quote shows the cost subtotal, the margin, then the total."}</div>
+            <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>{mm === "spread" ? (kind === "variation" ? "Only the total is shown to the client; the margin is included but not itemised." : "Each item's rate on the quote includes the margin; no subtotal or margin line is shown.") : "The client sees the cost subtotal, the margin, then the total."}</div>
           </div>
-        )}
+        ); })()}
       </div>
       )}
 
@@ -2451,7 +2495,8 @@ function buildWordHtml(project, settings, t, logo, attachments){
   const numLabel = kind === "rfq" ? "RFQ #" : "Variation #";
   const qtyRows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td></tr>`).join("");
   const knownQty = (kind === "rfq" && (project.quoteLines||[]).length) ? `<div style="font-weight:bold;margin-bottom:4px">Known quantities / measurements:</div><table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:4px"><tr style="background:${b};color:#fff"><th align="left" style="padding:6px 10px">Description</th><th style="padding:6px">Qty</th><th style="padding:6px">Unit</th></tr>${qtyRows}</table><div style="font-size:11px;color:#5b6472;margin-bottom:10px">Quantities are for reference only — please verify on site and from the attached before pricing.</div>` : "";
-  const marginRows = (kind === "variation" && project.showMargin && t.margin > 0) ? `<tr><td style="padding-right:24px;color:#5b6472">Subtotal:</td><td style="color:#5b6472">${money(t.subEx)}</td></tr><tr><td style="padding-right:24px;color:#5b6472">Margin (${t.margin}%):</td><td style="color:#5b6472">${money(t.totalEx - t.subEx)}</td></tr>` : "";
+  const wMarginMode = project.marginMode || (kind === "variation" ? "spread" : "show");
+  const marginRows = (kind === "variation" && wMarginMode === "show" && t.margin > 0) ? `<tr><td style="padding-right:24px;color:#5b6472">Subtotal:</td><td style="color:#5b6472">${money(t.subEx)}</td></tr><tr><td style="padding-right:24px;color:#5b6472">Margin (${t.margin}%):</td><td style="color:#5b6472">${money(t.totalEx - t.subEx)}</td></tr>` : "";
   const priceAndTerms = priced ? `<div style="margin:10px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> is needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
     <table style="font-size:13px;margin-bottom:8px">${marginRows}<tr><td style="padding-right:24px">Total price ex GST:</td><td><b>${money(t.totalEx)}</b></td></tr>
       <tr><td style="padding-right:24px">GST component:</td><td>${money(t.gstAmt)}</td></tr>
@@ -2483,8 +2528,10 @@ function ReportView({ project, onChange }){
   const lines = project.quoteLines || [];
   const kind = jobKind(project), kv = JOB_KINDS[kind], priced = kv.priced;
   // New-quote margin display: spread folds margin into the shown line rates.
-  const qtSpread = kind === "new" && project.marginMode === "spread" && t.margin > 0;
+  const effMarginMode = project.marginMode || (kind === "variation" ? "spread" : "show");   // how margin is presented to the client
+  const qtSpread = kind === "new" && effMarginMode === "spread" && t.margin > 0;
   const qtRate = (l) => qtSpread ? num(l.rateEx) * (1 + t.margin / 100) : num(l.rateEx);
+  const showVarMargin = kind === "variation" && effMarginMode === "show" && t.margin > 0;   // variation: itemise subtotal + margin
   const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : "QUOTATION";
   const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #";
   const sheetRef = useRef(null);
@@ -2690,7 +2737,7 @@ function ReportView({ project, onChange }){
             {settings.paymentTerms && <div>Payment terms are <b>{settings.paymentTerms}</b>.</div>}
           </div>
           <div className="text-sm mb-2" style={{ pageBreakInside: "avoid" }}>
-            {kind === "variation" && project.showMargin && t.margin > 0 && <>
+            {showVarMargin && <>
               <div className="flex justify-between" style={{ maxWidth: 320, color: "var(--muted)" }}><span>Subtotal:</span><span>{money(t.subEx)}</span></div>
               <div className="flex justify-between" style={{ maxWidth: 320, color: "var(--muted)" }}><span>Margin ({t.margin}%):</span><span>{money(t.totalEx - t.subEx)}</span></div>
             </>}
@@ -2846,7 +2893,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
             <Field label="Exclusions / notes related to this"><textarea className="inp" rows="4" value={project.exclusions || ""} onChange={e => upd({ exclusions: e.target.value })} /></Field>
             <Field label="Description of scope / works"><textarea className="inp" rows="5" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
             <Field label="Documents / mark-ups / drawings to reference"><textarea className="inp" rows="2" value={project.refs || ""} onChange={e => upd({ refs: e.target.value })} /></Field>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!project.showMargin} onChange={e => upd({ showMargin: e.target.checked })} /> Show margin breakdown to the client on the variation (subtotal + margin lines)</label>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>Choose whether to show or spread the margin under <b>Variation items</b> → margin.</p>
           </>) : (<>
             <Field label="Job / project title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
             <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
@@ -2900,7 +2947,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
             </div>
           )}
           <div className="text-xs text-center" style={{ color: "var(--muted)" }}>Drawing {di + 1} of {drawings.length}{drawings.length > 1 ? " · flick with Prev / Next or tap a thumbnail" : ""}</div>
-          <TakeoffCanvas drawing={curDrawing} onChange={updDrawing} onAddToQuote={addToQuote} />
+          <TakeoffCanvas drawing={curDrawing} onChange={updDrawing} onAddToQuote={addToQuote} priced={kv.priced} />
         </div>
         );
       })()}
