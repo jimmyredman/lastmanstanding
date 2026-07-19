@@ -131,7 +131,7 @@ async function dbDel(store, key){ const db = await openDb(); return new Promise(
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v22 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v23 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
 const DEFAULT_SETTINGS = {
@@ -1006,12 +1006,12 @@ function smoothPath(ctx, pts){
   for (let i = 1; i < pts.length - 1; i++){ const xc = (pts[i].x + pts[i+1].x) / 2, yc = (pts[i].y + pts[i+1].y) / 2; ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
   ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
 }
-const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, pool: 6.0 };
-const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["car","Car"],["tree","Tree"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["pool","Pool"]];
+const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, island: 1.8, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, pool: 6.0 };
+const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["island","Kitchen island"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["car","Car"],["tree","Tree"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["pool","Pool"]];
 const STAMP_LABEL = Object.fromEntries(STAMP_TYPES);
-const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","sink","toilet","shower","bath"]], ["Outdoor / site", ["car","tree","fence","fence_black","fence_glass","pool"]]];
+const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","island","sink","toilet","shower","bath"]], ["Outdoor / site", ["car","tree","fence","fence_black","fence_glass","pool"]]];
 // depth ÷ width ratio for each object (defines its footprint when first dropped)
-const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, pool: 0.6 };
+const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, island: 0.5, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, pool: 0.6 };
 const STAMP_LINEAR = new Set(["door","doubledoor","slidingdoor","window","opening","fence","fence_black","fence_glass"]);   // resize length only
 const STAMP_ROUND  = new Set(["tree"]);                                                                                    // uniform resize
 const STAMP_OPENINGS = new Set(["door","doubledoor","slidingdoor","window","opening"]);                                    // cut into 3D walls
@@ -1054,6 +1054,9 @@ function drawStamp(ctx, s, brand){
     ctx.lineWidth = 1; ctx.strokeStyle = "#9aa3b2"; const cells = Math.max(1, Math.round(w / Math.max(24, h*0.9)));
     for (let i = 1; i < cells; i++){ const x = -half + w*i/cells; ctx.beginPath(); ctx.moveTo(x, -hh+2); ctx.lineTo(x, hh-2); ctx.stroke(); }  // cupboard divisions
     ctx.strokeStyle = brand; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-half, -hh+3); ctx.lineTo(half, -hh+3); ctx.stroke();  // front edge
+  } else if (s.type === "island"){
+    ctx.fillStyle = "rgba(2,34,75,.05)"; ctx.lineWidth = 2.6; rrect(ctx, -half, -hh, w, h, 3); ctx.fill(); ctx.stroke();          // benchtop
+    ctx.lineWidth = 1.4; ctx.strokeStyle = "#9aa3b2"; rrect(ctx, -half + 5, -hh + 5, w - 10, h - 10, 2); ctx.stroke();            // cabinet inset
   } else if (s.type === "car"){
     const bl = brand;
     ctx.fillStyle = "rgba(2,34,75,.05)"; ctx.strokeStyle = bl; ctx.lineWidth = 2.6;
@@ -1213,16 +1216,30 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
         cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.3, 0.5, d/2, 8); cyl(0.03, 0.03, 0.5, glossy(0xcfd6de, 80), w*0.2, 0.5, d/2, 8);
       }
       else if (s.type === "car"){
-        const body = glossy(0x2f6ea5, 80), tyre = mat(0x14171b), rim = glossy(0xc9ced6, 100);
-        grp.add(box(w*0.99, 0.34, d, body, 0, 0.42, 0));                                         // sills / lower body
-        grp.add(box(w*0.9, 0.26, d*0.98, body, 0, 0.66, 0));                                     // bonnet + boot deck
-        grp.add(box(w*0.5, 0.36, d*0.94, body, -w*0.03, 0.9, 0));                                // cabin
-        grp.add(box(w*0.46, 0.3, d*0.8, glassMat, -w*0.03, 0.94, 0));                            // windscreen/rear glass
-        grp.add(box(w*0.47, 0.26, d*1.0, glassMat, -w*0.03, 0.9, 0));                            // side windows
-        grp.add(box(0.05, 0.12, d*0.66, glossy(0xfff6cf, 130), w*0.49, 0.44, 0));                // headlights
-        grp.add(box(0.05, 0.1, d*0.66, glossy(0xd23b3b, 130), -w*0.49, 0.44, 0));                // tail lights
-        const wr = Math.min(0.34, d*0.4);
-        [[-w*0.3,-d/2],[w*0.3,-d/2],[-w*0.3,d/2],[w*0.3,d/2]].forEach(([wx,wz])=>{ const t = new THREE.Mesh(new THREE.CylinderGeometry(wr,wr,0.2,18), tyre); t.rotation.z = Math.PI/2; t.position.set(wx, wr, wz); grp.add(t); const hub = new THREE.Mesh(new THREE.CylinderGeometry(wr*0.5,wr*0.5,0.22,10), rim); hub.rotation.z = Math.PI/2; hub.position.set(wx, wr, wz); grp.add(hub); });
+        // curved body: extrude a smooth side-silhouette across the car width, with bevelled edges
+        const paint = glossy(0x2f6ea5, 100), tyre = mat(0x14171b), rim = glossy(0xcdd2d9, 120);
+        const L = w, dd = d, carH = Math.min(1.55, w*0.32), wr = Math.min(0.36, carH*0.36);
+        const sh = new THREE.Shape();
+        sh.moveTo(-L/2 + L*0.05, 0);
+        sh.lineTo(L/2 - L*0.05, 0);
+        sh.quadraticCurveTo(L/2, 0, L/2, carH*0.34);                                             // front bumper
+        sh.lineTo(L*0.34, carH*0.42);                                                            // bonnet front
+        sh.quadraticCurveTo(L*0.22, carH*0.44, L*0.11, carH*0.86);                               // windscreen
+        sh.quadraticCurveTo(L*0.05, carH*1.03, -L*0.05, carH*1.03);                              // roof front (domed)
+        sh.lineTo(-L*0.22, carH*1.0);                                                            // roof
+        sh.quadraticCurveTo(-L*0.35, carH*0.97, -L*0.40, carH*0.5);                              // rear window
+        sh.lineTo(-L*0.48, carH*0.46);                                                           // boot deck
+        sh.quadraticCurveTo(-L/2, carH*0.42, -L/2, carH*0.3);                                    // rear bumper
+        sh.quadraticCurveTo(-L/2, 0, -L/2 + L*0.05, 0);
+        const bevel = Math.min(0.12, dd*0.07);
+        const geo = new THREE.ExtrudeGeometry(sh, { depth: dd - bevel*2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, steps: 1, curveSegments: 18 });
+        geo.computeBoundingBox(); const bb = geo.boundingBox; geo.translate(0, 0, -(bb.min.z + bb.max.z)/2);
+        const bodyMesh = new THREE.Mesh(geo, paint); bodyMesh.position.y = wr*0.5; grp.add(bodyMesh);
+        const gy = wr*0.5 + carH*0.72;                                                           // glass band
+        grp.add(box(L*0.44, carH*0.32, 0.02, glassMat, -L*0.055, gy, dd/2 - 0.02)); grp.add(box(L*0.44, carH*0.32, 0.02, glassMat, -L*0.055, gy, -(dd/2 - 0.02)));  // side windows
+        grp.add(box(0.03, carH*0.34, dd*0.82, glassMat, L*0.135, gy, 0)); grp.add(box(0.03, carH*0.32, dd*0.82, glassMat, -L*0.29, gy, 0));   // windscreen + rear
+        [[dd*0.3],[-dd*0.3]].forEach(([zz]) => { grp.add(box(0.05, carH*0.14, dd*0.22, glossy(0xfff3c0, 150), L/2 - 0.03, wr*0.5 + carH*0.26, zz)); grp.add(box(0.05, carH*0.12, dd*0.22, glossy(0xd23b3b, 150), -L/2 + 0.03, wr*0.5 + carH*0.26, zz)); });  // head + tail lights
+        [[L*0.30,1],[L*0.30,-1],[-L*0.30,1],[-L*0.30,-1]].forEach(([wx,sz]) => { const t = new THREE.Mesh(new THREE.CylinderGeometry(wr, wr, 0.18, 20), tyre); t.rotation.x = Math.PI/2; t.position.set(wx, wr, sz*(dd/2 - 0.02)); grp.add(t); const rm = new THREE.Mesh(new THREE.CylinderGeometry(wr*0.55, wr*0.55, 0.2, 12), rim); rm.rotation.x = Math.PI/2; rm.position.set(wx, wr, sz*(dd/2 - 0.01)); grp.add(rm); });
       }
       else if (s.type === "table"){
         grp.add(box(w, 0.06, d, glossy(0xc79a6b, 25), 0, 0.75, 0)); grp.add(box(w*0.94, 0.03, d*0.9, mat(0xd9b489), 0, 0.79, 0));
@@ -1251,6 +1268,13 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
         grp.add(box(w*1.04, 0.06, d*1.1, glossy(0x333941, 30), 0, 0.94, 0));                     // stone benchtop overhang
         const nc = Math.max(1, Math.round(w / Math.max(0.55, d)));                               // cupboard doors
         for (let i = 0; i < nc; i++){ const cx = -w/2 + w*(i+0.5)/nc; grp.add(box(w/nc*0.92, 0.66, 0.03, glossy(0xffffff, 20), cx, 0.5, d/2)); grp.add(box(0.04, 0.12, 0.03, glossy(0xb7bec7, 90), cx + w/nc*0.32, 0.62, d/2+0.02)); }
+      }
+      else if (s.type === "island"){
+        grp.add(box(w*0.9, 0.86, d*0.9, glossy(0xeef1f5, 15), 0, 0.43, 0));                       // cabinet
+        grp.add(box(w, 0.06, d, glossy(0x2f343b, 35), 0, 0.9, 0));                                // stone benchtop
+        grp.add(box(0.06, 0.9, d, glossy(0x2f343b, 35), -w/2 + 0.03, 0.45, 0)); grp.add(box(0.06, 0.9, d, glossy(0x2f343b, 35), w/2 - 0.03, 0.45, 0));  // waterfall ends
+        const ni = Math.max(1, Math.round(w / Math.max(0.6, d)));
+        for (let i = 0; i < ni; i++){ const cx = -w/2 + w*(i+0.5)/ni; grp.add(box(w/ni*0.86, 0.66, 0.03, glossy(0xffffff, 20), cx, 0.46, d/2*0.9)); grp.add(box(0.04, 0.1, 0.03, glossy(0xb7bec7, 90), cx, 0.62, d/2*0.9 + 0.02)); }
       }
       else if (s.type === "toilet"){
         cyl(w*0.4, w*0.32, 0.44, glossy(0xffffff, 30), 0, 0.22, d*0.14, 20);                     // bowl
