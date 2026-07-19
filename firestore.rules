@@ -83,8 +83,10 @@ service cloud.firestore {
     // ---- Picks (doc id = `${tierId}_${roundId}_${uid}`) ----
     match /picks/{pickId} {
       allow read: if signedIn();
-      // You may only write your own pick.
-      allow create, update: if signedIn() && request.resource.data.uid == uid();
+      // You may write your own pick; a competition host may allocate a pick for an entrant
+      // (e.g. a no-show). pickId is `${tierId}_${roundId}_${uid}`.
+      allow create, update: if signedIn()
+        && (request.resource.data.uid == uid() || isCompHost(pickId.split('_')[0]));
       allow delete: if false;
     }
 

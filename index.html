@@ -424,6 +424,22 @@ function genCode() {
   return s;
 }
 
+// Robust copy — tries the async Clipboard API, falls back to a temporary textarea + execCommand
+// (needed on some iOS/Safari and non-secure contexts where navigator.clipboard silently fails).
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; }
+  } catch (e) { /* fall through to legacy path */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.top = "-1000px"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch (e) { return false; }
+}
+
 const DEFAULT_RULES = `HOW TO PLAY
 
 Each round, pick one NRL team. If they win, you move through to the next round. If they lose — or draw — you're eliminated.
@@ -1089,6 +1105,20 @@ function ChooseModeScreen({ theme, onHost, onJoin, onJoined }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function CodeChip({ code, theme }) {
+  const [copied, setCopied] = useState(false);
+  const doCopy = async () => { await copyText(code); setCopied(true); setTimeout(() => setCopied(false), 1600); };
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-black/30 border adapt-border-10 px-3 py-2">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] uppercase tracking-widest text-neutral-500">Invite code</span>
+        <span className={`font-scoreboard text-lg tracking-[0.25em] ${theme.text}`}>{code}</span>
+      </div>
+      <button onClick={doCopy} className={`text-[11px] font-medium rounded-md px-2 py-1 ${copied ? `${theme.bgSoft} ${theme.text}` : "text-neutral-400 hover:text-neutral-200"}`}>{copied ? "Copied!" : "Copy"}</button>
     </div>
   );
 }
@@ -1761,6 +1791,11 @@ function HostResultsPanel({ tier, now, theme }) {
   }, [open, tier.id, tier.roundId]);
 
   const setFixtureResult = (i, winner) => db.collection("results").doc(resultsDocId).set({ fixtureResults: { ...results, [i]: winner } }, { merge: true });
+  // Host allocates a team to a player who didn't submit a pick for this round.
+  const assignPick = (uid, name, team) => db.collection("picks").doc(`${tier.id}_${tier.roundId}_${uid}`).set({ tierId: tier.id, roundId: tier.roundId, uid, name, team, submittedAt: FieldValue.serverTimestamp(), assignedByHost: true }, { merge: true });
+  const pickedUids = new Set(picks.map((p) => p.uid));
+  const noPick = entries.filter((e) => e.status === "active" && !pickedUids.has(e.uid));
+  const roundTeams = [...new Set(effectiveFixtures.flatMap((f) => [f.home, f.away]))].sort();
 
   // Re-runnable on purpose: hosts can correct a result any time. Rather than incrementally
   // toggling status (which can't be undone cleanly), we recompute each player's status from
@@ -1852,6 +1887,22 @@ function HostResultsPanel({ tier, now, theme }) {
       </button>
       {open && (
         <div className="mt-2 space-y-2">
+          {noPick.length > 0 && (
+            <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3">
+              <p className="text-[11px] text-amber-300 font-semibold mb-2">No pick submitted — allocate a team</p>
+              <div className="space-y-1.5">
+                {noPick.map((e) => (
+                  <div key={e.uid} className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-200 truncate">{e.name}</span>
+                    <select defaultValue="" onChange={(ev) => { if (ev.target.value) assignPick(e.uid, e.name, ev.target.value); }} className="shrink-0 rounded bg-black/30 border adapt-border-10 px-2 py-1 text-[11px] text-slate-100 outline-none">
+                      <option value="" disabled>Assign team…</option>
+                      {roundTeams.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <FixtureEditor tier={tier} effectiveFixtures={effectiveFixtures} theme={theme} />
           {effectiveFixtures.map((f, i) => (
             <div key={i} className="flex items-center justify-between rounded-lg bg-black/30 px-3 py-2">
@@ -1961,11 +2012,11 @@ function InviteModal({ tier, onClose, theme }) {
 
   const share = async () => {
     try {
-      if (navigator.share) { await navigator.share({ title: "Last Man Standing invite", text: shareText }); }
-      else { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1600); }
-    } catch (e) { /* user cancelled the share sheet — nothing to do */ }
+      if (navigator.share) { await navigator.share({ title: "Last Man Standing invite", text: shareText }); return; }
+    } catch (e) { return; /* user cancelled the share sheet */ }
+    await copyText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1600);
   };
-  const copy = async () => { try { await navigator.clipboard.writeText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch (e) {} };
+  const copy = async () => { await copyText(shareText); setCopied(true); setTimeout(() => setCopied(false), 1600); };
 
   const sendEmail = () => {
     const subject = "You're invited to play Last Man Standing!";
@@ -2056,17 +2107,11 @@ function HostTab({ tiers, uid, isHostMode, isOwnerOf, onCreate, onUpdate, onDele
                   )}
                 </div>
                 {!tier.cancelled && (
-                  <div className="mt-2 flex items-center justify-between rounded-lg bg-black/30 border adapt-border-10 px-3 py-2">
+                  <div className="mt-2">
                     {tier.code ? (
-                      <>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] uppercase tracking-widest text-neutral-500">Invite code</span>
-                          <span className={`font-scoreboard text-lg tracking-[0.25em] ${theme.text}`}>{tier.code}</span>
-                        </div>
-                        <button onClick={() => { try { navigator.clipboard.writeText(tier.code); } catch (e) {} }} className="text-[11px] text-neutral-400 hover:text-neutral-200">Copy</button>
-                      </>
+                      <CodeChip code={tier.code} theme={theme} />
                     ) : (
-                      <button onClick={() => onEnsureCode(tier.id)} className={`text-[11px] font-medium ${theme.text}`}>Generate invite code</button>
+                      <button onClick={() => onEnsureCode(tier.id)} className={`w-full rounded-lg bg-black/30 border adapt-border-10 py-2 text-[11px] font-medium ${theme.text}`}>Generate invite code</button>
                     )}
                   </div>
                 )}
