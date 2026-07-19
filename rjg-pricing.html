@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v39 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v40 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -1178,7 +1178,11 @@ const STAMP_LINEAR = new Set(["door","doubledoor","slidingdoor","roller","window
 const STAMP_ROUND  = new Set(["tree","bush"]);                                                                             // uniform resize
 const STAMP_OPENINGS = new Set(["door","doubledoor","slidingdoor","roller","window","opening"]);                           // cut into 3D walls
 const STAMP_FLIP = new Set(["door","doubledoor","slidingdoor","gate","gate_black","gate_glass","shed"]);                   // can swing/flip the other way
+const NO_WALL_SNAP = new Set(["tree","bush","gazebo","shed","car","pool","fence","fence_black","fence_glass","gate","gate_black","gate_glass"]);  // free-standing — don't snap to a wall
 const GATE_COLORS = { gate: "#8a6a3f", gate_black: "#2a2f36", gate_glass: "#5fa9d6" };
+const WALL_THICK = { ext: 0.2, int: 0.09 };   // default wall thickness (m): external 200mm, internal 90mm
+const FENCE_WALL_STYLES = [["fence","Timber"],["fence_black","Black steel"],["fence_glass","Glass"]];
+const FENCE_WALL_COLOR = { fence: "#9c7b56", fence_black: "#2a2f36", fence_glass: "#5fa9d6" };
 // Structures with selectable roof lines. Roofs use the same hip/gable/skillion/
 // flat calculation as the building roof (see rectRoofGeom / addRoof).
 const STAMP_ROOFS = { gazebo: [["hip","Hip"],["gable","Gable"],["skillion","Skillion"],["flat","Flat"]], shed: [["gable","Gable"],["hip","Hip"],["skillion","Skillion"],["flat","Flat"]] };
@@ -1383,13 +1387,23 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     const mat = (c, opts) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, opts || {}));
     const glossy = (c, shin, opts) => new THREE.MeshPhongMaterial(Object.assign({ color: c, shininess: shin || 40, specular: 0x333333 }, opts || {}));  // metal / gloss / water highlights
     // Dollhouse walls: slightly see-through so furniture inside is always visible.
-    const wallMat = mat(0xeef1f6, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+    const wallMat = mat(0xcbd3de, { transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false });
     const floorMat = mat(0xd5dde7, { side: THREE.DoubleSide }), roofMat = mat(new THREE.Color(roofColor), { side: THREE.DoubleSide, transparent: true, opacity: 0.85 }), glassMat = glossy(0x9fd0e6, 90, { transparent: true, opacity: 0.4 });
     const box = (w, h, d, m, x, y, z, ry) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x, y, z); if (ry) me.rotation.y = ry; return me; };
 
     // ---- walls with door/window openings ----
     const openings = stamps.filter(s => STAMP_OPENINGS.has(s.type)).map(s => ({ type: s.type, c: toM({ x: s.x, y: s.y }), w: stampW(s) * mpp }));
-    const piece = (A, ux, uz, s0, s1, y0, y1, m) => { const len = s1 - s0, hgt = y1 - y0; if (len < 0.06 || hgt < 0.03) return; const mx = A.x + ux*((s0+s1)/2), mz = A.z + uz*((s0+s1)/2); scene.add(box(len, hgt, 0.1, m || wallMat, mx, (y0+y1)/2, mz, -Math.atan2(uz, ux))); };
+    let curThick = 0.1;   // thickness of the wall currently being emitted
+    const piece = (A, ux, uz, s0, s1, y0, y1, m, thick) => { const len = s1 - s0, hgt = y1 - y0; if (len < 0.06 || hgt < 0.03) return; const mx = A.x + ux*((s0+s1)/2), mz = A.z + uz*((s0+s1)/2); scene.add(box(len, hgt, thick != null ? thick : curThick, m || wallMat, mx, (y0+y1)/2, mz, -Math.atan2(uz, ux))); };
+    // fence rendered along a segment: posts + rails / glass panel (not a solid wall)
+    const fenceEdge = (a, b, style) => {
+      const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const L = Math.hypot(dx, dz); if (L < 0.02) return;
+      const ux = dx/L, uz = dz/L, ry = -Math.atan2(uz, ux), fh = 1.5, at = (t) => ({ x: A.x + ux*t, z: A.z + uz*t });
+      if (style === "fence_glass"){ const gm = glossy(0x9fd0e6, 90, { transparent: true, opacity: 0.4 }); const mid = at(L/2); scene.add(box(L, 1.0, 0.03, gm, mid.x, 0.6, mid.z, ry)); const np = Math.max(2, Math.round(L/1.2)); for (let i=0;i<=np;i++){ const p=at(L*i/np); scene.add(box(0.06,1.1,0.06, glossy(0xb7bec7,90), p.x, 0.55, p.z, ry)); } return; }
+      const col = style === "fence_black" ? 0x2a2f36 : 0x9c7b56; const rm = glossy(col, style === "fence_black" ? 40 : 12);
+      const mid = at(L/2); scene.add(box(L, 0.05, 0.05, rm, mid.x, 1.35, mid.z, ry)); scene.add(box(L, 0.05, 0.05, rm, mid.x, 0.8, mid.z, ry));  // rails
+      const n = Math.max(2, Math.round(L/0.6)); for (let i=0;i<=n;i++){ const p=at(L*i/n); scene.add(box(0.07, fh, 0.04, mat(col), p.x, fh/2, p.z, ry)); }
+    };
     const wallEdge = (a, b, h) => {
       const A = toM(a), B = toM(b); const dx = B.x-A.x, dz = B.z-A.z; const L = Math.hypot(dx, dz); if (L < 0.02) return;
       const ux = dx/L, uz = dz/L, nx = -uz, nz = ux;
@@ -1417,19 +1431,23 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       let insideCount = 0; inner.forEach(v => { if (inPoly2(v, outer)) insideCount++; });
       return insideCount >= Math.ceil(inner.length * 0.5);
     };
-    // ground / surface areas: a flat coloured pad, no walls or roof
+    // ground / surface areas: a flat pad, or a raised slab if a thickness is set
     rooms.forEach(r => {
       if (!r.surface || r.points.length < 3) return;
       const pts = r.points.map(toM);
       const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
-      const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const m = new THREE.Mesh(g, mat(SURFACE_3D[r.surface] || 0xcccccc, { side: THREE.DoubleSide })); m.position.y = 0.012; scene.add(m);
+      const surfMat = mat(SURFACE_3D[r.surface] || 0xcccccc, { side: THREE.DoubleSide });
+      const slabH = Math.max(0, num(r.slabH) || 0);
+      const topG = new THREE.ShapeGeometry(shape); topG.rotateX(Math.PI/2); const top = new THREE.Mesh(topG, surfMat); top.position.y = slabH > 0.001 ? slabH : 0.012; scene.add(top);
+      if (slabH > 0.001){ const arr = []; const T = (a,b,c) => arr.push(a[0],a[1],a[2], b[0],b[1],b[2], c[0],c[1],c[2]); for (let i = 0; i < pts.length; i++){ const a = pts[i], b = pts[(i+1)%pts.length]; T([a.x,0,a.z],[b.x,0,b.z],[b.x,slabH,b.z]); T([a.x,0,a.z],[b.x,slabH,b.z],[a.x,slabH,a.z]); } const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3)); g.computeVertexNormals(); scene.add(new THREE.Mesh(g, surfMat)); }  // slab edges
     });
     const cands = [];
     rooms.forEach(r => {
       if (r.surface) return;   // surfaces handled above — no walls
+      if (r.fence){ for (let i = 0; i < r.points.length-1; i++) fenceEdge(r.points[i], r.points[i+1], r.fence); return; }   // fences: posts/rails, no roof
       const h = r.height || wallH; const pts = r.points.map(toM);
-      if (!r.wall && pts.length >= 3){ for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); cands.push({ pts, h, area: polyArea2(pts) }); }
-      else if (r.wall){ for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) cands.push({ pts, h, area: polyArea2(pts) }); }
+      if (!r.wall && pts.length >= 3){ curThick = r.thick || WALL_THICK.ext; for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); cands.push({ pts, h, area: polyArea2(pts) }); }
+      else if (r.wall){ curThick = r.thick || WALL_THICK.int; for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) cands.push({ pts, h, area: polyArea2(pts) }); }
     });
     // only the outer outlines get a floor + roof — a room drawn inside a larger
     // outline is an interior room of that house, so it must not add its own roof
@@ -1707,6 +1725,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [snap, setSnap] = useState(true);
   const [ortho, setOrtho] = useState(true);
   const [surfMode, setSurfMode] = useState("rect");   // ground areas: "rect" drag or "poly" dot-to-dot
+  const [wallKind, setWallKind] = useState("ext");    // external 200mm vs internal 90mm
+  const [fenceStyle, setFenceStyle] = useState("fence");  // timber / black steel / glass (drawn like a wall)
   const [drag, setDrag] = useState(null);       // {kind:'stamp'|'vertex'|'rotate'|'resize', id, idx}
   const [preview, setPreview] = useState(null); // live {rooms, stamps} during a move-drag
   const [sel, setSel] = useState(null);         // selected stamp id (for rotate/resize handles)
@@ -1722,7 +1742,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const gridPx = plan.gridPx || 28;       // screen px per cell (before fit)
   const rooms = (preview && preview.rooms) || plan.rooms || [];
   const stamps = (preview && preview.stamps) || plan.stamps || [];
-  const cols = 40, rowsN = 30;
+  const cols = 60, rowsN = 46;   // larger drawable site; zoom out to see it all
   const worldW = cols * gridPx, worldH = rowsN * gridPx;
   const pxPerM = gridPx / gridM;
 
@@ -1732,7 +1752,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   // wheel zoom-to-cursor (mouse) — pinch is handled in the pointer handlers
   useEffect(() => {
     const wrap = wrapRef.current; if (!wrap) return;
-    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 1, 6)); };
+    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.4, 6)); };
     wrap.addEventListener("wheel", onWheel, { passive: false });
     return () => wrap.removeEventListener("wheel", onWheel);
   }, []);
@@ -1798,21 +1818,29 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     const drawRoom = (r) => {
       const pts = r.points, surf = r.surface;
       const stroke = surf ? (SURFACE_STROKE[surf] || brand) : brand;
-      ctx.strokeStyle = stroke; ctx.lineWidth = surf ? 3 : 5; ctx.lineJoin = "round";
+      ctx.strokeStyle = stroke; ctx.lineWidth = surf ? 3 : Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM); ctx.lineJoin = "round";
       ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
       ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : "rgba(2,34,75,.06)"; ctx.fill(); ctx.stroke();
       ctx.fillStyle = stroke; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
       for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
       if (pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=stroke; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(r.name||(surf?SURFACE_LABEL[surf]:"Room"),c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
     };
-    const drawWall = (pts, curved) => {
-      ctx.strokeStyle = brand; ctx.lineWidth = 5; ctx.lineJoin = "round"; ctx.lineCap = "round";
+    const drawWall = (r) => {
+      const pts = r.points, curved = r.curved;
+      if (r.fence){                                                                          // fence line: rail + posts
+        const col = FENCE_WALL_COLOR[r.fence] || brand; ctx.strokeStyle = col; ctx.lineWidth = r.fence === "fence_glass" ? 5 : 3; ctx.lineJoin = "round"; ctx.lineCap = "round";
+        if (curved) smoothPath(ctx, pts); else { ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); }
+        ctx.fillStyle = col; const step = 0.9 * pxPerM;
+        for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const L=dist(a,b), n=Math.max(1,Math.round(L/step)); for(let k=0;k<=n;k++){ const t=k/n; ctx.beginPath(); ctx.arc(a.x+(b.x-a.x)*t, a.y+(b.y-a.y)*t, 2.6, 0, 7); ctx.fill(); } const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
+        return;
+      }
+      ctx.strokeStyle = brand; ctx.lineWidth = Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM); ctx.lineJoin = "round"; ctx.lineCap = "round";
       if (curved) smoothPath(ctx, pts); else { ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); }
       ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
       if (curved){ const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); } }
       else { for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); } }   // per-segment lengths
     };
-    rooms.forEach(r => r.wall ? drawWall(r.points, r.curved) : drawRoom(r));
+    rooms.forEach(r => r.wall ? drawWall(r) : drawRoom(r));
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
     if (labels){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
@@ -1871,18 +1899,34 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     }
   }, [rooms, stamps, draft, tool, sel, selShape, labels, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
 
+  // wall/room edges (not fences or ground areas) — used for snapping objects on
+  const wallSegs = () => { const out = []; rooms.forEach(r => { if (r.surface || r.fence || r.locked) return; const n = r.wall ? r.points.length - 1 : r.points.length; for (let i = 0; i < n; i++) out.push([r.points[i], r.points[(i+1) % r.points.length]]); }); return out; };
+  // snap an object hard against the nearest wall (no gap): align to the wall and
+  // sit its back edge on it — openings sit on the wall centreline.
+  const snapStampToWall = (s) => {
+    const segs = wallSegs(); if (!segs.length) return s;
+    let best = null, bd = 0.85 * pxPerM;
+    segs.forEach(([a, b]) => { const dx = b.x-a.x, dy = b.y-a.y, L2 = dx*dx+dy*dy || 1; let t = ((s.x-a.x)*dx + (s.y-a.y)*dy)/L2; t = clamp(t,0,1); const px = a.x+dx*t, py = a.y+dy*t; const dd = Math.hypot(s.x-px, s.y-py); if (dd < bd){ bd = dd; best = { px, py, dx, dy }; } });
+    if (!best) return s;
+    const ang = Math.atan2(best.dy, best.dx), L = Math.hypot(best.dx, best.dy) || 1; let nx = -best.dy/L, ny = best.dx/L;
+    const side = ((s.x-best.px)*nx + (s.y-best.py)*ny) >= 0 ? 1 : -1; nx *= side; ny *= side;
+    const off = STAMP_OPENINGS.has(s.type) ? 0 : stampD(s)/2;   // openings centre on the wall; furniture backs onto it
+    return { ...s, x: best.px + nx*off, y: best.py + ny*off, angle: ((Math.round(ang*180/Math.PI)%360)+360)%360 };
+  };
   const commitStamp = (p, type) => {
     const size = STAMP_DEFAULT_M[type] * pxPerM;
     const id = uid();
     const extra = type === "gazebo" ? { roof: "hip" } : type === "shed" ? { roof: "gable", openings: ["roller"] } : {};
-    onChange({ ...plan, stamps: [...stamps, { id, type, x: p.x, y: p.y, size, w: size, d: STAMP_ROUND.has(type) ? size : size * stampAspect(type), angle: 0, ...extra }] });
-    setTool("move"); setSel(id);   // drop then immediately edit — no duplicate taps
+    let st = { id, type, x: p.x, y: p.y, size, w: size, d: STAMP_ROUND.has(type) ? size : size * stampAspect(type), angle: 0, ...extra };
+    if (snap && !NO_WALL_SNAP.has(type)) st = snapStampToWall(st);
+    onChange({ ...plan, stamps: [...stamps, st] });
+    setSel(id);   // stay on the same object tool so you can keep dropping more; use Edit to adjust
   };
 
   const hitTest = (p) => {
     const thr = 16 / S;
-    for (let i = rooms.length - 1; i >= 0; i--){ const r = rooms[i]; for (let j = 0; j < r.points.length; j++){ if (dist(p, r.points[j]) < thr) return { kind: "vertex", id: r.id, idx: j }; } }
-    for (let i = stamps.length - 1; i >= 0; i--){ if (dist(p, { x: stamps[i].x, y: stamps[i].y }) < Math.max(thr, Math.max(stampW(stamps[i]), stampD(stamps[i])) / 2)) return { kind: "stamp", id: stamps[i].id }; }
+    for (let i = rooms.length - 1; i >= 0; i--){ const r = rooms[i]; if (r.locked) continue; for (let j = 0; j < r.points.length; j++){ if (dist(p, r.points[j]) < thr) return { kind: "vertex", id: r.id, idx: j }; } }
+    for (let i = stamps.length - 1; i >= 0; i--){ if (stamps[i].locked) continue; if (dist(p, { x: stamps[i].x, y: stamps[i].y }) < Math.max(thr, Math.max(stampW(stamps[i]), stampD(stamps[i])) / 2)) return { kind: "stamp", id: stamps[i].id }; }
     return null;
   };
 
@@ -1918,7 +1962,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       if (hit && hit.kind === "stamp"){ setSel(hit.id); setSelShape(null); setDrag(hit); setPreview(base); return; }
       if (hit && hit.kind === "vertex"){ setSelShape(hit.id); setSel(null); setDrag(hit); setPreview(base); return; }
       // tap inside a room/wall → select it and allow dragging the whole shape
-      const inRoom = [...rooms].reverse().find(r => !r.wall && r.points.length >= 3 && pointInPoly(praw, r.points));
+      const inRoom = [...rooms].reverse().find(r => !r.wall && !r.locked && r.points.length >= 3 && pointInPoly(praw, r.points));
       if (inRoom){ setSelShape(inRoom.id); setSel(null); setDrag({ kind: "shapeMove", id: inRoom.id, ox: praw.x, oy: praw.y, pts0: inRoom.points.map(p => ({ ...p })) }); setPreview(base); return; }
       setSel(null); setSelShape(null); return;
     }
@@ -1929,7 +1973,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     }
     if (STAMP_DEFAULT_M[tool]){ commitStamp(toWorld(e, true), tool); return; }
     if (tool === "curve"){ const p = placePoint(e); setDraft({ tool: "curve", points: [p, p], dragging: true, start: p }); return; }
-    if (tool === "wall"){ if (!draft || draft.tool !== "wall"){ setDraft({ tool: "wall", points: [], chain: true }); } return; }
+    if (tool === "wall" || tool === "fenceline"){ if (!draft || draft.tool !== "wall"){ const meta = tool === "fenceline" ? { fence: fenceStyle } : { thick: WALL_THICK[wallKind], wallKind }; setDraft({ tool: "wall", points: [], chain: true, ...meta }); } return; }
   };
   const onMove = (e) => {
     if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -1938,7 +1982,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
       const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
       zoomAnchor.current = { fx: pinch.current.fx, fy: pinch.current.fy, sx: mx, sy: my };
-      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 1, 6));
+      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.4, 6));
       return;
     }
     if (drag){
@@ -1966,7 +2010,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     gPointers.current.delete(e.pointerId);
     if (gPointers.current.size < 2) pinch.current = null;
     if (wasPinch) return;
-    if (drag){ if (preview) onChange({ ...plan, rooms: preview.rooms, stamps: preview.stamps }); setDrag(null); setPreview(null); return; }
+    if (drag){ if (preview){ let st = preview.stamps; if (drag.kind === "stamp" && snap){ const s0 = st.find(s => s.id === drag.id); if (s0 && !NO_WALL_SNAP.has(s0.type)){ const snapped = snapStampToWall(s0); st = st.map(s => s.id === drag.id ? snapped : s); } } onChange({ ...plan, rooms: preview.rooms, stamps: st }); } setDrag(null); setPreview(null); return; }
     if (draft && draft.tool === "wall" && draft.chain){ const last = draft.points[draft.points.length-1]; const pt = draft.points.length ? chainNext(last, e) : placePoint(e); setDraft({ ...draft, points: [...draft.points, pt], preview: null }); return; }
     if (draft && draft.tool === "surfacerect"){
       const a = draft.start, c = draft.cur, kind = draft.surface; setDraft(null);
@@ -1989,11 +2033,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       onChange({ ...plan, rooms: [...rooms, { id: uid(), name: SURFACE_LABEL[kind] + " " + n, points: draft.points, surface: kind }] });
     } else if (draft && draft.tool === "room" && draft.points.length >= 3){
       const name = prompt("Room name:", "Room " + (rooms.filter(r => !r.wall && !r.surface).length + 1)) || "Room";
-      onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points }] });
+      onChange({ ...plan, rooms: [...rooms, { id: uid(), name, points: draft.points, thick: WALL_THICK.ext }] });
     }
     setDraft(null);
   };
-  const finishWall = () => { if (draft && draft.tool === "wall" && draft.points.length >= 2){ const pts = draft.points; onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Wall " + (rooms.filter(r => r.wall).length + 1), points: pts, wall: true, perim: round2(perimeter(pts, false) * mPerPx) }] }); } setDraft(null); };
+  const finishWall = () => { if (draft && draft.tool === "wall" && draft.points.length >= 2){ const pts = draft.points; const isFence = !!draft.fence; const meta = isFence ? { fence: draft.fence } : { thick: draft.thick || WALL_THICK.ext, wallKind: draft.wallKind || "ext" }; const label = isFence ? "Fence " + (rooms.filter(r => r.fence).length + 1) : "Wall " + (rooms.filter(r => r.wall && !r.fence).length + 1); onChange({ ...plan, rooms: [...rooms, { id: uid(), name: label, points: pts, wall: true, ...meta, perim: round2(perimeter(pts, false) * mPerPx) }] }); } setDraft(null); };
   const undoPt = () => { if (draft && draft.points.length > 1) setDraft({ ...draft, points: draft.points.slice(0,-1) }); else setDraft(null); };
   const delShape = (id) => onChange({ ...plan, rooms: rooms.filter(r => r.id !== id) });
   const addCornerAt = (id, edgeIdx) => onChange({ ...plan, rooms: rooms.map(r => { if (r.id !== id) return r; const pts = r.points, a = pts[edgeIdx], b = pts[(edgeIdx+1) % pts.length]; const mid = { x: (a.x+b.x)/2, y: (a.y+b.y)/2 }; return { ...r, points: [...pts.slice(0, edgeIdx+1), mid, ...pts.slice(edgeIdx+1)] }; }) });
@@ -2028,13 +2072,18 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   };
   const totalArea = rooms.filter(r => !r.wall && !r.surface).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
   const setStampRoof = (id, roof) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, roof } : s) });
+  const toggleStampLock = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) });
+  const toggleShapeLock = (id) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, locked: !r.locked } : r) });
+  const setSlabH = (id, m) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, slabH: Math.max(0, num(m)) } : r) });
+  const setWallThick = (id, m) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, thick: Math.max(0.02, num(m)) } : r) });
   const addOpening = (id, type) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, openings: [...shedOpenings(s), type], door: undefined } : s) });
   const removeOpening = (id, idx) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, openings: shedOpenings(s).filter((_, k) => k !== idx), door: undefined } : s) });
 
-  const DRAW_TOOLS = [["wall","Wall"],["curve","Curve"],["room","Room"],["move","Edit"]];
+  const DRAW_TOOLS = [["room","Room"],["wall","Wall"],["fenceline","Fence"],["curve","Curve"],["move","Edit"]];
   const stampLabel = STAMP_LABEL[tool] || "";
   const hint = tool === "room" ? "Tap the grid to drop corners, then Finish to close the room. Corners snap to nearby corners so rooms close cleanly."
-    : tool === "wall" ? "Tap to drop each corner and keep going around bends (drag works too); Finish when done. Set a length below to fix each segment."
+    : tool === "wall" ? "Tap to drop each corner and keep going around bends; Finish when done. Choose external (200mm) or internal (90mm) below."
+    : tool === "fenceline" ? "Tap to drop each fence corner and keep going — Finish when done. Pick the fence style below."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
     : SURFACE_SET.has(tool) ? (surfMode === "rect" ? "Drag a rectangle for the " + SURFACE_LABEL[tool].toLowerCase() + " area — measured in m², can be sent to the quote." : "Tap the grid to outline the " + SURFACE_LABEL[tool].toLowerCase() + " area, then Finish. Measured in m².")
     : tool === "move" ? "Tap a room to select it — drag inside to move it, the green + to add a wall corner, the red ✕ to remove one, or drag any corner to reshape. Tap an object to move/resize/rotate it."
@@ -2070,16 +2119,25 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
           <button className={"tab " + (surfMode === "poly" ? "tab-active" : "card")} onClick={() => { setSurfMode("poly"); setDraft(null); }}>⬠ Dot-to-dot</button>
         </>}
       </div>
-      {tool === "wall" && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={lockLen > 0} onChange={e => setLockLen(e.target.checked ? 3 : 0)} /> Fixed segment length {lockLen > 0 && <><NumInput value={lockLen} onCommit={v => setLockLen(v > 0 ? v : 0.1)} className="inp !py-1 w-20" /> m</>}</label>}
+      {tool === "wall" && <div className="flex gap-1.5 items-center flex-wrap">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Wall:</span>
+        <button className={"tab " + (wallKind === "ext" ? "tab-active" : "card")} onClick={() => setWallKind("ext")}>External · 200mm</button>
+        <button className={"tab " + (wallKind === "int" ? "tab-active" : "card")} onClick={() => setWallKind("int")}>Internal · 90mm</button>
+        <label className="flex items-center gap-1 text-sm ml-2"><input type="checkbox" checked={lockLen > 0} onChange={e => setLockLen(e.target.checked ? 3 : 0)} /> Fixed length {lockLen > 0 && <><NumInput value={lockLen} onCommit={v => setLockLen(v > 0 ? v : 0.1)} className="inp !py-1 w-16" /> m</>}</label>
+      </div>}
+      {tool === "fenceline" && <div className="flex gap-1.5 items-center flex-wrap">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Fence style:</span>
+        {FENCE_WALL_STYLES.map(([v,l]) => <button key={v} className={"tab " + (fenceStyle === v ? "tab-active" : "card")} onClick={() => setFenceStyle(v)}>{l}</button>)}
+      </div>}
       {draft && (draft.tool === "room" || draft.tool === "surface" || draft.tool === "wall")
-        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={draft.tool === "wall" ? finishWall : finishRoom}><IcCheck size={14} /> Finish {draft.tool === "surface" ? SURFACE_LABEL[draft.surface].toLowerCase() : draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pt{draft.points.length === 1 ? "" : "s"}</span></div>
+        ? <div className="flex gap-2"><button className="btn btn-accent !py-1" onClick={draft.tool === "wall" ? finishWall : finishRoom}><IcCheck size={14} /> Finish {draft.tool === "surface" ? SURFACE_LABEL[draft.surface].toLowerCase() : draft.fence ? "fence" : draft.tool}</button><button className="btn btn-ghost !py-1" onClick={undoPt}>Undo pt</button><span className="text-sm self-center" style={{ color: "var(--muted)" }}>{draft.points.length} pt{draft.points.length === 1 ? "" : "s"}</span></div>
         : <div className="text-sm" style={{ color: "var(--muted)" }}>{hint} · 1 cell = {gridM} m</div>}
 
       <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
         <span>Zoom</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 1, 6))}>−</button>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 0.4, 6))}>−</button>
         <span style={{ minWidth: 38, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 1, 6))}>+</button>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 0.4, 6))}>+</button>
         {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(1)}>Fit</button>}
         <span className="text-xs">· pinch or scroll to zoom · two fingers to pan</span>
       </div>
@@ -2098,16 +2156,27 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       {rooms.length > 0 && (
         <div className="card p-3 space-y-2">
           <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms & walls</div><div className="text-sm font-semibold">Total floor: {round2(totalArea).toFixed(2)} m²</div></div>
-          {rooms.map(r => (
-            <div key={r.id} className="flex items-center gap-2 text-sm flex-wrap">
-              <span className="chip">{r.wall ? (r.curved ? "Curve" : "Wall") : r.surface ? SURFACE_LABEL[r.surface] : "Room"}</span>
-              <input className="inp !py-1" style={{ flex: "1 1 120px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} />
-              <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
-              {!r.surface && <label className="flex items-center gap-1 whitespace-nowrap" style={{ color: "var(--muted)" }}>H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1 w-16" />m</label>}
-              <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link {r.wall ? "m" : "m²"} item —</option>{items.filter(i => unitFamily(i.unit) === (r.wall ? "length" : "area") || i.id === r.priceItemId).map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}</select>
-              <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
+          {rooms.map(r => {
+            const kindLabel = r.fence ? "Fence" : r.wall ? (r.curved ? "Curve" : "Wall") : r.surface ? SURFACE_LABEL[r.surface] : "Room";
+            return (
+            <div key={r.id} className="rounded-lg p-2 space-y-1.5" style={{ border: "1px solid var(--line)", opacity: r.locked ? 0.65 : 1 }}>
+              <div className="flex items-center gap-2">
+                <span className="chip">{kindLabel}</span>
+                <input className="inp !py-1" style={{ flex: "1 1 100px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} disabled={r.locked} />
+                <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
+                <button className="btn btn-ghost !p-1.5" title={r.locked ? "Unlock" : "Lock"} onClick={() => toggleShapeLock(r.id)}>{r.locked ? "🔒" : "🔓"}</button>
+                <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: "var(--muted)" }}>
+                {!r.surface && !r.fence && <label className="flex items-center gap-1">H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1 w-14" />m</label>}
+                {r.wall && !r.fence && <label className="flex items-center gap-1">Thick<NumInput value={round2(r.thick != null ? r.thick : WALL_THICK.int)} onCommit={v => setWallThick(r.id, v)} className="inp !py-1 w-14" />m</label>}
+                {!r.wall && !r.surface && <label className="flex items-center gap-1">Wall<NumInput value={round2(r.thick != null ? r.thick : WALL_THICK.ext)} onCommit={v => setWallThick(r.id, v)} className="inp !py-1 w-14" />m</label>}
+                {r.surface && <label className="flex items-center gap-1">Slab height<NumInput value={round2(r.slabH || 0)} onCommit={v => setSlabH(r.id, v)} className="inp !py-1 w-14" />m</label>}
+                <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link {r.wall ? "m" : "m²"} rate —</option>{items.filter(i => unitFamily(i.unit) === (r.wall ? "length" : "area") || i.id === r.priceItemId).map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}</select>
+              </div>
             </div>
-          ))}
+            );
+          })}
           <div className="flex gap-2"><button className="btn btn-primary flex-1" onClick={addToQuote}><IcPlus size={16} /> Add to quote</button><button className="btn btn-ghost" onClick={saveSnapshot}>Save for report</button></div>
         </div>
       )}
@@ -2116,23 +2185,30 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         <div className="card p-3 space-y-2">
           <div className="font-semibold text-sm brand-text">Symbols & objects</div>
           {stamps.map(s => (
-            <div key={s.id} className="flex items-center gap-2 text-sm flex-wrap">
-              <span className="chip">{STAMP_LABEL[s.type] || s.type}</span>
-              <label className="flex items-center gap-1">W <NumInput value={round2(stampW(s) / pxPerM)} onCommit={v => setStampW(s.id, v)} className="inp !py-1 w-14" />m</label>
-              {!STAMP_ROUND.has(s.type) && !STAMP_LINEAR.has(s.type) && <label className="flex items-center gap-1">D <NumInput value={round2(stampD(s) / pxPerM)} onCommit={v => setStampD(s.id, v)} className="inp !py-1 w-14" />m</label>}
-              <label className="flex items-center gap-1">angle <NumInput value={s.angle || 0} onCommit={v => setAngle(s.id, v)} className="inp !py-1 w-14" />°</label>
-              <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, -15)}>↺</button>
-              <button className="btn btn-ghost !py-1 !px-2" onClick={() => rotStamp(s.id, 15)}>↻</button>
-              {STAMP_ROOFS[s.type] && <label className="flex items-center gap-1">roof <select className="inp !py-1" value={s.roof || STAMP_ROOFS[s.type][0][0]} onChange={e => setStampRoof(s.id, e.target.value)}>{STAMP_ROOFS[s.type].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>}
-              {STAMP_FLIP.has(s.type) && <button className="btn btn-ghost !py-1 !px-2" onClick={() => flipStamp(s.id)}>⇅ Flip</button>}
-              <button className="btn btn-ghost !p-1.5 ml-auto" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
+            <div key={s.id} className="rounded-lg p-2 space-y-1.5" style={{ border: "1px solid var(--line)", opacity: s.locked ? 0.65 : 1 }}>
+              <div className="flex items-center gap-1.5">
+                <span className="chip">{STAMP_LABEL[s.type] || s.type}</span>
+                <div className="ml-auto flex items-center gap-1">
+                  <button className="btn btn-ghost !py-1 !px-2" title="Rotate left" onClick={() => rotStamp(s.id, -15)}>↺</button>
+                  <button className="btn btn-ghost !py-1 !px-2" title="Rotate right" onClick={() => rotStamp(s.id, 15)}>↻</button>
+                  {STAMP_FLIP.has(s.type) && <button className="btn btn-ghost !py-1 !px-2" title="Flip" onClick={() => flipStamp(s.id)}>⇅</button>}
+                  <button className="btn btn-ghost !p-1.5" title={s.locked ? "Unlock" : "Lock"} onClick={() => toggleStampLock(s.id)}>{s.locked ? "🔒" : "🔓"}</button>
+                  <button className="btn btn-ghost !p-1.5" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap text-xs" style={{ color: "var(--muted)" }}>
+                <label className="flex items-center gap-1">{STAMP_LINEAR.has(s.type) ? "Length" : "W"}<NumInput value={round2(stampW(s) / pxPerM)} onCommit={v => setStampW(s.id, v)} className="inp !py-1 w-14" />m</label>
+                {!STAMP_ROUND.has(s.type) && !STAMP_LINEAR.has(s.type) && <label className="flex items-center gap-1">D<NumInput value={round2(stampD(s) / pxPerM)} onCommit={v => setStampD(s.id, v)} className="inp !py-1 w-14" />m</label>}
+                <label className="flex items-center gap-1">Angle<NumInput value={s.angle || 0} onCommit={v => setAngle(s.id, v)} className="inp !py-1 w-14" />°</label>
+                {STAMP_ROOFS[s.type] && <label className="flex items-center gap-1">Roof<select className="inp !py-1" value={s.roof || STAMP_ROOFS[s.type][0][0]} onChange={e => setStampRoof(s.id, e.target.value)}>{STAMP_ROOFS[s.type].map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>}
+              </div>
               {s.type === "shed" && (
-                <div className="w-full flex items-center gap-1.5 flex-wrap pl-1" style={{ borderTop: "1px dashed var(--line)", paddingTop: 6 }}>
-                  <span className="text-xs" style={{ color: "var(--muted)" }}>Openings:</span>
+                <div className="flex items-center gap-1.5 flex-wrap text-xs" style={{ borderTop: "1px dashed var(--line)", paddingTop: 6 }}>
+                  <span style={{ color: "var(--muted)" }}>Openings:</span>
                   {shedOpenings(s).map((op, i) => <span key={i} className="chip" style={{ background: "rgba(2,34,75,.06)" }}>{SHED_OPEN_LABEL[op] || op}<button className="ml-1" style={{ color: "#dc2626" }} onClick={() => removeOpening(s.id, i)}>✕</button></span>)}
-                  {!shedOpenings(s).length && <span className="text-xs" style={{ color: "var(--muted)" }}>none</span>}
-                  <span className="text-xs ml-1" style={{ color: "var(--muted)" }}>add:</span>
-                  {SHED_OPENINGS.map(([v,l]) => <button key={v} className="btn btn-ghost !py-0.5 !px-2 text-xs" onClick={() => addOpening(s.id, v)}>+ {l}</button>)}
+                  {!shedOpenings(s).length && <span style={{ color: "var(--muted)" }}>none</span>}
+                  <span className="ml-1" style={{ color: "var(--muted)" }}>add:</span>
+                  {SHED_OPENINGS.map(([v,l]) => <button key={v} className="btn btn-ghost !py-0.5 !px-2" onClick={() => addOpening(s.id, v)}>+ {l}</button>)}
                 </div>
               )}
             </div>
