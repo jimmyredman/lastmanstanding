@@ -97,6 +97,19 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const now = () => Date.now();
 const num = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+// Group units of measure into families so takeoff / floor-plan measurements only
+// attach database items measured the same way (an m² area → m² items, etc.).
+const unitFamily = (u) => {
+  const s = String(u || "").toLowerCase().replace(/[\s.]/g, "");
+  if (!s) return "";
+  if (s === "m2" || s.includes("²") || s.includes("sq") || /m\^?2$/.test(s)) return "area";
+  if (s === "m3" || s.includes("³") || s.includes("cum") || s.includes("cbm") || /m\^?3$/.test(s)) return "volume";
+  if (/^(m|lm|rm|linm|linealm|lineal|metre|meter|l\/m)$/.test(s)) return "length";
+  if (/^(ea|each|no|nr|num|item|unit|pc|pcs|qty)$/.test(s)) return "count";
+  return "u:" + s;   // hr, dy, w, etc. stay in their own family
+};
+// The measurement family a takeoff tool produces.
+const toolUnitFamily = (tool) => tool === "area" ? "area" : tool === "count" ? "count" : "length";
 const money = (n) => "$" + (round2(n)).toLocaleString("en-AU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (ts) => new Date(ts).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
@@ -151,7 +164,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v32 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v33 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
 // Job kinds chosen when a job is created. "new" is the original quote flow and must stay unchanged.
 const JOB_KINDS = {
@@ -1117,10 +1130,17 @@ function TakeoffCanvas({ drawing, onChange, onAddToQuote }){
                   <button className="btn btn-ghost !p-1.5" onClick={() => delAnn(a.id)}><IcTrash size={15} /></button>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
-                  <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
-                    <option value="">— no rate (enter on quote) —</option>
-                    {items.map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}
-                  </select>
+                  {(() => {
+                    const want = toolUnitFamily(a.tool);
+                    const wantU = a.tool === "area" ? "m²" : a.tool === "count" ? "ea" : "m";
+                    const opts = items.filter(i => unitFamily(i.unit) === want || i.id === a.priceItemId);
+                    return (
+                      <select className="inp !py-1 flex-1" value={a.priceItemId || ""} onChange={e => linkItem(a.id, e.target.value)}>
+                        <option value="">{opts.length ? "— no rate (enter on quote) —" : "— no " + wantU + " rate items in database —"}</option>
+                        {opts.map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}
+                      </select>
+                    );
+                  })()}
                   {it && <span className="text-xs whitespace-nowrap" style={{ color: "var(--muted)" }}>= <b style={{ color: "var(--ink)" }}>{money(qty * it.rate)}</b></span>}
                 </div>
               </div>
@@ -1917,7 +1937,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
               <input className="inp !py-1" style={{ flex: "1 1 120px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} />
               <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
               <label className="flex items-center gap-1 whitespace-nowrap" style={{ color: "var(--muted)" }}>H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1 w-16" />m</label>
-              <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link item —</option>{items.map(i => <option key={i.id} value={i.id}>{i.description}</option>)}</select>
+              <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link {r.wall ? "m" : "m²"} item —</option>{items.filter(i => unitFamily(i.unit) === (r.wall ? "length" : "area") || i.id === r.priceItemId).map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}</select>
               <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
             </div>
           ))}
@@ -1952,11 +1972,15 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 /* =========================================================================
    QUOTE EDITOR
    ========================================================================= */
-function QuoteEditor({ project, onChange, priced = true }){
-  const { items, settings } = useStore();
+function QuoteEditor({ project, onChange, priced = true, kind = "new" }){
+  const { items, settings, notify } = useStore();
   const [picker, setPicker] = useState(false);
   const [q, setQ] = useState("");
+  const [pcat, setPcat] = useState("");
+  const [ptype, setPtype] = useState("");
   const lines = project.quoteLines || [];
+  const pickerCats = useMemo(() => [...new Set(items.map(i => i.category).filter(Boolean))].sort(), [items]);
+  const pickerTypes = useMemo(() => COST_TYPES.filter(t => items.some(i => (i.type || "Material") === t)), [items]);
   const margin = project.margin ?? settings.defaultMargin;
   const gst = settings.gst;
 
@@ -1969,9 +1993,18 @@ function QuoteEditor({ project, onChange, priced = true }){
   const setLine = (id, patch) => onChange({ ...project, quoteLines: lines.map(l => l.id === id ? { ...l, ...patch } : l) });
   const delLine = (id) => onChange({ ...project, quoteLines: lines.filter(l => l.id !== id) });
   const addManual = () => onChange({ ...project, quoteLines: [...lines, { id: uid(), desc: "", qty: 1, unit: "ea", rateEx: 0, category: "", source: "Manual" }] });
-  const addItem = (it) => { onChange({ ...project, quoteLines: [...lines, { id: uid(), desc: it.description, qty: 1, unit: it.unit, rateEx: it.rate, category: it.category, source: "Pricing DB" }] }); };
+  const addItem = (it) => { onChange({ ...project, quoteLines: [...lines, { id: uid(), desc: it.description, qty: 1, unit: it.unit, rateEx: it.rate, category: it.category, source: "Pricing DB" }] }); notify("Added: " + it.description); };
 
-  const filtered = items.filter(i => { const s = q.trim().toLowerCase(); return !s || (i.description + " " + i.code).toLowerCase().includes(s); }).slice(0, 60);
+  const matches = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return items.filter(i =>
+      (!pcat || i.category === pcat) &&
+      (!ptype || (i.type || "Material") === ptype) &&
+      (!s || (i.description + " " + i.code + " " + (i.supplier || "") + " " + (i.category || "")).toLowerCase().includes(s)))
+      .sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.description || "").localeCompare(b.description || ""));
+  }, [items, q, pcat, ptype]);
+  const CAP = 200;
+  const filtered = matches.slice(0, CAP);
 
   return (
     <div className="space-y-3">
@@ -2015,21 +2048,43 @@ function QuoteEditor({ project, onChange, priced = true }){
         <div className="flex justify-between border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-semibold">Total (ex GST)</span><span className="font-bold brand-text">{money(totalEx)}</span></div>
         <div className="flex justify-between"><span style={{ color: "var(--muted)" }}>GST ({gst}%)</span><span className="font-semibold">{money(gstAmt)}</span></div>
         <div className="flex justify-between text-base border-t pt-2" style={{ borderColor: "var(--line)" }}><span className="font-bold">Total (inc GST)</span><span className="font-bold">{money(totalInc)}</span></div>
+        {kind === "new" && margin > 0 && (
+          <div className="border-t pt-2" style={{ borderColor: "var(--line)" }}>
+            <div className="text-xs font-semibold mb-1">Margin on the client's quote</div>
+            <select className="inp" value={project.marginMode || "show"} onChange={e => onChange({ ...project, marginMode: e.target.value })}>
+              <option value="show">Show margin — list Subtotal + Margin + Total</option>
+              <option value="spread">Hide margin — spread it through the item prices</option>
+            </select>
+            <div className="text-[10px] mt-1" style={{ color: "var(--muted)" }}>{project.marginMode === "spread" ? "Each item's rate on the quote includes the margin; no subtotal or margin line is shown." : "The quote shows the cost subtotal, the margin, then the total."}</div>
+          </div>
+        )}
       </div>
       )}
 
       <Modal open={picker} onClose={() => setPicker(false)} title="Add from pricing database" wide>
-        <input className="inp mb-3" placeholder="Search…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
-        {items.length === 0 ? <p className="text-sm" style={{ color: "var(--muted)" }}>No items in the database yet. Add some under the Prices tab.</p> : (
-          <div className="space-y-1 max-h-[55vh] overflow-y-auto">
+        {items.length === 0 ? <p className="text-sm" style={{ color: "var(--muted)" }}>No items in the database yet. Add some under the Prices tab.</p> : (<>
+          <div className="flex gap-2 mb-2">
+            <input className="inp flex-1" placeholder="Search code, description, supplier, category…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+          </div>
+          <div className="flex gap-2 mb-2">
+            <select className="inp flex-1" value={ptype} onChange={e => setPtype(e.target.value)}><option value="">All types</option>{pickerTypes.map(t => <option key={t} value={t}>{t}</option>)}</select>
+            <select className="inp flex-1" value={pcat} onChange={e => setPcat(e.target.value)}><option value="">All categories</option>{pickerCats.map(c => <option key={c} value={c}>{c}</option>)}</select>
+          </div>
+          <div className="text-xs mb-2" style={{ color: "var(--muted)" }}>{matches.length} match{matches.length === 1 ? "" : "es"}{matches.length > CAP ? " · showing first " + CAP + ", refine to narrow" : ""} · tap to add (keeps open for more)</div>
+          {matches.length === 0 ? <p className="text-sm" style={{ color: "var(--muted)" }}>No items match. Try a different search or clear the filters.</p> : (
+          <div className="space-y-1 max-h-[52vh] overflow-y-auto">
             {filtered.map(i => (
-              <button key={i.id} className="w-full text-left card p-2 flex justify-between items-center hover:brightness-95" onClick={() => { addItem(i); }}>
-                <span className="text-sm"><b>{i.description}</b><span className="text-xs" style={{ color: "var(--muted)" }}> · {i.unit}{i.category ? " · " + i.category : ""}</span></span>
-                <span className="font-semibold text-sm whitespace-nowrap ml-2">{money(i.rate)}</span>
+              <button key={i.id} className="w-full text-left card p-2 flex justify-between items-center gap-2 hover:brightness-95" onClick={() => { addItem(i); }}>
+                <span className="text-sm min-w-0">
+                  <b>{i.description}</b>
+                  <span className="block text-xs truncate" style={{ color: "var(--muted)" }}>{[i.code, (i.type || "Material"), i.category, i.supplier].filter(Boolean).join(" · ")}</span>
+                </span>
+                <span className="font-semibold text-sm whitespace-nowrap ml-2 text-right">{money(i.rate)}<span className="block text-xs font-normal" style={{ color: "var(--muted)" }}>/{i.unit}</span></span>
               </button>
             ))}
           </div>
-        )}
+          )}
+        </>)}
       </Modal>
     </div>
   );
@@ -2088,7 +2143,12 @@ function buildWordHtml(project, settings, t, logo, attachments){
   const wrap = (title, inner) => `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)} ${esc(project.quoteNo)}</title></head><body style="font-family:Arial,Helvetica,sans-serif;color:#141922;font-size:13px">${head}${inner}${foot}</body></html>`;
 
   if (kind === "new") {
-    const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.rateEx))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*num(l.rateEx))}</td></tr>`).join("");
+    // Margin display: "spread" folds the margin into each line rate (nothing shown);
+    // otherwise it's itemised as Subtotal + Margin + Total.
+    const spread = project.marginMode === "spread" && t.margin > 0;
+    const mf = 1 + t.margin / 100;
+    const dRate = (l) => spread ? num(l.rateEx) * mf : num(l.rateEx);
+    const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(dRate(l))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*dRate(l))}</td></tr>`).join("");
     return wrap("QUOTATION", `
     <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:14px"><tr>
       <td style="font-size:30px;font-weight:bold;color:${b}">QUOTATION</td>
@@ -2103,7 +2163,7 @@ function buildWordHtml(project, settings, t, logo, attachments){
       <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th><th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th></tr>${rows}
     </table>
     <table align="right" style="margin-bottom:14px;font-size:13px">
-      ${t.margin>0?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr>`:""}
+      ${(!spread && t.margin>0)?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr><tr><td style="color:#5b6472;padding:2px 16px 2px 0">Margin (${t.margin}%)</td><td align="right">${money(t.marginAmt)}</td></tr>`:""}
       <tr><td style="font-weight:bold;padding:2px 16px 2px 0">Total price ex GST</td><td align="right"><b>${money(t.totalEx)}</b></td></tr>
       <tr><td style="color:#5b6472;padding:2px 16px 2px 0">GST component (${settings.gst}%)</td><td align="right">${money(t.gstAmt)}</td></tr>
       <tr><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px">Total price inc GST</td><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px" align="right">${money(t.totalInc)}</td></tr>
@@ -2148,6 +2208,9 @@ function ReportView({ project, onChange }){
   const t = totalsFor(project, settings);
   const lines = project.quoteLines || [];
   const kind = jobKind(project), kv = JOB_KINDS[kind], priced = kv.priced;
+  // New-quote margin display: spread folds margin into the shown line rates.
+  const qtSpread = kind === "new" && project.marginMode === "spread" && t.margin > 0;
+  const qtRate = (l) => qtSpread ? num(l.rateEx) * (1 + t.margin / 100) : num(l.rateEx);
   const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : "QUOTATION";
   const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #";
   const sheetRef = useRef(null);
@@ -2173,7 +2236,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
@@ -2272,8 +2335,8 @@ function ReportView({ project, onChange }){
                   <td className="px-3 py-2" style={{ borderBottom: "1px solid var(--line)" }}>{l.desc}</td>
                   <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{round2(num(l.qty))}</td>
                   <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{l.unit}</td>
-                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.rateEx))}</td>
-                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * num(l.rateEx))}</td>
+                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(qtRate(l))}</td>
+                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * qtRate(l))}</td>
                 </tr>
               ))}
               {lines.length === 0 && <tr><td colSpan="5" className="px-3 py-4 text-center" style={{ color: "var(--muted)" }}>No line items.</td></tr>}
@@ -2281,7 +2344,8 @@ function ReportView({ project, onChange }){
           </table>
           <div className="flex justify-end mb-5" style={{ pageBreakInside: "avoid" }}>
             <div className="w-96 max-w-full text-sm space-y-1">
-              {t.margin > 0 && <div className="flex justify-between gap-6" style={{ color: "var(--muted)" }}><span>Subtotal</span><span>{money(t.subEx)}</span></div>}
+              {!qtSpread && t.margin > 0 && <div className="flex justify-between gap-6" style={{ color: "var(--muted)" }}><span>Subtotal</span><span>{money(t.subEx)}</span></div>}
+              {!qtSpread && t.margin > 0 && <div className="flex justify-between gap-6" style={{ color: "var(--muted)" }}><span>Margin ({t.margin}%)</span><span>{money(t.marginAmt)}</span></div>}
               <div className="flex justify-between gap-6 font-semibold"><span>Total price ex GST</span><span>{money(t.totalEx)}</span></div>
               <div className="flex justify-between gap-6"><span style={{ color: "var(--muted)" }}>GST component ({settings.gst}%)</span><span>{money(t.gstAmt)}</span></div>
               <div className="flex justify-between gap-6 text-base font-extrabold px-3 py-2 rounded mt-1" style={{ background: "var(--brand)", color: "#fff" }}><span>Total price inc GST</span><span>{money(t.totalInc)}</span></div>
@@ -2612,7 +2676,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
         </div>
       )}
 
-      {tab === "quote" && <QuoteEditor project={project} onChange={onChange} priced={kv.priced} />}
+      {tab === "quote" && <QuoteEditor project={project} onChange={onChange} priced={kv.priced} kind={kind} />}
       {tab === "report" && <ReportView project={project} onChange={onChange} />}
     </div>
   );
