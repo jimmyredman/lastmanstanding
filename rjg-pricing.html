@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v45 · 19 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v46 · 20 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -509,17 +509,30 @@ function ItemModal({ open, onClose, item }){
 }
 
 function ImportModal({ open, onClose }){
-  const { bulkUpsertItems, notify, saveSettings } = useStore();
+  const { bulkUpsertItems, notify, saveSettings, items, setItems } = useStore();
   const [rows, setRows] = useState(null);     // array of arrays
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState([]);
+  const [mode, setMode] = useState("merge");  // merge = update+add; replace = make the DB exactly this file
   const stampImport = () => saveSettings({ pricesUpdatedAt: now(), pricesSource: fileName || "Excel import" });
+  // Merge (update-by-code + add) or Replace (clear everything, then load this file).
+  const commitItems = async (arr) => {
+    if (mode === "replace"){
+      for (const it of items) await dbDel("items", it.id);
+      const t0 = now(); const fresh = arr.map((a, i) => ({ ...a, rate: num(a.rate), id: uid() + "-" + i, updatedAt: t0 }));
+      for (const r of fresh) await dbPut("items", r);
+      setItems(fresh);
+      return { created: fresh.length, updated: 0, total: fresh.length, replaced: true };
+    }
+    return await bulkUpsertItems(arr);
+  };
+  const importMsg = (res) => res.replaced ? ("Price list replaced — " + res.total + " items") : (res.updated ? (res.created + " added · " + res.updated + " updated") : (res.created + " items imported"));
   const [map, setMap] = useState({ code: "", description: "", category: "", type: "", unit: "", rate: "", supplier: "" });
   const [defaultType, setDefaultType] = useState("Material");
   const [busy, setBusy] = useState(false);
   const [preset, setPreset] = useState(null);      // derived items when a known template (e.g. ProEst/Forma) is detected
 
-  useEffect(() => { if (!open) { setRows(null); setHeaders([]); setPreset(null); } }, [open]);
+  useEffect(() => { if (!open) { setRows(null); setHeaders([]); setPreset(null); setMode("merge"); setFileName(""); } }, [open]);
 
   // Detect + parse a ProEst / Autodesk Forma "Line item Library Import" export.
   // Header sits ~row 26, real data below it, and each row can carry material,
@@ -592,7 +605,7 @@ function ImportModal({ open, onClose }){
     if (map.description === "") { alert("Map at least the Description column."); return; }
     setBusy(true);
     const g = (row, key) => map[key] === "" ? "" : row[parseInt(map[key])];
-    const items = rows.map(row => ({
+    const mapped = rows.map(row => ({
       code: String(g(row, "code") || "").trim(),
       description: String(g(row, "description") || "").trim(),
       category: String(g(row, "category") || "").trim(),
@@ -601,10 +614,10 @@ function ImportModal({ open, onClose }){
       rate: num(g(row, "rate")),
       supplier: String(g(row, "supplier") || "").trim()
     })).filter(it => it.description);
-    const res = await bulkUpsertItems(items);
+    const res = await commitItems(mapped);
     stampImport();
     setBusy(false);
-    notify(res.updated ? (res.created + " added · " + res.updated + " updated") : (res.created + " items imported"));
+    notify(importMsg(res));
     onClose();
   };
 
@@ -615,10 +628,10 @@ function ImportModal({ open, onClose }){
 
   const doImportPreset = async () => {
     setBusy(true);
-    const res = await bulkUpsertItems(preset);
+    const res = await commitItems(preset);
     stampImport();
     setBusy(false);
-    notify(res.updated ? (res.created + " added · " + res.updated + " updated") : (res.created + " items imported"));
+    notify(importMsg(res));
     onClose();
   };
 
@@ -626,6 +639,16 @@ function ImportModal({ open, onClose }){
 
   const presetBreak = preset ? COST_TYPES.map(t => [t, preset.filter(p => p.type === t).length]).filter(([, n]) => n > 0) : [];
   const presetPriced = preset ? preset.filter(p => p.rate > 0).length : 0;
+  const modeChooser = (
+    <div className="rounded-lg p-2.5 text-xs" style={{ border: "1px solid var(--line)" }}>
+      <div className="font-semibold mb-1.5">How to apply this import{items.length ? " — you currently have " + items.length + " items" : ""}</div>
+      <div className="flex gap-2">
+        <button className={"tab flex-1 " + (mode === "merge" ? "tab-active" : "card")} onClick={() => setMode("merge")}>Merge — update &amp; add</button>
+        <button className={"tab flex-1 " + (mode === "replace" ? "tab-active" : "card")} onClick={() => setMode("replace")}>Replace — exactly this file</button>
+      </div>
+      <div className="mt-1.5" style={{ color: mode === "replace" ? "#b45309" : "var(--muted)" }}>{mode === "replace" ? "Clears your current price list first — any item not in this file will be removed." : "Updates matching items by code and adds new ones; everything else is kept."}</div>
+    </div>
+  );
 
   return (
     <Modal open={open} onClose={onClose} title="Import cost register" wide>
@@ -646,9 +669,10 @@ function ImportModal({ open, onClose }){
             ))}
           </div>
           <p className="text-xs" style={{ color: "var(--muted)" }}>Rates come from the file's Material or Subcontractor columns (ex GST). Labour/Plant rows carry the trade + productivity in Notes; add their $ rate later or import your Labor/Equipment library files.</p>
+          {modeChooser}
           <div className="flex gap-2">
             <button className="btn btn-ghost flex-1" onClick={() => setPreset(null)}>Back</button>
-            <button className="btn btn-primary flex-1" disabled={busy} onClick={doImportPreset}><IcCheck size={16} /> Import {preset.length} items</button>
+            <button className="btn btn-primary flex-1" disabled={busy} onClick={doImportPreset}><IcCheck size={16} /> {mode === "replace" ? "Replace with" : "Import"} {preset.length} items</button>
           </div>
         </div>
       ) : !rows ? (
@@ -684,9 +708,10 @@ function ImportModal({ open, onClose }){
               </div>
             ))}
           </div>
+          {modeChooser}
           <div className="flex gap-2">
             <button className="btn btn-ghost flex-1" onClick={() => setRows(null)}>Back</button>
-            <button className="btn btn-primary flex-1" disabled={busy} onClick={doImport}><IcCheck size={16} /> Import {rows.length} items</button>
+            <button className="btn btn-primary flex-1" disabled={busy} onClick={doImport}><IcCheck size={16} /> {mode === "replace" ? "Replace with" : "Import"} {rows.length} items</button>
           </div>
         </div>
       )}
