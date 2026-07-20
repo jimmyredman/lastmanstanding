@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-16T09:50Z",
+  "updatedAt": "2026-07-23T09:50Z",
   "rounds": {
     "r20": {
       "week": 20,
@@ -84,6 +84,92 @@
           "completed": true,
           "date": "2026-07-19T06:05Z",
           "venue": "Suncorp Stadium"
+        }
+      ]
+    },
+    "r21": {
+      "week": 21,
+      "year": 2026,
+      "games": [
+        {
+          "home": "Eels",
+          "away": "Panthers",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-23T09:50Z",
+          "venue": "CommBank Stadium"
+        },
+        {
+          "home": "Knights",
+          "away": "Roosters",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-24T08:00Z",
+          "venue": "McDonald Jones Stadium"
+        },
+        {
+          "home": "Rabbitohs",
+          "away": "Storm",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-24T10:00Z",
+          "venue": "Accor Stadium"
+        },
+        {
+          "home": "Raiders",
+          "away": "Tigers",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-25T05:00Z",
+          "venue": "GIO Stadium"
+        },
+        {
+          "home": "Bulldogs",
+          "away": "Warriors",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-25T07:30Z",
+          "venue": "Accor Stadium"
+        },
+        {
+          "home": "Cowboys",
+          "away": "Broncos",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-25T09:35Z",
+          "venue": "Queensland Country Bank Stadium"
+        },
+        {
+          "home": "Dragons",
+          "away": "Titans",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-26T04:00Z",
+          "venue": "Jubilee Stadium"
+        },
+        {
+          "home": "Manly",
+          "away": "Sharks",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-26T06:05Z",
+          "venue": "4 Pines Park"
         }
       ]
     }
