@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v53 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v54 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1936,7 +1936,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [surfMode, setSurfMode] = useState("rect");   // ground areas: "rect" drag or "poly" dot-to-dot
   const [roomMode, setRoomMode] = useState("rect");   // rooms: "rect" drag a box, or "poly" tap corners
   const [newFloor, setNewFloor] = useState("");       // floor finish applied to rooms as they're drawn
-  const [wallPick, setWallPick] = useState(null);     // null = off; array of wall ids being picked to build a room
+  const [wallRoom, setWallRoom] = useState(null);     // null = off; else { mode:'pick'|'trace', ids:[], points:[] } while building a room from existing walls
   const [expanded, setExpanded] = useState(null);     // list row whose details are open
   const [wallKind, setWallKind] = useState("ext");    // external 200mm vs internal 90mm
   const [fenceStyle, setFenceStyle] = useState("fence");  // timber / black steel / glass (drawn like a wall)
@@ -2074,11 +2074,20 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
     };
     rooms.forEach(r => r.wall ? drawWall(r) : drawRoom(r));
-    // highlight walls being picked to build a room
-    if (wallPick && wallPick.length){
-      ctx.save(); ctx.strokeStyle = "#e8792b"; ctx.lineWidth = Math.max(6, 8/S); ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.globalAlpha = 0.55;
-      wallPick.forEach(id => { const r = rooms.find(x => x.id === id); if (!r) return; ctx.beginPath(); r.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); });
-      ctx.restore();
+    // building a room from existing walls: highlight picked walls, or draw the dot-to-dot trace
+    if (wallRoom){
+      const hs = 1 / S;
+      if (wallRoom.mode === "pick"){
+        ctx.save(); ctx.strokeStyle = "#e8792b"; ctx.lineWidth = Math.max(6, 8*hs); ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.globalAlpha = 0.55;
+        (wallRoom.ids || []).forEach(id => { const r = rooms.find(x => x.id === id); if (!r) return; ctx.beginPath(); r.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); });
+        ctx.restore();
+      } else if ((wallRoom.points || []).length){
+        const pts = wallRoom.points;
+        ctx.save(); ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "rgba(232,121,43,.10)"; ctx.lineWidth = 3*hs; ctx.lineJoin = "round";
+        ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); if (pts.length>=3){ ctx.closePath(); ctx.fill(); } ctx.stroke();
+        ctx.fillStyle = "#e8792b"; pts.forEach(p=>{ ctx.beginPath(); ctx.arc(p.x,p.y,5*hs,0,7); ctx.fill(); });
+        ctx.restore();
+      }
     }
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
@@ -2197,9 +2206,14 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (gPointers.current.size >= 2){ startPinch(); return; }   // two fingers → pinch-zoom / pan
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
     const base = { rooms: plan.rooms || [], stamps: plan.stamps || [] };
-    if (wallPick){   // picking existing walls to build a room — tap a wall to add/remove it
-      const id = wallHitId(toWorld(e, false));
-      if (id) setWallPick(wallPick.includes(id) ? wallPick.filter(x => x !== id) : [...wallPick, id]);
+    if (wallRoom){   // building a room from existing walls
+      const praw = toWorld(e, false);
+      if (wallRoom.mode === "pick"){   // tap a whole wall to add/remove it
+        const id = wallHitId(praw);
+        if (id) setWallRoom({ ...wallRoom, ids: wallRoom.ids.includes(id) ? wallRoom.ids.filter(x => x !== id) : [...wallRoom.ids, id] });
+      } else {   // dot-to-dot: drop a corner, snapped onto the walls
+        setWallRoom({ ...wallRoom, points: [...wallRoom.points, snapToWalls(praw)] });
+      }
       return;
     }
     if (tool === "move"){
@@ -2360,6 +2374,17 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     return best;
   };
   const wallHitId = (p) => { const thr = 16 / S; let bid = null, bd = thr; for (const r of rooms){ if (!r.wall) continue; const d = distToWall(p, r); if (d < bd){ bd = d; bid = r.id; } } return bid; };
+  // snap a tapped point onto the nearest wall — a corner first, else the closest point along a wall edge
+  // (so a room corner can land part-way along a wall, not only at its ends)
+  const snapToWalls = (praw) => {
+    const tol = 20 / S; let best = null, bd = tol;
+    for (const r of rooms){ if (!r.wall) continue; for (const v of r.points){ const d = dist(praw, v); if (d < bd){ bd = d; best = { x: v.x, y: v.y }; } } }
+    if (best) return best;
+    bd = tol; best = null;
+    for (const r of rooms){ if (!r.wall) continue; for (let i = 0; i < r.points.length - 1; i++){ const a = r.points[i], b = r.points[i+1], dx = b.x-a.x, dy = b.y-a.y, L2 = dx*dx+dy*dy || 1; let t = ((praw.x-a.x)*dx + (praw.y-a.y)*dy)/L2; t = Math.max(0, Math.min(1, t)); const q = { x: a.x+dx*t, y: a.y+dy*t }; const d = dist(praw, q); if (d < bd){ bd = d; best = q; } } }
+    if (best) return best;
+    return snap ? { x: clamp(gridSnap(praw.x), 0, worldW), y: clamp(gridSnap(praw.y), 0, worldH) } : praw;
+  };
   // trace a single closed polygon from the segments of the picked walls (corners that meet merge)
   const polygonFromWalls = (ids) => {
     const tol = Math.max(6, 0.15 / mPerPx);   // merge corners within ~150mm
@@ -2382,13 +2407,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     }
     return null;
   };
-  const makeRoomFromPicked = () => {
-    const poly = polygonFromWalls(wallPick || []);
-    if (!poly){ alert("Those walls don't form one closed loop. Pick walls whose corners meet all the way around a single space."); return; }
+  const makeRoomFromWalls = () => {
+    if (!wallRoom) return;
+    let poly = null;
+    if (wallRoom.mode === "pick") poly = polygonFromWalls(wallRoom.ids || []);
+    else if ((wallRoom.points || []).length >= 3) poly = wallRoom.points;
+    if (!poly){ alert(wallRoom.mode === "pick" ? "Those walls don't form one closed loop. Pick walls whose corners meet all the way around a single space — or use Dot-to-dot to trace the room by hand." : "Tap at least 3 corners around the room first."); return; }
     const n = rooms.filter(r => !r.wall && !r.surface).length + 1;
     onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Room " + n, points: poly.map(p => ({ x: p.x, y: p.y })), thick: WALL_THICK.ext, floorType: newFloor || undefined }] });
-    setWallPick(null); setTool("move");
-    notify("Room created from " + (wallPick || []).length + " walls · " + round2(shoelace(poly) * mPerPx * mPerPx).toFixed(2) + " m²");
+    setWallRoom(null); setTool("move");
+    notify("Room created · " + round2(shoelace(poly) * mPerPx * mPerPx).toFixed(2) + " m²");
   };
   // Send rooms/walls to the quote. Linking a rate is optional — unlinked ones
   // come through with the area/length + a blank rate to enter on the quote.
@@ -2466,7 +2494,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
   const DRAW_TOOLS = [["room","Room"],["wall","Wall"],["fenceline","Fence"],["curve","Curve"],["move","Edit"]];
   const stampLabel = STAMP_LABEL[tool] || "";
-  const hint = wallPick ? "Tap each wall around the space you want as a room (they highlight), then Make room. Their corners need to meet all the way around."
+  const hint = wallRoom ? (wallRoom.mode === "pick" ? "Tap each wall around the space (they highlight), then Make room. Their corners need to meet all the way around — if the room only uses part of a wall, switch to Dot-to-dot." : "Tap each corner of the room — points snap onto the walls, even part-way along a wall — then Make room.")
     : tool === "room" ? (roomMode === "rect" ? "Drag a box on the grid to make a room — that's the whole room in one drag. Set its floor finish below first if you like." : "Tap the grid to drop each corner, then Finish to close the room. Corners snap together so rooms close cleanly.")
     : tool === "wall" ? "Tap to drop each corner and keep going around bends; Finish when done. Choose external (200mm) or internal (90mm) below."
     : tool === "fenceline" ? "Tap to drop each fence corner and keep going — Finish when done. Pick the fence style below."
@@ -2501,19 +2529,22 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         </select>
         {STAMP_DEFAULT_M[tool] && <span className="text-sm" style={{ color: "var(--muted)" }}>Placing <b className="brand-text">{stampLabel}</b> — tap the plan</span>}
       </div>
-      {tool === "room" && !wallPick && <div className="flex gap-1.5 items-center flex-wrap">
+      {tool === "room" && !wallRoom && <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Room shape:</span>
         <button className={"tab " + (roomMode === "rect" ? "tab-active" : "card")} onClick={() => { setRoomMode("rect"); setDraft(null); }}>▭ Box (drag)</button>
         <button className={"tab " + (roomMode === "poly" ? "tab-active" : "card")} onClick={() => { setRoomMode("poly"); setDraft(null); }}>⬠ Dot-to-dot</button>
-        {rooms.some(r => r.wall && !r.fence) && <button className="tab card" onClick={() => { setDraft(null); setSel(null); setSelShape(null); setWallPick([]); }} title="Tap existing walls that bound a space, then make a room from them">▧ From existing walls</button>}
+        {rooms.some(r => r.wall && !r.fence) && <button className="tab card" onClick={() => { setDraft(null); setSel(null); setSelShape(null); setWallRoom({ mode: "pick", ids: [], points: [] }); }} title="Build a room from walls you've already drawn">▧ From existing walls</button>}
         <span className="text-xs ml-1" style={{ color: "var(--muted)" }}>Floor:</span>
         <select className="inp !py-1 !w-auto" value={newFloor} onChange={e => setNewFloor(e.target.value)} title="Floor finish applied to rooms you draw">{FLOOR_TYPES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
       </div>}
-      {wallPick && <div className="flex gap-2 items-center flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
-        <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>Pick walls that enclose the space</span>
-        <span className="text-sm" style={{ color: "var(--muted)" }}>{wallPick.length} wall{wallPick.length === 1 ? "" : "s"} selected — tap a wall to add/remove</span>
-        <button className="btn btn-accent !py-1 ml-auto" disabled={wallPick.length < 3} onClick={makeRoomFromPicked}><IcCheck size={14} /> Make room</button>
-        <button className="btn btn-ghost !py-1" onClick={() => setWallPick(null)}>Cancel</button>
+      {wallRoom && <div className="flex gap-2 items-center flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
+        <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>Room from walls</span>
+        <button className={"tab !py-1 " + (wallRoom.mode === "pick" ? "tab-active" : "card")} onClick={() => setWallRoom({ ...wallRoom, mode: "pick" })}>Tap whole walls</button>
+        <button className={"tab !py-1 " + (wallRoom.mode === "trace" ? "tab-active" : "card")} onClick={() => setWallRoom({ ...wallRoom, mode: "trace" })} title="Trace the room corner by corner — for when it only uses part of a wall">Dot-to-dot</button>
+        <span className="text-sm" style={{ color: "var(--muted)" }}>{wallRoom.mode === "pick" ? (wallRoom.ids.length + " wall" + (wallRoom.ids.length === 1 ? "" : "s") + " selected") : (wallRoom.points.length + " pt" + (wallRoom.points.length === 1 ? "" : "s"))}</span>
+        {wallRoom.mode === "trace" && wallRoom.points.length > 0 && <button className="btn btn-ghost !py-1" onClick={() => setWallRoom({ ...wallRoom, points: wallRoom.points.slice(0, -1) })}>Undo pt</button>}
+        <button className="btn btn-accent !py-1 ml-auto" disabled={(wallRoom.mode === "pick" ? wallRoom.ids.length : wallRoom.points.length) < 3} onClick={makeRoomFromWalls}><IcCheck size={14} /> Make room</button>
+        <button className="btn btn-ghost !py-1" onClick={() => setWallRoom(null)}>Cancel</button>
       </div>}
       <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Ground area:</span>
