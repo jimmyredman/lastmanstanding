@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v58 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v59 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1596,8 +1596,10 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
   const [roofType, setRoofType] = useState(plan.roofType || (plan.roof ? "hip" : "none"));
   const [pitch, setPitch] = useState(plan.roofPitch || 22);
   const [roofColor, setRoofColor] = useState(plan.roofColor || "#6f7683");
-  const [editMode, setEditMode] = useState(false);   // drag objects to reposition (off by default so nothing moves by accident)
-  const [rev, setRev] = useState(0);                  // bump to rebuild the scene after a move
+  const [editMode, setEditMode] = useState(null);     // null | "objects" (drag objects) | "walls" (drag wall corners). Off by default.
+  const [rev, setRev] = useState(0);                  // bump to rebuild after a wall-corner move
+  const camView = useRef(null);                       // preserve orbit position/target across rebuilds
+  const planRef = useRef(plan); planRef.current = plan;   // always-fresh plan for edit handlers (objects move without a rebuild)
   const [showLabels, setShowLabels] = useState(false); // room names / areas / wall lengths on the render for the client
   useEffect(() => {
     const THREE = window.THREE; const mount = mountRef.current;
@@ -1622,7 +1624,10 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H);
     mount.appendChild(renderer.domElement);
-    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH * 0.35, 0); controls.update();
+    const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH * 0.35, 0);
+    if (camView.current){ camera.position.copy(camView.current.p); controls.target.copy(camView.current.t); }   // keep the view across rebuilds
+    controls.update();
+    controls.addEventListener("change", () => { camView.current = { p: camera.position.clone(), t: controls.target.clone() }; });
     scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c2cf, 0.7));
     scene.add(new THREE.AmbientLight(0xffffff, 0.1));                                     // gentle fill; kept low so light greys don't wash to white
     const dir = new THREE.DirectionalLight(0xffffff, 0.32); dir.position.set(ext*0.9, ext*1.8, ext*0.7); scene.add(dir);
@@ -1746,10 +1751,11 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     });
 
     // ---- detailed objects ----
+    const stampGroups = {};   // stampId -> group, so edit mode can move the object itself
     stamps.forEach(s => {
       if (STAMP_OPENINGS.has(s.type) || STAMP_ELEC.has(s.type)) return;   // openings cut walls; electrical are 2D plan symbols only
       const M = toM({ x: s.x, y: s.y }), w = stampW(s) * mpp, d = stampD(s) * mpp, ang = -(s.angle||0)*Math.PI/180;
-      const grp = new THREE.Group(); grp.position.set(M.x, 0, M.z); grp.rotation.y = ang;
+      const grp = new THREE.Group(); grp.position.set(M.x, 0, M.z); grp.rotation.y = ang; grp.userData.stampId = s.id; stampGroups[s.id] = grp;
       // shared little builders
       const leg = (x, z, hgt, m, r) => { const g = new THREE.Mesh(new THREE.BoxGeometry(r||0.06, hgt, r||0.06), m); g.position.set(x, hgt/2, z); grp.add(g); };
       const cyl = (rt, rb, h, m, x, y, z, seg) => { const g = new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg||16), m); g.position.set(x, y, z); grp.add(g); return g; };
@@ -1956,18 +1962,39 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       });
     }
 
-    // ---- edit mode: draggable handles to reposition objects on the plan ----
-    const handles = [];
-    if (editMode){
-      const hMat = new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false });
-      stamps.forEach(s => { const M = toM({ x: s.x, y: s.y }); const hnd = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 16), hMat); hnd.position.set(M.x, 0.6, M.z); hnd.userData = { stampId: s.id }; hnd.renderOrder = 999; scene.add(hnd); handles.push(hnd); });
-    }
+    // ---- edit modes: drag objects directly, or drag wall corners to change lengths ----
     const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2(); const gPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
-    let dragH = null;
     const setNdc = (ev) => { const r = renderer.domElement.getBoundingClientRect(); ndc.x = ((ev.clientX-r.left)/r.width)*2-1; ndc.y = -((ev.clientY-r.top)/r.height)*2+1; ray.setFromCamera(ndc, camera); };
-    const onPD = (ev) => { if (!editMode || !handles.length) return; setNdc(ev); const hit = ray.intersectObjects(handles)[0]; if (hit){ dragH = hit.object; controls.enabled = false; } };
-    const onPM = (ev) => { if (!dragH) return; setNdc(ev); const pt = new THREE.Vector3(); if (ray.ray.intersectPlane(gPlane, pt)){ dragH.position.x = pt.x; dragH.position.z = pt.z; } };
-    const onPU = () => { if (!dragH) return; const id = dragH.userData.stampId, nx = dragH.position.x / mpp + cx, ny = dragH.position.z / mpp + cy; controls.enabled = true; dragH = null; if (onPersist) onPersist({ stamps: (plan.stamps || []).map(s => s.id === id ? { ...s, x: nx, y: ny } : s) }); setRev(v => v + 1); };
+    const groundPt = () => { const pt = new THREE.Vector3(); return ray.ray.intersectPlane(gPlane, pt) ? pt : null; };
+    const findStampId = (o) => { while (o){ if (o.userData && o.userData.stampId) return o.userData.stampId; o = o.parent; } return null; };
+    // OBJECTS: invisible pick spheres over every object so you can just grab and drag it (no clutter)
+    const pickObjs = [];
+    if (editMode === "objects"){
+      const im = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+      stamps.forEach(s => { const M = toM({ x: s.x, y: s.y }), w = stampW(s)*mpp, d = stampD(s)*mpp, rad = Math.max(0.45, Math.max(w, d) * 0.55); const pk = new THREE.Mesh(new THREE.SphereGeometry(rad, 10, 8), im); pk.position.set(M.x, Math.max(0.4, rad*0.6), M.z); pk.userData = { stampId: s.id }; scene.add(pk); pickObjs.push(pk); });
+    }
+    // WALLS: small corner handles you drag to lengthen / shorten walls
+    const vtxHandles = [];
+    if (editMode === "walls"){
+      const hMat = new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false });
+      rooms.forEach(r => { if (r.surface) return; r.points.forEach((p, idx) => { const M = toM(p); const hnd = new THREE.Mesh(new THREE.SphereGeometry(0.4, 18, 14), hMat); hnd.position.set(M.x, 0.3, M.z); hnd.userData = { roomId: r.id, idx }; hnd.renderOrder = 999; scene.add(hnd); vtxHandles.push(hnd); }); });
+    }
+    let drag = null, marker = null;
+    const onPD = (ev) => {
+      if (!editMode) return; setNdc(ev);
+      if (editMode === "walls"){ const pt = groundPt(); if (!pt) return; const px = pt.x / mpp + cx, py = pt.z / mpp + cy; let best = null, bd = 1.2 / mpp; (planRef.current.rooms || []).forEach(r => { if (r.surface) return; r.points.forEach((p, idx) => { const dpx = Math.hypot(p.x - px, p.y - py); if (dpx < bd){ bd = dpx; best = { roomId: r.id, idx }; } }); }); if (best){ drag = { kind: "vtx", roomId: best.roomId, idx: best.idx, handle: vtxHandles.find(h => h.userData.roomId === best.roomId && h.userData.idx === best.idx) }; controls.enabled = false; } return; }
+      // objects: try the invisible pick spheres, then any visible object mesh
+      let id = null; const h1 = ray.intersectObjects(pickObjs)[0]; if (h1) id = h1.object.userData.stampId;
+      if (!id){ const hits = ray.intersectObjects(scene.children, true); for (const h of hits){ const sid = findStampId(h.object); if (sid){ id = sid; break; } } }
+      if (id){ controls.enabled = false; const grp = stampGroups[id]; marker = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false })); marker.renderOrder = 1000; const st = (planRef.current.stamps||[]).find(x => x.id === id), M = st ? toM({ x: st.x, y: st.y }) : { x: 0, z: 0 }; marker.position.set(M.x, 0.9, M.z); scene.add(marker); drag = { kind: "obj", id, group: grp }; }
+    };
+    const onPM = (ev) => { if (!drag) return; setNdc(ev); const pt = groundPt(); if (!pt) return; drag.lastPt = pt; if (drag.kind === "vtx"){ if (drag.handle){ drag.handle.position.x = pt.x; drag.handle.position.z = pt.z; } } else { if (drag.group){ drag.group.position.x = pt.x; drag.group.position.z = pt.z; } if (marker) marker.position.set(pt.x, 0.9, pt.z); } };
+    const onPU = () => {
+      if (!drag) return; controls.enabled = true;
+      if (drag.kind === "vtx"){ if (!drag.lastPt){ drag = null; return; } const nx = Math.max(0, drag.lastPt.x / mpp + cx), ny = Math.max(0, drag.lastPt.z / mpp + cy); if (onPersist) onPersist({ rooms: (planRef.current.rooms || []).map(r => r.id === drag.roomId ? { ...r, points: r.points.map((p, i) => i === drag.idx ? { x: nx, y: ny } : p) } : r) }); setRev(v => v + 1); }
+      else { const src = drag.group || marker; const mx = Math.max(0, src.position.x / mpp + cx), my = Math.max(0, src.position.z / mpp + cy); if (onPersist) onPersist({ stamps: (planRef.current.stamps || []).map(s => s.id === drag.id ? { ...s, x: mx, y: my } : s) }); }
+      if (marker){ scene.remove(marker); marker = null; } drag = null;
+    };
     renderer.domElement.addEventListener("pointerdown", onPD, true);
     renderer.domElement.addEventListener("pointermove", onPM, true);
     window.addEventListener("pointerup", onPU, true);
@@ -1978,7 +2005,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     capRef.current = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.9); };
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onR); renderer.domElement.removeEventListener("pointerdown", onPD, true); renderer.domElement.removeEventListener("pointermove", onPM, true); window.removeEventListener("pointerup", onPU, true); try { controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement); } catch(_){} };
     } catch (err) { setOk(false); }
-  }, [roofType, pitch, roofColor, editMode, rev, showLabels]);
+  }, [roofType, pitch, roofColor, editMode, showLabels, rev]);
   const persist = (patch) => { if (onPersist) onPersist(patch); };
   return (
     <div className="fixed inset-0 z-50 flex flex-col no-print" style={{ background: "#eef2f7" }}>
@@ -1993,14 +2020,15 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
           </div>
         )}
         <div className="flex gap-2 items-center">
-          {ok && <button className={"btn " + (editMode ? "btn-accent" : "btn-ghost !text-white")} style={editMode ? {} : { borderColor: "rgba(255,255,255,.4)" }} onClick={() => setEditMode(v => !v)} title="Drag the orange handles to move objects; toggle off to orbit without moving anything">{editMode ? "✓ Editing objects" : "✏️ Edit objects"}</button>}
+          {ok && <button className={"btn " + (editMode === "objects" ? "btn-accent" : "btn-ghost !text-white")} style={editMode === "objects" ? {} : { borderColor: "rgba(255,255,255,.4)" }} onClick={() => setEditMode(m => m === "objects" ? null : "objects")} title="Drag objects to reposition them; orbit still works on empty space">{editMode === "objects" ? "✓ Moving objects" : "✋ Move objects"}</button>}
+          {ok && <button className={"btn " + (editMode === "walls" ? "btn-accent" : "btn-ghost !text-white")} style={editMode === "walls" ? {} : { borderColor: "rgba(255,255,255,.4)" }} onClick={() => setEditMode(m => m === "walls" ? null : "walls")} title="Drag a wall corner to lengthen or shorten the wall">{editMode === "walls" ? "✓ Editing walls" : "📐 Edit walls"}</button>}
           {ok && <button className="btn btn-accent" onClick={() => { const d = capRef.current && capRef.current(); if (d) onSave(d); }}><IcCheck size={16} /> Save render</button>}
           <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)" }} onClick={onClose}><IcX size={16} /> Close</button>
         </div>
       </div>
       {ok ? <div ref={mountRef} className="flex-1" style={{ touchAction: "none", minHeight: 0 }} />
           : <div className="flex-1 flex items-center justify-center text-center p-6" style={{ color: "var(--muted)" }}>3D engine needs to load once online. Reconnect and reopen.</div>}
-      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>{editMode ? "Editing — drag an orange handle to move that object; orbit still works on empty space. Toggle Edit off when done." : "Drag to orbit · pinch / scroll to zoom · walls " + (plan.wallHeight || 2.7) + " m · Edit objects to reposition items"}</div>
+      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>{editMode === "objects" ? "Moving objects — drag any object to slide it around the floor. Orbit still works on empty space." : editMode === "walls" ? "Editing walls — drag an orange corner to lengthen or shorten the walls. Orbit still works on empty space." : "Drag to orbit · pinch / scroll to zoom · walls " + (plan.wallHeight || 2.7) + " m · use Move / Edit walls to adjust"}</div>
     </div>
   );
 }
@@ -2933,12 +2961,31 @@ async function getLogoDataUrl(settings){ if (settings.logo) return settings.logo
 async function elementToPdf(el){
   const { jsPDF } = window.jspdf;
   const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff", useCORS: true, windowWidth: el.scrollWidth });
-  const pdf = new jsPDF({ unit: "pt", format: "a4", compress: true });
+  const pdf = new jsPDF({ unit: "pt", format: "a4", compress: true });   // standard A4 portrait
   const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
-  const imgW = pageW, imgH = canvas.height * imgW / canvas.width;
-  const img = canvas.toDataURL("image/jpeg", 0.92);
-  if (imgH <= pageH) pdf.addImage(img, "JPEG", 0, 0, imgW, imgH);
-  else { let pos = 0, remaining = imgH; while (remaining > 0){ pdf.addImage(img, "JPEG", 0, pos, imgW, imgH); remaining -= pageH; if (remaining > 0){ pdf.addPage(); pos -= pageH; } } }
+  const S = canvas.width / (el.scrollWidth || el.getBoundingClientRect().width);   // canvas px per CSS px
+  const fullH = canvas.height, pageHpx = pageH * canvas.width / pageW;            // one A4 page in canvas px
+  if (fullH <= pageHpx){ pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pageW, fullH * pageW / canvas.width); return pdf; }
+  // Break pages at whitespace between blocks so an image or section is never cut in half.
+  const top0 = el.getBoundingClientRect().top;
+  const cuts = new Set();
+  const add = (node) => { try { const b = node.getBoundingClientRect().bottom - top0; if (b > 4) cuts.add(Math.round(b * S)); } catch(_){} };
+  const content = el.children[1] || el;                    // the padded content block
+  add(el.children[0]);                                     // letterhead band
+  Array.from(content.children || []).forEach(child => { add(child); child.querySelectorAll && child.querySelectorAll("img, tr, .grid > div").forEach(add); });
+  const bounds = [...cuts].filter(b => b > 0 && b < fullH).sort((a, b) => a - b); bounds.push(fullH);
+  let top = 0, first = true;
+  while (top < fullH - 1){
+    const limit = top + pageHpx;
+    let cut = 0; for (const b of bounds){ if (b > top + 20 && b <= limit) cut = b; }
+    if (!cut) cut = Math.min(limit, fullH);                // a single block taller than a page — hard cut (unavoidable)
+    const sliceH = Math.max(1, cut - top);
+    const sc = document.createElement("canvas"); sc.width = canvas.width; sc.height = sliceH;
+    sc.getContext("2d").drawImage(canvas, 0, top, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+    if (!first) pdf.addPage();
+    pdf.addImage(sc.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pageW, sliceH * pageW / canvas.width);
+    top = cut; first = false;
+  }
   return pdf;
 }
 function quoteFilename(project, ext){ const q = (project.quoteNo || "quote").replace(/[^a-z0-9\-]/gi, "_"); return "RJG-" + q + "." + ext; }
