@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v49 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v50 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1223,17 +1223,18 @@ function smoothPath(ctx, pts){
   for (let i = 1; i < pts.length - 1; i++){ const xc = (pts[i].x + pts[i+1].x) / 2, yc = (pts[i].y + pts[i+1].y) / 2; ctx.quadraticCurveTo(pts[i].x, pts[i].y, xc, yc); }
   ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y); ctx.stroke();
 }
-const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, roller: 2.4, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, island: 1.8, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, bush: 1.2, gazebo: 3.6, shed: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, gate: 1.0, gate_black: 1.0, gate_glass: 1.0, pool: 6.0 };
-const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["roller","Garage roller door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["island","Kitchen island"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["car","Car"],["tree","Tree"],["bush","Bush / shrub"],["gazebo","Gazebo"],["shed","Garden shed"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["gate","Gate — timber"],["gate_black","Gate — black steel"],["gate_glass","Gate — glass"],["pool","Pool"]];
+const STAMP_DEFAULT_M = { door: 0.9, doubledoor: 1.6, slidingdoor: 1.8, roller: 2.4, window: 1.2, opening: 1.0, table: 1.5, chair: 0.5, bench: 1.6, bed: 1.5, kitchen: 2.4, island: 1.8, sink: 0.6, toilet: 0.4, shower: 0.9, bath: 1.7, car: 4.8, tree: 3.0, bush: 1.2, gazebo: 3.6, shed: 3.0, fence: 3.0, fence_black: 3.0, fence_glass: 2.4, gate: 1.0, gate_black: 1.0, gate_glass: 1.0, pool: 6.0, light: 0.4, downlight: 0.25, pendant: 0.4, fan: 1.2, exhaust: 0.35, aircon: 0.9, gpo: 0.3, switch: 0.28, smoke: 0.3, hws: 0.6 };
+const STAMP_TYPES = [["door","Door"],["doubledoor","Double door"],["slidingdoor","Sliding door"],["roller","Garage roller door"],["window","Window"],["opening","Opening"],["table","Table"],["chair","Chair"],["bench","Bench"],["bed","Bed"],["kitchen","Kitchen cupboard"],["island","Kitchen island"],["sink","Sink"],["toilet","Toilet"],["shower","Shower"],["bath","Bath"],["light","Ceiling light"],["downlight","Downlight"],["pendant","Pendant light"],["fan","Ceiling fan"],["exhaust","Exhaust fan"],["aircon","Air-con (split)"],["gpo","Power point (GPO)"],["switch","Light switch"],["smoke","Smoke alarm"],["hws","Hot water unit"],["car","Car"],["tree","Tree"],["bush","Bush / shrub"],["gazebo","Gazebo"],["shed","Garden shed"],["fence","Fence — timber"],["fence_black","Fence — black steel"],["fence_glass","Fence — glass"],["gate","Gate — timber"],["gate_black","Gate — black steel"],["gate_glass","Gate — glass"],["pool","Pool"]];
 const STAMP_LABEL = Object.fromEntries(STAMP_TYPES);
-const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","roller","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","island","sink","toilet","shower","bath"]], ["Fences & gates", ["fence","fence_black","fence_glass","gate","gate_black","gate_glass"]], ["Structures", ["gazebo","shed"]], ["Outdoor / site", ["car","tree","bush","pool"]]];
+const STAMP_CATEGORIES = [["Openings", ["door","doubledoor","slidingdoor","roller","window","opening"]], ["Furniture", ["table","chair","bench","bed"]], ["Kitchen & bath", ["kitchen","island","sink","toilet","shower","bath"]], ["Electrical & services", ["light","downlight","pendant","fan","exhaust","aircon","gpo","switch","smoke","hws"]], ["Fences & gates", ["fence","fence_black","fence_glass","gate","gate_black","gate_glass"]], ["Structures", ["gazebo","shed"]], ["Outdoor / site", ["car","tree","bush","pool"]]];
 // depth ÷ width ratio for each object (defines its footprint when first dropped)
-const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, roller: 0.12, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, island: 0.5, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, bush: 1.0, gazebo: 1.0, shed: 0.7, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, gate: 0.06, gate_black: 0.06, gate_glass: 0.06, pool: 0.6 };
+const STAMP_ASPECT = { door: 0.28, doubledoor: 0.24, slidingdoor: 0.14, roller: 0.12, window: 0.14, opening: 0.14, table: 0.62, chair: 0.9, bench: 0.34, bed: 1.3, kitchen: 0.26, island: 0.5, sink: 0.66, toilet: 1.1, shower: 1.0, bath: 0.5, car: 0.44, tree: 1.0, bush: 1.0, gazebo: 1.0, shed: 0.7, fence: 0.05, fence_black: 0.05, fence_glass: 0.05, gate: 0.06, gate_black: 0.06, gate_glass: 0.06, pool: 0.6, light: 1.0, downlight: 1.0, pendant: 1.0, fan: 1.0, exhaust: 1.0, aircon: 0.32, gpo: 1.0, switch: 1.0, smoke: 1.0, hws: 1.0 };
 const STAMP_LINEAR = new Set(["door","doubledoor","slidingdoor","roller","window","opening","fence","fence_black","fence_glass","gate","gate_black","gate_glass"]);   // resize length only
-const STAMP_ROUND  = new Set(["tree","bush"]);                                                                             // uniform resize
+const STAMP_ROUND  = new Set(["tree","bush","light","downlight","pendant","fan","exhaust","gpo","switch","smoke","hws"]);   // uniform resize
 const STAMP_OPENINGS = new Set(["door","doubledoor","slidingdoor","roller","window","opening"]);                           // cut into 3D walls
+const STAMP_ELEC = new Set(["light","downlight","pendant","fan","exhaust","aircon","gpo","switch","smoke","hws"]);         // electrical / services symbols
 const STAMP_FLIP = new Set(["door","doubledoor","slidingdoor","gate","gate_black","gate_glass","shed"]);                   // can swing/flip the other way
-const NO_WALL_SNAP = new Set(["tree","bush","gazebo","shed","car","pool","fence","fence_black","fence_glass","gate","gate_black","gate_glass"]);  // free-standing — don't snap to a wall
+const NO_WALL_SNAP = new Set(["tree","bush","gazebo","shed","car","pool","fence","fence_black","fence_glass","gate","gate_black","gate_glass","light","downlight","pendant","fan","exhaust","smoke"]);  // free-standing / ceiling — don't snap to a wall
 const GATE_COLORS = { gate: "#8a6a3f", gate_black: "#2a2f36", gate_glass: "#5fa9d6" };
 const WALL_THICK = { ext: 0.2, int: 0.09 };   // default wall thickness (m): external 200mm, internal 90mm
 const FLOOR_TYPES = [["", "— floor —"], ["tile", "Tile"], ["timber", "Timber"], ["carpet", "Carpet"], ["vinyl", "Vinyl"], ["laminate", "Laminate"], ["concrete", "Concrete polish"], ["epoxy", "Epoxy"]];
@@ -1400,8 +1401,153 @@ function drawStamp(ctx, s, brand){
       else if (op === "double"){ ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(cx-ow/2, hh, ow/2, -Math.PI/2, 0); ctx.stroke(); ctx.beginPath(); ctx.arc(cx+ow/2, hh, ow/2, -Math.PI, -Math.PI/2); ctx.stroke(); ctx.lineWidth=2.2; }
       else if (op === "window"){ ctx.strokeStyle="#5fa9d6"; ctx.lineWidth=2.2; ctx.strokeRect(cx-ow/2, hh-6, ow, 5); ctx.beginPath(); ctx.moveTo(cx, hh-6); ctx.lineTo(cx, hh-1); ctx.stroke(); ctx.strokeStyle=brand; }
     });
+  } else if (STAMP_ELEC.has(s.type)){
+    // electrical / services symbols (plan conventions). r = symbol radius in px.
+    const r = Math.max(6, half), lw = Math.max(1.4, r * 0.14);
+    ctx.strokeStyle = brand; ctx.fillStyle = brand; ctx.lineWidth = lw; ctx.font = "700 " + Math.max(7, Math.round(r*0.7)) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    if (s.type === "light"){                                             // ceiling light: circle + X
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+      const d = r * 0.7; ctx.beginPath(); ctx.moveTo(-d,-d); ctx.lineTo(d,d); ctx.moveTo(d,-d); ctx.lineTo(-d,d); ctx.stroke();
+    } else if (s.type === "downlight"){                                  // filled dot in a ring
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r*0.42, 0, 7); ctx.fill();
+    } else if (s.type === "pendant"){                                    // ceiling rose + drop + shade
+      ctx.beginPath(); ctx.arc(0, -r*0.6, r*0.28, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, -r*0.6); ctx.lineTo(0, r*0.1); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, r*0.4, r*0.6, Math.PI, 0); ctx.stroke();
+    } else if (s.type === "fan"){                                        // ceiling fan: hub + 4 blades
+      ctx.beginPath(); ctx.arc(0, 0, r*0.16, 0, 7); ctx.fill();
+      for (let i = 0; i < 4; i++){ ctx.save(); ctx.rotate(i * Math.PI/2); ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(r*0.55, -r*0.28, r, -r*0.05); ctx.stroke(); ctx.restore(); }
+    } else if (s.type === "exhaust"){                                    // fan in a box
+      ctx.strokeRect(-r, -r, r*2, r*2);
+      ctx.beginPath(); ctx.arc(0, 0, r*0.2, 0, 7); ctx.fill();
+      for (let i = 0; i < 4; i++){ ctx.save(); ctx.rotate(i * Math.PI/2); ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(r*0.5, -r*0.3, r*0.85, 0); ctx.stroke(); ctx.restore(); }
+    } else if (s.type === "aircon"){                                     // wall split head: rounded box + louvres
+      ctx.fillStyle = "rgba(2,34,75,.05)"; rrect(ctx, -half, -hh, w, h, Math.min(hh, 4)); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = brand; ctx.lineWidth = Math.max(1, lw*0.7);
+      const nb = Math.max(3, Math.round(w/9)); for (let i = 1; i < nb; i++){ const x = -half + w*i/nb; ctx.beginPath(); ctx.moveTo(x, -hh*0.4); ctx.lineTo(x, hh*0.4); ctx.stroke(); }
+      ctx.font = "700 " + Math.max(6, Math.round(h*0.5)) + "px system-ui"; ctx.fillText("A/C", 0, -hh - h*0.35);
+    } else if (s.type === "gpo"){                                        // power point: half-disc + two contacts
+      ctx.beginPath(); ctx.arc(0, 0, r, Math.PI, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-r, 0); ctx.lineTo(r, 0); ctx.stroke();
+      ctx.lineWidth = Math.max(1, lw*0.8); ctx.beginPath(); ctx.moveTo(-r*0.35, 0); ctx.lineTo(-r*0.35, -r*0.5); ctx.moveTo(r*0.35, 0); ctx.lineTo(r*0.35, -r*0.5); ctx.stroke();
+    } else if (s.type === "switch"){                                     // light switch: dot + lever
+      ctx.beginPath(); ctx.arc(0, 0, r*0.32, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(r*0.9, -r*0.9); ctx.stroke();
+      ctx.beginPath(); ctx.arc(r*0.9, -r*0.9, r*0.18, 0, 7); ctx.stroke();
+    } else if (s.type === "smoke"){                                      // smoke alarm: circle + SD
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.stroke();
+      ctx.font = "700 " + Math.max(6, Math.round(r*0.8)) + "px system-ui"; ctx.fillText("SD", 0, 0);
+    } else if (s.type === "hws"){                                        // hot water unit: rounded box + HWS
+      ctx.fillStyle = "rgba(2,34,75,.05)"; rrect(ctx, -half, -hh, w, h, Math.min(w,h)*0.2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = brand; ctx.font = "700 " + Math.max(6, Math.round(r*0.55)) + "px system-ui"; ctx.fillText("HWS", 0, 0);
+    }
   }
   ctx.restore();
+}
+
+/* ---- measurable floor-plan export ---------------------------------------
+   Renders the whole plan to an off-screen canvas at a chosen output scale
+   (px per metre), draws every room/wall/surface/object/markup with dimension
+   labels plus a printed scale bar, then places it on an A3-landscape PDF and
+   states the true paper scale (1:N) so the drawing can be measured off. */
+function renderPlanExport(plan, brand){
+  const mpp = (plan.gridMetres || 0.5) / (plan.gridPx || 28);   // metres per world px
+  const rooms = plan.rooms || [], stamps = plan.stamps || [], markups = plan.markups || [];
+  // bounds of everything drawn (world px)
+  const pts = [];
+  rooms.forEach(r => r.points.forEach(p => pts.push(p)));
+  stamps.forEach(s => { const e = Math.max(stampW(s), stampD(s)) / 2 + 6; pts.push({ x: s.x - e, y: s.y - e }, { x: s.x + e, y: s.y + e }); });
+  markups.forEach(m => { if (m.a) pts.push(m.a); if (m.b) pts.push(m.b); });
+  if (!pts.length) return null;
+  const minX = Math.min(...pts.map(p => p.x)), maxX = Math.max(...pts.map(p => p.x));
+  const minY = Math.min(...pts.map(p => p.y)), maxY = Math.max(...pts.map(p => p.y));
+  const wWpx = Math.max(1, maxX - minX), wHpx = Math.max(1, maxY - minY);
+  const wM = wWpx * mpp, hM = wHpx * mpp;
+  // output px per metre — target the longest side around 2200px for a crisp print
+  const sc = clamp(2200 / Math.max(wM, hM), 40, 400);
+  const k = mpp * sc;                          // output px per world px
+  const padM = 1.2, pad = padM * sc;           // 1.2 m margin for labels + scale bar
+  const barM = 0.9 * sc;                       // reserved band under the plan for the scale bar
+  const W = Math.round(wWpx * k + pad * 2), H = Math.round(wHpx * k + pad * 2 + barM);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+  ctx.save();
+  // world → output transform (so drawStamp and world-coord drawing just work)
+  ctx.setTransform(k, 0, 0, k, pad - minX * k, pad - minY * k);
+  const lw = 1 / k;                            // 1 output px in world units, for crisp hairlines
+  // light grid (0.5 m)
+  const gm = 0.5 / mpp;                        // grid step in world px
+  ctx.lineWidth = lw; ctx.strokeStyle = "#eef1f5";
+  for (let gx = Math.floor(minX / gm) * gm; gx <= maxX; gx += gm){ ctx.beginPath(); ctx.moveTo(gx, minY); ctx.lineTo(gx, maxY); ctx.stroke(); }
+  for (let gy = Math.floor(minY / gm) * gm; gy <= maxY; gy += gm){ ctx.beginPath(); ctx.moveTo(minX, gy); ctx.lineTo(maxX, gy); ctx.stroke(); }
+  const px = (n) => n / k;                      // helper: output px → world units at current transform
+  ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const label = (x, y, txt, col, sizePx) => { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); const ox = (x * k) + (pad - minX * k), oy = (y * k) + (pad - minY * k); ctx.fillStyle = col; ctx.font = "600 " + (sizePx || 13) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(txt, ox, oy); ctx.restore(); };
+  const edgeLen = (a, b) => { const L = dist(a, b) * mpp; if (L < 0.05) return; const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2; label(mx, my, L.toFixed(2) + " m", "#5b6472", 12); };
+  // surfaces + rooms
+  rooms.forEach(r => {
+    const surf = r.surface, wall = r.wall;
+    ctx.beginPath(); r.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (!wall) ctx.closePath();
+    if (wall){ ctx.lineWidth = Math.max((r.thick || WALL_THICK.int) / mpp, px(2)); ctx.strokeStyle = r.fence ? (FENCE_WALL_COLOR[r.fence] || brand) : brand; ctx.stroke(); }
+    else { ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.05)") : "rgba(2,34,75,.04)"; ctx.fill(); ctx.lineWidth = px(2); ctx.strokeStyle = surf ? (SURFACE_STROKE[surf] || brand) : brand; ctx.stroke(); }
+    // edge lengths
+    const n = wall ? r.points.length - 1 : r.points.length;
+    for (let i = 0; i < n; i++) edgeLen(r.points[i], r.points[(i + 1) % r.points.length]);
+    // room name + area
+    if (!wall){ const c = centroid(r.points), area = shoelace(r.points) * mpp * mpp; const nm = r.name || (surf ? SURFACE_LABEL[surf] : "Room"); const ft = (!surf && r.floorType) ? " · " + FLOOR_LABEL[r.floorType] : "";
+      label(c.x, c.y - px(9), nm + ft, "#141922", 14); label(c.x, c.y + px(9), area.toFixed(2) + " m²", "#5b6472", 12); }
+  });
+  // objects (reuse the plan symbol renderer)
+  stamps.forEach(s => drawStamp(ctx, s, brand));
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  stamps.forEach(s => { const lbl = STAMP_LABEL[s.type] || s.type; label(s.x, s.y + Math.max(stampW(s), stampD(s)) / 2 + px(11), lbl, "#5b6472", 11); });
+  // markups
+  markups.forEach(m => {
+    ctx.strokeStyle = m.color || "#e11d48"; ctx.fillStyle = m.color || "#e11d48"; ctx.lineWidth = px(3);
+    if (m.mk === "text"){ label(m.a.x, m.a.y, m.text || "", m.color || "#e11d48", 13); }
+    else if (m.a && m.b){ ctx.beginPath(); ctx.moveTo(m.a.x, m.a.y); ctx.lineTo(m.b.x, m.b.y); ctx.stroke();
+      if (m.mk === "arrow"){ const ang = Math.atan2(m.b.y - m.a.y, m.b.x - m.a.x), hl = px(13); ctx.beginPath(); ctx.moveTo(m.b.x, m.b.y); ctx.lineTo(m.b.x - hl * Math.cos(ang - 0.42), m.b.y - hl * Math.sin(ang - 0.42)); ctx.lineTo(m.b.x - hl * Math.cos(ang + 0.42), m.b.y - hl * Math.sin(ang + 0.42)); ctx.closePath(); ctx.fill(); } }
+  });
+  ctx.restore();
+  // scale bar (drawn in output px, bottom-left). Choose a round metre length.
+  const niceM = [10, 5, 4, 3, 2, 1, 0.5].find(v => v * sc < W * 0.4) || 1;
+  const barPx = niceM * sc, bx = pad, by = H - barM * 0.5;
+  ctx.strokeStyle = "#141922"; ctx.fillStyle = "#141922"; ctx.lineWidth = 2; ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx, by - 6); ctx.lineTo(bx, by + 6); ctx.moveTo(bx + barPx, by - 6); ctx.lineTo(bx + barPx, by + 6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bx + barPx / 2, by - 4); ctx.lineTo(bx + barPx / 2, by + 4); ctx.stroke();
+  ctx.font = "600 14px system-ui"; ctx.fillText("0", bx - 3, by + 20); ctx.fillText(niceM + " m", bx + barPx - 8, by + 20);
+  return { canvas: cv, sc, wM, hM };
+}
+async function planToPdf(plan, settings){
+  const { jsPDF } = window.jspdf;
+  const res = renderPlanExport(plan, settings.brand || "#02224B");
+  if (!res) throw new Error("Nothing on the plan to export yet.");
+  const { canvas, sc, wM, hM } = res;
+  const pdf = new jsPDF({ unit: "mm", format: "a3", orientation: "landscape", compress: true });
+  const pageW = pdf.internal.pageSize.getWidth(), pageH = pdf.internal.pageSize.getHeight();
+  const margin = 12, headH = 16, footH = 10;
+  const availW = pageW - margin * 2, availH = pageH - margin * 2 - headH - footH;
+  const ar = canvas.width / canvas.height;
+  let imgW = availW, imgH = imgW / ar; if (imgH > availH){ imgH = availH; imgW = imgH * ar; }
+  const ix = (pageW - imgW) / 2, iy = margin + headH;
+  // true paper scale: the plan content (excludes the 1.2 m margins baked into the canvas)
+  const contentFracW = (canvas.width - 2 * 1.2 * sc) / canvas.width;   // fraction of canvas that is the plan
+  const planMMonPaper = imgW * contentFracW;                          // mm the plan width occupies on paper
+  const mmPerM = planMMonPaper / (wM || 1);
+  const ratio = mmPerM > 0 ? Math.round(1000 / mmPerM) : 0;           // 1:ratio (1000mm = 1 m)
+  const b = settings.brand || "#02224B";
+  pdf.setFillColor(b); pdf.rect(0, 0, pageW, headH + 2, "F");
+  pdf.setTextColor("#ffffff"); pdf.setFont("helvetica", "bold"); pdf.setFontSize(13);
+  pdf.text((settings.company || "RJG Builders") + " — Floor plan", margin, 11);
+  pdf.setFont("helvetica", "normal"); pdf.setFontSize(9);
+  pdf.text((plan.name || "Plan") + "   ·   " + wM.toFixed(2) + " × " + hM.toFixed(2) + " m", pageW - margin, 11, { align: "right" });
+  pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", ix, iy, imgW, imgH);
+  pdf.setTextColor("#5b6472"); pdf.setFontSize(9);
+  pdf.text("Approx. scale 1:" + ratio + " on A3 landscape — verify with the printed scale bar and dimensions. Not for construction.", margin, pageH - 5);
+  return pdf;
 }
 
 /* ---- 3D view of a floor plan (Three.js) ---- */
@@ -1558,7 +1704,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
 
     // ---- detailed objects ----
     stamps.forEach(s => {
-      if (STAMP_OPENINGS.has(s.type)) return;
+      if (STAMP_OPENINGS.has(s.type) || STAMP_ELEC.has(s.type)) return;   // openings cut walls; electrical are 2D plan symbols only
       const M = toM({ x: s.x, y: s.y }), w = stampW(s) * mpp, d = stampD(s) * mpp, ang = -(s.angle||0)*Math.PI/180;
       const grp = new THREE.Group(); grp.position.set(M.x, 0, M.z); grp.rotation.y = ang;
       // shared little builders
@@ -1772,8 +1918,9 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
 }
 
 function FloorPlanEditor({ plan, onChange, onAddToQuote }){
-  const { items, notify } = useStore();
+  const { items, notify, settings } = useStore();
   const [show3d, setShow3d] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const canvasRef = useRef(null);
   const wrapRef = useRef(null);
   const [wrapW, setWrapW] = useState(360);
@@ -1942,27 +2089,32 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         ctx.beginPath(); rsel.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); if (!rsel.wall) ctx.closePath(); ctx.stroke();
         if (!rsel.wall){ ctx.setLineDash([]); ctx.fillStyle = "rgba(232,121,43,.10)"; ctx.fill(); }
         ctx.restore(); ctx.setLineDash([]);
-        edgeMids(rsel).forEach(m => { ctx.fillStyle = "#16a34a"; ctx.beginPath(); ctx.arc(m.x, m.y, 8, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(m.x-4,m.y); ctx.lineTo(m.x+4,m.y); ctx.moveTo(m.x,m.y-4); ctx.lineTo(m.x,m.y+4); ctx.stroke(); });   // + add corner
-        cornerDels(rsel).forEach(dh => { ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(dh.x, dh.y, 7, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(dh.x-3,dh.y-3); ctx.lineTo(dh.x+3,dh.y+3); ctx.moveTo(dh.x+3,dh.y-3); ctx.lineTo(dh.x-3,dh.y+3); ctx.stroke(); });          // ✕ remove corner
+        const hs = 1 / S;   // keep edit handles a constant on-screen size at any zoom
+        edgeMids(rsel).forEach(m => { ctx.fillStyle = "#16a34a"; ctx.beginPath(); ctx.arc(m.x, m.y, 9*hs, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*hs; ctx.beginPath(); ctx.moveTo(m.x-4*hs,m.y); ctx.lineTo(m.x+4*hs,m.y); ctx.moveTo(m.x,m.y-4*hs); ctx.lineTo(m.x,m.y+4*hs); ctx.stroke(); });   // + add corner
+        cornerDels(rsel).forEach(dh => { ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(dh.x, dh.y, 8*hs, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*hs; ctx.beginPath(); ctx.moveTo(dh.x-3.5*hs,dh.y-3.5*hs); ctx.lineTo(dh.x+3.5*hs,dh.y+3.5*hs); ctx.moveTo(dh.x+3.5*hs,dh.y-3.5*hs); ctx.lineTo(dh.x-3.5*hs,dh.y+3.5*hs); ctx.stroke(); });          // ✕ remove corner
       }
-      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#e8792b"; ctx.lineWidth = 2;
-      rooms.forEach(r => r.points.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 7, 0, 7); ctx.fill(); ctx.stroke(); }));
-      stamps.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 6, 0, 7); ctx.fill(); ctx.stroke(); });
+      const hs = 1 / S;
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#e8792b"; ctx.lineWidth = 2*hs;
+      rooms.forEach(r => r.points.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 7*hs, 0, 7); ctx.fill(); ctx.stroke(); }));
+      stamps.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 6*hs, 0, 7); ctx.fill(); ctx.stroke(); });
       // selected stamp: outline + edge-resize / rotate / delete handles
       const s = stamps.find(x => x.id === sel);
       if (s){ const h = stampHandles(s); const w0 = stampW(s), d0 = stampD(s), a = (s.angle||0)*Math.PI/180;
         // selection outline
         ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(a); ctx.strokeStyle = "#e8792b"; ctx.setLineDash([5,4]); ctx.lineWidth = 1.5; ctx.strokeRect(-w0/2, -d0/2, w0, d0); ctx.restore();
-        ctx.setLineDash([]); ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "#e8792b"; ctx.lineWidth = 1.5;
+        // handles are drawn in world px but the context is scaled by S, so divide by S to keep a
+        // constant, finger-friendly size on screen no matter the zoom level.
+        const hs = 1 / S, knob = 12 * hs, sqh = 9 * hs;
+        ctx.setLineDash([]); ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "#e8792b"; ctx.lineWidth = 1.5 * hs;
         ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.rotate.x, h.rotate.y); ctx.stroke();
-        ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, 9, 0, 7); ctx.fill();                                  // rotate knob
-        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, 4, 0, 7); ctx.fill();
-        const sq = (pt) => { ctx.fillStyle = "#e8792b"; ctx.fillRect(pt.x - 7, pt.y - 7, 14, 14); ctx.fillStyle = "#fff"; ctx.fillRect(pt.x - 3, pt.y - 3, 6, 6); };
+        ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, knob, 0, 7); ctx.fill();                                // rotate knob
+        ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, knob*0.45, 0, 7); ctx.fill();
+        const sq = (pt) => { ctx.fillStyle = "#e8792b"; ctx.fillRect(pt.x - sqh, pt.y - sqh, sqh*2, sqh*2); ctx.fillStyle = "#fff"; ctx.fillRect(pt.x - sqh*0.42, pt.y - sqh*0.42, sqh*0.84, sqh*0.84); };
         if (h.width) sq(h.width);                                                                               // width (drag the side)
         if (h.depth) sq(h.depth);                                                                               // depth
         if (h.uniform) sq(h.uniform);                                                                           // round objects
-        ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, 9, 0, 7); ctx.fill();             // delete
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(h.del.x-3.5, h.del.y-3.5); ctx.lineTo(h.del.x+3.5, h.del.y+3.5); ctx.moveTo(h.del.x+3.5, h.del.y-3.5); ctx.lineTo(h.del.x-3.5, h.del.y+3.5); ctx.stroke();
+        ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, knob, 0, 7); ctx.fill();          // delete
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * hs; const cx = knob*0.4; ctx.beginPath(); ctx.moveTo(h.del.x-cx, h.del.y-cx); ctx.lineTo(h.del.x+cx, h.del.y+cx); ctx.moveTo(h.del.x+cx, h.del.y-cx); ctx.lineTo(h.del.x-cx, h.del.y+cx); ctx.stroke();
       }
     }
     if (draft){
@@ -2025,14 +2177,14 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (tool === "move"){
       const praw = toWorld(e, false);
       const s = stamps.find(x => x.id === sel);
-      if (s){ const h = stampHandles(s); const a = (s.angle||0)*Math.PI/180; const ex = { x: Math.cos(a), y: Math.sin(a) }, ey = { x: -Math.sin(a), y: Math.cos(a) }; const w = stampW(s), d = stampD(s); const R = 20/S;
+      if (s){ const h = stampHandles(s); const a = (s.angle||0)*Math.PI/180; const ex = { x: Math.cos(a), y: Math.sin(a) }, ey = { x: -Math.sin(a), y: Math.cos(a) }; const w = stampW(s), d = stampD(s); const R = 26/S;
         if (dist(praw, h.del) < R){ delStamp(s.id); setSel(null); return; }
         if (dist(praw, h.rotate) < R){ setDrag({ kind: "rotate", id: s.id }); setPreview(base); return; }
         if (h.uniform && dist(praw, h.uniform) < R){ setDrag({ kind: "resize", id: s.id }); setPreview(base); return; }
         if (h.width && dist(praw, h.width) < R){ setDrag({ kind: "resizeW", id: s.id, ax: s.x - ex.x*w/2, ay: s.y - ex.y*w/2, ex }); setPreview(base); return; }
         if (h.depth && dist(praw, h.depth) < R){ setDrag({ kind: "resizeD", id: s.id, ax: s.x - ey.x*d/2, ay: s.y - ey.y*d/2, ey }); setPreview(base); return; }
       }
-      const R = 18/S;
+      const R = 22/S;
       // selected room/wall edit handles: remove corner (✕) and add corner (+)
       const rs = rooms.find(r => r.id === selShape);
       if (rs){
@@ -2174,6 +2326,46 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const setWallThick = (id, m) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, thick: Math.max(0.02, num(m)) } : r) });
   const addOpening = (id, type) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, openings: [...shedOpenings(s), type], door: undefined } : s) });
   const removeOpening = (id, idx) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, openings: shedOpenings(s).filter((_, k) => k !== idx), door: undefined } : s) });
+  // ---- type an exact size for the selected shape ----
+  // A straight 2-point wall/fence: return its length (m).
+  const segLenM = (r) => (r && r.points.length === 2) ? dist(r.points[0], r.points[1]) * mPerPx : null;
+  const setSegLen = (id, m) => {
+    const r = rooms.find(x => x.id === id); if (!r || r.points.length !== 2) return;
+    const lenPx = Math.max(0.1, num(m)) / mPerPx, a = r.points[0], b = r.points[1];
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 1;
+    const nb = { x: clamp(a.x + dx/d*lenPx, 0, worldW), y: clamp(a.y + dy/d*lenPx, 0, worldH) };
+    onChange({ ...plan, rooms: rooms.map(x => x.id === id ? { ...x, points: [a, nb] } : x) });
+  };
+  // An axis-aligned rectangle (4 corners): return {x0,y0,w,h} in world px, else null.
+  const shapeRect = (r) => {
+    if (!r || r.points.length !== 4) return null;
+    const xs = r.points.map(p => p.x), ys = r.points.map(p => p.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const axis = r.points.every((p, i) => { const q = r.points[(i+1)%4]; return Math.abs(p.x-q.x) < 0.6 || Math.abs(p.y-q.y) < 0.6; });
+    if (!axis || x1-x0 < 1 || y1-y0 < 1) return null;
+    return { x0, y0, w: x1-x0, h: y1-y0 };
+  };
+  const setRectDim = (id, which, m) => {
+    const r = rooms.find(x => x.id === id), rc = shapeRect(r); if (!rc) return;
+    const px = Math.max(0.1, num(m)) / mPerPx;
+    const nx1 = clamp(rc.x0 + (which === "w" ? px : rc.w), 0, worldW), ny1 = clamp(rc.y0 + (which === "h" ? px : rc.h), 0, worldH);
+    const pts = r.points.map(p => ({ x: Math.abs(p.x-rc.x0) <= rc.w/2 ? rc.x0 : nx1, y: Math.abs(p.y-rc.y0) <= rc.h/2 ? rc.y0 : ny1 }));
+    onChange({ ...plan, rooms: rooms.map(x => x.id === id ? { ...x, points: pts } : x) });
+  };
+  // Send a count of each object type to the quote (e.g. "6 × Downlight"). Rates left blank to fill in.
+  const addStampsToQuote = () => {
+    if (!stamps.length) { alert("Add objects first."); return; }
+    const counts = {}; stamps.forEach(s => { counts[s.type] = (counts[s.type] || 0) + 1; });
+    const lines = Object.entries(counts).map(([type, n]) => ({ id: uid(), desc: STAMP_LABEL[type] || type, qty: n, unit: "ea", rateEx: 0, category: "", source: "Floor plan: " + plan.name }));
+    saveSnapshot(); onAddToQuote(lines);
+    notify(lines.length + " object type(s) sent to quote · add rates on the quote");
+  };
+  const exportPdf = async () => {
+    setPdfBusy(true);
+    try { const pdf = await planToPdf(plan, settings); download("RJG-floorplan-" + (plan.name || "plan").replace(/[^a-z0-9\-]/gi, "_") + ".pdf", pdf.output("blob")); }
+    catch (e) { alert("Plan PDF export failed: " + e.message); }
+    setPdfBusy(false);
+  };
 
   const DRAW_TOOLS = [["room","Room"],["wall","Wall"],["fenceline","Fence"],["curve","Curve"],["move","Edit"]];
   const stampLabel = STAMP_LABEL[tool] || "";
@@ -2250,14 +2442,24 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
         <canvas ref={canvasRef} className="editor" style={{ touchAction: "none" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
-      {tool === "move" && selShapeObj && (
+      {tool === "move" && selShapeObj && (() => {
+        const segM = (selShapeObj.wall || selShapeObj.fence) ? segLenM(selShapeObj) : null;   // straight 2-pt wall/fence
+        const rc = (!selShapeObj.wall && !selShapeObj.fence) ? shapeRect(selShapeObj) : null;  // rectangular room / surface
+        return (
         <div className="flex items-center gap-2 flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
-          <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>{selShapeObj.wall ? (selShapeObj.curved ? "Curve" : "Wall") : "Room"} selected{selShapeObj.name ? " · " + selShapeObj.name : ""}</span>
-          <span className="text-xs" style={{ color: "var(--muted)" }}>green + adds a wall corner · red ✕ removes one · drag inside to move</span>
-          <button className="btn btn-ghost !py-1 ml-auto" style={{ color: "#dc2626" }} onClick={() => { delShape(selShape); setSelShape(null); }}><IcTrash size={15} /> Delete {selShapeObj.wall ? "wall" : "room"}</button>
+          <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>{selShapeObj.fence ? "Fence" : selShapeObj.wall ? (selShapeObj.curved ? "Curve" : "Wall") : selShapeObj.surface ? SURFACE_LABEL[selShapeObj.surface] : "Room"} selected{selShapeObj.name ? " · " + selShapeObj.name : ""}</span>
+          {segM != null && <label className="flex items-center gap-1 text-sm">Length <NumInput value={round2(segM)} onCommit={v => setSegLen(selShape, v)} className="inp !py-1" style={{ width: 72 }} disabled={selShapeObj.locked} /> m</label>}
+          {rc && <><label className="flex items-center gap-1 text-sm">Width <NumInput value={round2(rc.w * mPerPx)} onCommit={v => setRectDim(selShape, "w", v)} className="inp !py-1" style={{ width: 72 }} disabled={selShapeObj.locked} /> m</label>
+            <label className="flex items-center gap-1 text-sm">Depth <NumInput value={round2(rc.h * mPerPx)} onCommit={v => setRectDim(selShape, "h", v)} className="inp !py-1" style={{ width: 72 }} disabled={selShapeObj.locked} /> m</label></>}
+          <span className="text-xs" style={{ color: "var(--muted)" }}>{segM == null && !rc ? "drag corners to reshape · " : "type a size, or "}green + adds a corner · red ✕ removes one</span>
+          <button className="btn btn-ghost !py-1 ml-auto" style={{ color: "#dc2626" }} onClick={() => { delShape(selShape); setSelShape(null); }}><IcTrash size={15} /> Delete</button>
         </div>
-      )}
-      {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-primary w-full" onClick={() => setShow3d(true)}><IcGrid size={16} /> 3D view / render</button>}
+        );
+      })()}
+      {(rooms.length > 0 || stamps.length > 0) && <div className="flex gap-2">
+        <button className="btn btn-primary flex-1" onClick={() => setShow3d(true)}><IcGrid size={16} /> 3D view / render</button>
+        <button className="btn btn-ghost" disabled={pdfBusy} onClick={exportPdf} title="Scaled PDF with dimensions and a scale bar — measurable off the print"><IcDoc size={16} /> {pdfBusy ? "…" : "Measurable PDF"}</button>
+      </div>}
 
       {rooms.length > 0 && (
         <div className="card p-3 space-y-2">
@@ -2320,7 +2522,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
               )}
             </div>
           ))}
-          <button className="btn btn-ghost w-full" onClick={saveSnapshot}>Save for report</button>
+          <div className="flex gap-2"><button className="btn btn-primary flex-1" onClick={addStampsToQuote} title="Adds a counted line per object type (e.g. 6 × Downlight)"><IcPlus size={16} /> Send object counts to quote</button><button className="btn btn-ghost" onClick={saveSnapshot}>Save for report</button></div>
         </div>
       )}
 
@@ -2358,7 +2560,8 @@ function QuoteEditor({ project, onChange, priced = true, kind = "new" }){
   const margin = project.margin ?? settings.defaultMargin;
   const gst = settings.gst;
 
-  const subEx = lines.reduce((s, l) => s + num(l.qty) * num(l.rateEx), 0);
+  const inc = (l) => l.include !== false;   // a line can be kept but left off the quote/report
+  const subEx = lines.filter(inc).reduce((s, l) => s + num(l.qty) * num(l.rateEx), 0);
   const marginAmt = subEx * margin / 100;
   const totalEx = subEx + marginAmt;
   const gstAmt = totalEx * gst / 100;
@@ -2398,13 +2601,13 @@ function QuoteEditor({ project, onChange, priced = true, kind = "new" }){
               </tr></thead>
               <tbody>
                 {lines.map(l => (
-                  <tr key={l.id} className="border-t align-top" style={{ borderColor: "var(--line)" }}>
+                  <tr key={l.id} className="border-t align-top" style={{ borderColor: "var(--line)", opacity: inc(l) ? 1 : 0.45 }}>
                     <td className="px-2 py-1"><input className="inp !py-1" value={l.desc} onChange={e => setLine(l.id, { desc: e.target.value })} />{l.source && <div className="text-[10px] px-1" style={{ color: "var(--muted)" }}>{l.source}</div>}</td>
                     <td className="px-1 py-1"><NumInput value={l.qty} onCommit={v => setLine(l.id, { qty: v })} className="inp !py-1 !px-1 text-center" /></td>
                     <td className="px-1 py-1"><input className="inp !py-1 !px-1 text-center" value={l.unit} onChange={e => setLine(l.id, { unit: e.target.value })} /></td>
                     {priced && <td className="px-1 py-1"><NumInput value={l.rateEx} onCommit={v => setLine(l.id, { rateEx: v })} className="inp !py-1 !px-1 text-right" /></td>}
                     {priced && <td className="px-2 py-1 text-right font-semibold whitespace-nowrap">{money(num(l.qty) * num(l.rateEx))}</td>}
-                    <td className="px-1 py-1"><button className="btn btn-ghost !p-1.5" onClick={() => delLine(l.id)}><IcTrash size={14} /></button></td>
+                    <td className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={inc(l)} title={inc(l) ? "On the quote — untick to keep the line but leave it off" : "Kept but off the quote — tick to include"} onChange={e => setLine(l.id, { include: e.target.checked })} /> <button className="btn btn-ghost !p-1.5" onClick={() => delLine(l.id)}><IcTrash size={14} /></button></td>
                   </tr>
                 ))}
               </tbody>
@@ -2468,7 +2671,7 @@ function QuoteEditor({ project, onChange, priced = true, kind = "new" }){
    REPORT (branded, printable)
    ========================================================================= */
 function totalsFor(project, settings){
-  const lines = project.quoteLines || [];
+  const lines = (project.quoteLines || []).filter(l => l.include !== false);   // excluded lines don't count
   const margin = project.margin ?? settings.defaultMargin;
   const subEx = lines.reduce((s, l) => s + num(l.qty) * num(l.rateEx), 0);
   const totalEx = subEx * (1 + margin / 100);
@@ -2526,7 +2729,7 @@ function buildWordHtml(project, settings, t, logo, attachments){
     const spread = project.marginMode === "spread" && t.margin > 0;
     const mf = 1 + t.margin / 100;
     const dRate = (l) => spread ? num(l.rateEx) * mf : num(l.rateEx);
-    const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td>${wPrices?`<td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(dRate(l))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*dRate(l))}</td>`:""}</tr>`).join("");
+    const rows = (project.quoteLines || []).filter(l => l.include !== false).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td>${wPrices?`<td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(dRate(l))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*dRate(l))}</td>`:""}</tr>`).join("");
     const lineTable = wLines ? `<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:12px">
       <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th>${wPrices?`<th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th>`:""}</tr>${rows}
     </table>` : "";
@@ -2555,8 +2758,9 @@ function buildWordHtml(project, settings, t, logo, attachments){
 
   // RFQ / Variation — matches the RJG "Request for Quotation / Variation Request" form
   const numLabel = kind === "rfq" ? "RFQ #" : "Variation #";
-  const qtyRows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td></tr>`).join("");
-  const knownQty = (kind === "rfq" && (project.quoteLines||[]).length) ? `<div style="font-weight:bold;margin-bottom:4px">Known quantities / measurements:</div><table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:4px"><tr style="background:${b};color:#fff"><th align="left" style="padding:6px 10px">Description</th><th style="padding:6px">Qty</th><th style="padding:6px">Unit</th></tr>${qtyRows}</table><div style="font-size:11px;color:#5b6472;margin-bottom:10px">Quantities are for reference only — please verify on site and from the attached before pricing.</div>` : "";
+  const incLines = (project.quoteLines || []).filter(l => l.include !== false);
+  const qtyRows = incLines.map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td></tr>`).join("");
+  const knownQty = (kind === "rfq" && incLines.length) ? `<div style="font-weight:bold;margin-bottom:4px">Known quantities / measurements:</div><table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:4px"><tr style="background:${b};color:#fff"><th align="left" style="padding:6px 10px">Description</th><th style="padding:6px">Qty</th><th style="padding:6px">Unit</th></tr>${qtyRows}</table><div style="font-size:11px;color:#5b6472;margin-bottom:10px">Quantities are for reference only — please verify on site and from the attached before pricing.</div>` : "";
   const wMarginMode = project.marginMode || (kind === "variation" ? "spread" : "show");
   const marginRows = (kind === "variation" && wMarginMode === "show" && t.margin > 0) ? `<tr><td style="padding-right:24px;color:#5b6472">Subtotal:</td><td style="color:#5b6472">${money(t.subEx)}</td></tr><tr><td style="padding-right:24px;color:#5b6472">Margin (${t.margin}%):</td><td style="color:#5b6472">${money(t.totalEx - t.subEx)}</td></tr>` : "";
   const wTermsBlock = (priced && wTerms) ? `<div style="margin:10px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> is needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>` : "";
@@ -2588,7 +2792,7 @@ function buildWordHtml(project, settings, t, logo, attachments){
 function ReportView({ project, onChange }){
   const { settings, notify } = useStore();
   const t = totalsFor(project, settings);
-  const lines = project.quoteLines || [];
+  const lines = (project.quoteLines || []).filter(l => l.include !== false);   // lines left off the quote don't print
   const kind = jobKind(project), kv = JOB_KINDS[kind], priced = kv.priced;
   // New-quote margin display: spread folds margin into the shown line rates.
   const effMarginMode = project.marginMode || (kind === "variation" ? "spread" : "show");   // how margin is presented to the client
@@ -2626,7 +2830,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption) });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
