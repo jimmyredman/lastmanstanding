@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v47 · 20 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v48 · 20 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -380,7 +380,10 @@ function SettingsScreen(){
       if (window.caches) { const keys = await caches.keys(); await Promise.all(keys.map(k => caches.delete(k))); }
       if (navigator.serviceWorker) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); }
     } catch (e) {}
-    location.reload(true);
+    // location.reload(true) is unreliable on iOS/standalone — load a fresh, cache-busted URL
+    // so the newest build is fetched from the network (the SW is gone at this point).
+    const base = location.href.split("#")[0].split("?")[0];
+    location.replace(base + "?fu=" + Date.now());
   };
   const restore = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -1233,6 +1236,8 @@ const STAMP_FLIP = new Set(["door","doubledoor","slidingdoor","gate","gate_black
 const NO_WALL_SNAP = new Set(["tree","bush","gazebo","shed","car","pool","fence","fence_black","fence_glass","gate","gate_black","gate_glass"]);  // free-standing — don't snap to a wall
 const GATE_COLORS = { gate: "#8a6a3f", gate_black: "#2a2f36", gate_glass: "#5fa9d6" };
 const WALL_THICK = { ext: 0.2, int: 0.09 };   // default wall thickness (m): external 200mm, internal 90mm
+const FLOOR_TYPES = [["", "— floor —"], ["tile", "Tile"], ["timber", "Timber"], ["carpet", "Carpet"], ["vinyl", "Vinyl"], ["laminate", "Laminate"], ["concrete", "Concrete polish"], ["epoxy", "Epoxy"]];
+const FLOOR_LABEL = Object.fromEntries(FLOOR_TYPES);
 const FENCE_WALL_STYLES = [["fence","Timber"],["fence_black","Black steel"],["fence_glass","Glass"]];
 const FENCE_WALL_COLOR = { fence: "#9c7b56", fence_black: "#2a2f36", fence_glass: "#5fa9d6" };
 // Structures with selectable roof lines. Roofs use the same hip/gable/skillion/
@@ -1785,6 +1790,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [sel, setSel] = useState(null);         // selected stamp id (for rotate/resize handles)
   const [selShape, setSelShape] = useState(null); // selected room/wall id (for add/remove corner, move, delete)
   const [labels, setLabels] = useState(true);   // show object labels on the plan
+  const [cleanView, setCleanView] = useState(false);   // hide grid/labels/dots/dimensions for a clean render or PDF
   const [lockLen, setLockLen] = useState(0);    // fixed wall-segment length in metres (0 = off)
   const [zoom, setZoom] = useState(1);
   const gPointers = useRef(new Map());          // pinch / pan gesture tracking
@@ -1806,14 +1812,16 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   // wheel zoom-to-cursor (mouse) — pinch is handled in the pointer handlers
   useEffect(() => {
     const wrap = wrapRef.current; if (!wrap) return;
-    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.4, 6)); };
+    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.15, 6)); };
     wrap.addEventListener("wheel", onWheel, { passive: false });
     return () => wrap.removeEventListener("wheel", onWheel);
   }, []);
   useLayoutEffect(() => { const wrap = wrapRef.current, a = zoomAnchor.current; if (!wrap || !a) return; wrap.scrollLeft = a.fx * wrap.scrollWidth - a.sx; wrap.scrollTop = a.fy * wrap.scrollHeight - a.sy; zoomAnchor.current = null; }, [zoom]);
   const mPerPx = gridM / gridPx; // metres per world px
+  const snapIncM = plan.snapInc || 0.1;          // snap increment in metres (100mm default)
+  const snapPx = snapIncM / mPerPx;              // that increment in world px
 
-  const gridSnap = (v) => Math.round(v / gridPx) * gridPx;
+  const gridSnap = (v) => Math.round(v / snapPx) * snapPx;
   const toWorld = (e, applySnap) => { const r = canvasRef.current.getBoundingClientRect(); let x = (e.clientX - r.left) / S, y = (e.clientY - r.top) / S; if (applySnap && snap){ x = gridSnap(x); y = gridSnap(y); } return { x: clamp(x,0,worldW), y: clamp(y,0,worldH) }; };
   // snap to a nearby existing room/wall corner (so rooms close cleanly)
   const snapVertex = (praw, exclude) => { let best = null, bd = 15 / S; for (const r of rooms){ if (exclude && r.id === exclude) continue; for (const v of r.points){ const d = dist(praw, v); if (d < bd){ bd = d; best = { x: v.x, y: v.y }; } } } return best; };
@@ -1864,20 +1872,30 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     const ctx = cv.getContext("2d"); ctx.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
     ctx.clearRect(0, 0, worldW, worldH);
     ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, worldW, worldH);
-    ctx.strokeStyle = "#e6eaf0"; ctx.lineWidth = 1;
-    for (let c = 0; c <= cols; c++){ ctx.beginPath(); ctx.moveTo(c*gridPx, 0); ctx.lineTo(c*gridPx, worldH); ctx.stroke(); }
-    for (let rN = 0; rN <= rowsN; rN++){ ctx.beginPath(); ctx.moveTo(0, rN*gridPx); ctx.lineTo(worldW, rN*gridPx); ctx.stroke(); }
+    // fine snap-increment grid (e.g. 100mm) — only when zoomed in enough to be useful,
+    // so drawing stays light and clean when zoomed right out
+    if (!cleanView && snapPx * S >= 5){
+      ctx.strokeStyle = "#eef2f7"; ctx.lineWidth = 0.75;
+      for (let x = 0; x <= worldW + 0.5; x += snapPx){ ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, worldH); ctx.stroke(); }
+      for (let y = 0; y <= worldH + 0.5; y += snapPx){ ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(worldW, y); ctx.stroke(); }
+    }
+    // major grid (one cell = gridM)
+    if (!cleanView){
+      ctx.strokeStyle = "#e6eaf0"; ctx.lineWidth = 1;
+      for (let c = 0; c <= cols; c++){ ctx.beginPath(); ctx.moveTo(c*gridPx, 0); ctx.lineTo(c*gridPx, worldH); ctx.stroke(); }
+      for (let rN = 0; rN <= rowsN; rN++){ ctx.beginPath(); ctx.moveTo(0, rN*gridPx); ctx.lineTo(worldW, rN*gridPx); ctx.stroke(); }
+    }
     const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#02224B";
-    const lenLabel = (a, b, len) => { const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; const t=round2(len).toFixed(2)+"m"; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,.88)"; const w=ctx.measureText(t).width+6; ctx.fillRect(mx-w/2,my-8,w,15); ctx.fillStyle="#111"; ctx.fillText(t,mx,my+4); };
+    const lenLabel = (a, b, len) => { if (cleanView) return; const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; const t=round2(len).toFixed(2)+"m"; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,.88)"; const w=ctx.measureText(t).width+6; ctx.fillRect(mx-w/2,my-8,w,15); ctx.fillStyle="#111"; ctx.fillText(t,mx,my+4); };
     const drawRoom = (r) => {
       const pts = r.points, surf = r.surface;
       const stroke = surf ? (SURFACE_STROKE[surf] || brand) : brand;
       ctx.strokeStyle = stroke; ctx.lineWidth = surf ? 3 : Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM); ctx.lineJoin = "round";
       ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
       ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : "rgba(2,34,75,.06)"; ctx.fill(); ctx.stroke();
-      ctx.fillStyle = stroke; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      if (!cleanView) ctx.fillStyle = stroke, pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
       for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
-      if (pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=stroke; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(r.name||(surf?SURFACE_LABEL[surf]:"Room"),c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
+      if (!cleanView && pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=stroke; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(r.name||(surf?SURFACE_LABEL[surf]:"Room"),c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
     };
     const drawWall = (r) => {
       const pts = r.points, curved = r.curved;
@@ -1890,14 +1908,14 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
       ctx.strokeStyle = brand; ctx.lineWidth = Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM); ctx.lineJoin = "round"; ctx.lineCap = "round";
       if (curved) smoothPath(ctx, pts); else { ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); }
-      ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      if (!cleanView){ ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
       if (curved){ const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); } }
       else { for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); } }   // per-segment lengths
     };
     rooms.forEach(r => r.wall ? drawWall(r) : drawRoom(r));
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
-    if (labels){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
+    if (labels && !cleanView){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
     // reference markups (lines / arrows / text) — on top; captured in the report snapshot but not shown in 3D
     const drawMk = (m) => {
       ctx.strokeStyle = m.color || "#e11d48"; ctx.fillStyle = m.color || "#e11d48"; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.lineCap = "round";
@@ -1960,7 +1978,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
       else drawWall(draft.points, draft.tool === "curve");
     }
-  }, [rooms, stamps, draft, tool, sel, selShape, labels, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
+  }, [rooms, stamps, markups, draft, tool, sel, selShape, labels, cleanView, snapPx, cssW, cssH, S, gridPx, mPerPx, pxPerM, worldW, worldH]);
 
   // wall/room edges (not fences or ground areas) — used for snapping objects on
   const wallSegs = () => { const out = []; rooms.forEach(r => { if (r.surface || r.fence || r.locked) return; const n = r.wall ? r.points.length - 1 : r.points.length; for (let i = 0; i < n; i++) out.push([r.points[i], r.points[(i+1) % r.points.length]]); }); return out; };
@@ -2047,7 +2065,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
       const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
       zoomAnchor.current = { fx: pinch.current.fx, fy: pinch.current.fy, sx: mx, sy: my };
-      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.4, 6));
+      setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.15, 6));
       return;
     }
     if (drag){
@@ -2135,7 +2153,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (!rooms.length) { alert("Draw a room or wall first."); return; }
     const lines = rooms.map(r => {
       const it = r.priceItemId ? items.find(i => i.id === r.priceItemId) : null;
-      const nm = r.name || (r.wall ? "Wall" : "Room");
+      const ft = r.floorType ? " (" + FLOOR_LABEL[r.floorType] + ")" : "";
+      const nm = (r.name || (r.wall ? "Wall" : "Room")) + ft;
       return { id: uid(), desc: it ? (it.description + " — " + nm) : nm, unit: it ? it.unit : (r.wall ? "m" : "m2"), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name };
     });
     saveSnapshot(); onAddToQuote(lines);
@@ -2147,6 +2166,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const toggleStampLock = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) });
   const toggleShapeLock = (id) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, locked: !r.locked } : r) });
   const setSlabH = (id, m) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, slabH: Math.max(0, num(m)) } : r) });
+  const setFloorType = (id, ft) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, floorType: ft } : r) });
+  // lock / unlock everything at once (then unlock individual items to edit)
+  const pr0 = plan.rooms || [], ps0 = plan.stamps || [];
+  const anyUnlocked = [...pr0, ...ps0].some(x => !x.locked);
+  const setAllLocked = (v) => onChange({ ...plan, rooms: pr0.map(r => ({ ...r, locked: v })), stamps: ps0.map(s => ({ ...s, locked: v })) });
   const setWallThick = (id, m) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, thick: Math.max(0.02, num(m)) } : r) });
   const addOpening = (id, type) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, openings: [...shedOpenings(s), type], door: undefined } : s) });
   const removeOpening = (id, idx) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, openings: shedOpenings(s).filter((_, k) => k !== idx), door: undefined } : s) });
@@ -2168,12 +2192,14 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   return (
     <div className="space-y-3">
       <div className="flex gap-2 items-center flex-wrap">
-        <Field label="Grid = metres"><NumInput value={gridM} onCommit={v => onChange({ ...plan, gridMetres: v || 0.5 })} className="inp w-20" /></Field>
         <Field label="Wall height (m)"><NumInput value={plan.wallHeight || 2.7} onCommit={v => onChange({ ...plan, wallHeight: v || 2.7 })} className="inp w-24" /></Field>
-        <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap grid</label>
+        <Field label="Snap to"><select className="inp !w-auto" value={snapIncM} onChange={e => onChange({ ...plan, snapInc: num(e.target.value) })}><option value="0.05">50 mm</option><option value="0.1">100 mm</option><option value="0.25">250 mm</option><option value="0.5">500 mm</option></select></Field>
+        <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={snap} onChange={e => setSnap(e.target.checked)} /> Snap</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={labels} onChange={e => setLabels(e.target.checked)} /> Labels</label>
-        {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-ghost !py-1 mt-3 ml-auto" onClick={clearAll}><IcTrash size={14} /> Clear plan</button>}
+        <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={cleanView} onChange={e => setCleanView(e.target.checked)} /> Clean view</label>
+        {(pr0.length > 0 || ps0.length > 0) && <button className="btn btn-ghost !py-1 mt-3 ml-auto" onClick={() => setAllLocked(anyUnlocked)} title="Lock or unlock every room, wall and object">{anyUnlocked ? "🔒 Lock all" : "🔓 Unlock all"}</button>}
+        {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-ghost !py-1 mt-3" onClick={clearAll}><IcTrash size={14} /> Clear plan</button>}
       </div>
       <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
@@ -2215,9 +2241,9 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
       <div className="flex items-center gap-2 text-sm" style={{ color: "var(--muted)" }}>
         <span>Zoom</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 0.4, 6))}>−</button>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 0.15, 6))}>−</button>
         <span style={{ minWidth: 38, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 0.4, 6))}>+</button>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 0.15, 6))}>+</button>
         {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(1)}>Fit</button>}
         <span className="text-xs">· pinch or scroll to zoom · two fingers to pan</span>
       </div>
@@ -2251,6 +2277,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
                 {!r.surface && !r.fence && <label className="flex items-center gap-1">H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
                 {r.wall && !r.fence && <label className="flex items-center gap-1">Thick<NumInput value={round2(r.thick != null ? r.thick : WALL_THICK.int)} onCommit={v => setWallThick(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
                 {!r.wall && !r.surface && <label className="flex items-center gap-1">Wall<NumInput value={round2(r.thick != null ? r.thick : WALL_THICK.ext)} onCommit={v => setWallThick(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
+                {!r.wall && !r.surface && <select className="inp !py-1 !w-auto" value={r.floorType || ""} onChange={e => setFloorType(r.id, e.target.value)}>{FLOOR_TYPES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>}
                 {r.surface && <label className="flex items-center gap-1">Slab height<NumInput value={round2(r.slabH || 0)} onCommit={v => setSlabH(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
                 <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link {r.wall ? "m" : "m²"} rate —</option>{items.filter(i => unitFamily(i.unit) === (r.wall ? "length" : "area") || i.id === r.priceItemId).map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}</select>
               </div>
@@ -2825,7 +2852,24 @@ function newDrawingsFromFile(file){
       r.readAsArrayBuffer(file);
     } else {
       const r = new FileReader();
-      r.onload = () => { const im = new Image(); im.onload = () => resolve([{ id: uid(), name, type: "image", bg: r.result, natW: im.naturalWidth, natH: im.naturalHeight, annotations: [], scaleMpp: null }]); im.src = r.result; };
+      r.onerror = () => reject(new Error("read"));
+      r.onload = () => {
+        const im = new Image();
+        // never hang: if the image can't decode (e.g. an odd format), fail cleanly so the UI can tell the user
+        const guard = setTimeout(() => reject(new Error("decode-timeout")), 20000);
+        im.onerror = () => { clearTimeout(guard); reject(new Error("decode")); };
+        im.onload = () => {
+          clearTimeout(guard);
+          // downscale big phone photos so they store/render fast (cap longest edge ~2400px)
+          const MAX = 2400, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX / Math.max(w, h));
+          let bg = r.result, nw = w, nh = h;
+          if (sc < 1) {
+            try { const cv = document.createElement("canvas"); nw = Math.round(w * sc); nh = Math.round(h * sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im, 0, 0, nw, nh); bg = cv.toDataURL("image/jpeg", 0.85); } catch (_) { bg = r.result; nw = w; nh = h; }
+          }
+          resolve([{ id: uid(), name, type: "image", bg, natW: nw, natH: nh, annotations: [], scaleMpp: null }]);
+        };
+        im.src = r.result;
+      };
       r.readAsDataURL(file);
     }
   });
@@ -2857,7 +2901,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
   const onFile = async (e) => {
     const file = e.target.files[0]; if (!file) return; setLoading(true);
     try { const ds = await newDrawingsFromFile(file); onChange({ ...project, drawings: [...drawings, ...ds] }); setOpenDrawing(ds[0].id); if (ds.length > 1) notify(ds.length + " pages added"); }
-    catch (err) { alert("Could not load that file. For PDFs, make sure you're online the first time so the PDF engine can load."); }
+    catch (err) { alert("Could not load that file. Photos: use a JPG/PNG (an iPhone HEIC photo may need 'Most Compatible' in Settings › Camera › Formats, or take a screenshot of it). PDFs: be online the first time so the PDF engine can load."); }
     setLoading(false); e.target.value = "";
   };
   const addPlan = () => { const p = { id: uid(), name: "Floor plan " + (plans.length + 1), gridMetres: 0.5, rooms: [] }; onChange({ ...project, floorplans: [...plans, p] }); setOpenPlan(p.id); };
