@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v52 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v53 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1936,6 +1936,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const [surfMode, setSurfMode] = useState("rect");   // ground areas: "rect" drag or "poly" dot-to-dot
   const [roomMode, setRoomMode] = useState("rect");   // rooms: "rect" drag a box, or "poly" tap corners
   const [newFloor, setNewFloor] = useState("");       // floor finish applied to rooms as they're drawn
+  const [wallPick, setWallPick] = useState(null);     // null = off; array of wall ids being picked to build a room
   const [expanded, setExpanded] = useState(null);     // list row whose details are open
   const [wallKind, setWallKind] = useState("ext");    // external 200mm vs internal 90mm
   const [fenceStyle, setFenceStyle] = useState("fence");  // timber / black steel / glass (drawn like a wall)
@@ -2073,6 +2074,12 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       }
     };
     rooms.forEach(r => r.wall ? drawWall(r) : drawRoom(r));
+    // highlight walls being picked to build a room
+    if (wallPick && wallPick.length){
+      ctx.save(); ctx.strokeStyle = "#e8792b"; ctx.lineWidth = Math.max(6, 8/S); ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.globalAlpha = 0.55;
+      wallPick.forEach(id => { const r = rooms.find(x => x.id === id); if (!r) return; ctx.beginPath(); r.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); });
+      ctx.restore();
+    }
     stamps.forEach(s => drawStamp(ctx, s, brand));
     // object labels
     if (labels && !cleanView){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
@@ -2190,6 +2197,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     if (gPointers.current.size >= 2){ startPinch(); return; }   // two fingers → pinch-zoom / pan
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
     const base = { rooms: plan.rooms || [], stamps: plan.stamps || [] };
+    if (wallPick){   // picking existing walls to build a room — tap a wall to add/remove it
+      const id = wallHitId(toWorld(e, false));
+      if (id) setWallPick(wallPick.includes(id) ? wallPick.filter(x => x !== id) : [...wallPick, id]);
+      return;
+    }
     if (tool === "move"){
       const praw = toWorld(e, false);
       const s = stamps.find(x => x.id === sel);
@@ -2337,6 +2349,47 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     onChange({ ...plan, rooms: [...rooms.map(r => r.id === id ? { ...r, noFloor: true } : r), { id: uid(), name: (w.name ? w.name + " floor" : "Room " + n), points: w.points.map(p => ({ ...p })), thick: WALL_THICK.ext, floorType: w.floorType || newFloor || undefined }] });
     notify("Room created from wall");
   };
+  // distance from a point to a wall's nearest segment (world px) — for tapping to pick a wall
+  const distToWall = (p, r) => {
+    let best = Infinity;
+    for (let i = 0; i < r.points.length - 1; i++){
+      const a = r.points[i], b = r.points[i+1], dx = b.x-a.x, dy = b.y-a.y, L2 = dx*dx+dy*dy || 1;
+      let t = ((p.x-a.x)*dx + (p.y-a.y)*dy) / L2; t = Math.max(0, Math.min(1, t));
+      best = Math.min(best, Math.hypot(p.x - (a.x+dx*t), p.y - (a.y+dy*t)));
+    }
+    return best;
+  };
+  const wallHitId = (p) => { const thr = 16 / S; let bid = null, bd = thr; for (const r of rooms){ if (!r.wall) continue; const d = distToWall(p, r); if (d < bd){ bd = d; bid = r.id; } } return bid; };
+  // trace a single closed polygon from the segments of the picked walls (corners that meet merge)
+  const polygonFromWalls = (ids) => {
+    const tol = Math.max(6, 0.15 / mPerPx);   // merge corners within ~150mm
+    const key = (p) => Math.round(p.x / tol) + "," + Math.round(p.y / tol);
+    const nodes = new Map(), adj = new Map();
+    const add = (p) => { const k = key(p); if (!nodes.has(k)){ nodes.set(k, { x: p.x, y: p.y }); adj.set(k, []); } return k; };
+    const segs = [];
+    ids.forEach(id => { const r = rooms.find(x => x.id === id); if (!r || !r.wall) return; for (let i = 0; i < r.points.length - 1; i++){ const ka = add(r.points[i]), kb = add(r.points[i+1]); if (ka !== kb){ adj.get(ka).push(kb); adj.get(kb).push(ka); segs.push([ka, kb]); } } });
+    if (segs.length < 3) return null;
+    // every corner of a clean loop has exactly two ways out
+    if ([...adj.values()].some(a => a.length !== 2)) return null;
+    let start = [...nodes.keys()].sort((A, B) => nodes.get(A).y - nodes.get(B).y || nodes.get(A).x - nodes.get(B).x)[0];
+    const path = []; let prev = null, cur = start;
+    for (let guard = 0; guard <= segs.length + 1; guard++){
+      path.push(nodes.get(cur));
+      const nbrs = adj.get(cur); const next = nbrs.find(n => n !== prev);
+      if (next == null) break;
+      prev = cur; cur = next;
+      if (cur === start) return path.length >= 3 ? path : null;
+    }
+    return null;
+  };
+  const makeRoomFromPicked = () => {
+    const poly = polygonFromWalls(wallPick || []);
+    if (!poly){ alert("Those walls don't form one closed loop. Pick walls whose corners meet all the way around a single space."); return; }
+    const n = rooms.filter(r => !r.wall && !r.surface).length + 1;
+    onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Room " + n, points: poly.map(p => ({ x: p.x, y: p.y })), thick: WALL_THICK.ext, floorType: newFloor || undefined }] });
+    setWallPick(null); setTool("move");
+    notify("Room created from " + (wallPick || []).length + " walls · " + round2(shoelace(poly) * mPerPx * mPerPx).toFixed(2) + " m²");
+  };
   // Send rooms/walls to the quote. Linking a rate is optional — unlinked ones
   // come through with the area/length + a blank rate to enter on the quote.
   const addToQuote = () => {
@@ -2413,7 +2466,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
   const DRAW_TOOLS = [["room","Room"],["wall","Wall"],["fenceline","Fence"],["curve","Curve"],["move","Edit"]];
   const stampLabel = STAMP_LABEL[tool] || "";
-  const hint = tool === "room" ? (roomMode === "rect" ? "Drag a box on the grid to make a room — that's the whole room in one drag. Set its floor finish below first if you like." : "Tap the grid to drop each corner, then Finish to close the room. Corners snap together so rooms close cleanly.")
+  const hint = wallPick ? "Tap each wall around the space you want as a room (they highlight), then Make room. Their corners need to meet all the way around."
+    : tool === "room" ? (roomMode === "rect" ? "Drag a box on the grid to make a room — that's the whole room in one drag. Set its floor finish below first if you like." : "Tap the grid to drop each corner, then Finish to close the room. Corners snap together so rooms close cleanly.")
     : tool === "wall" ? "Tap to drop each corner and keep going around bends; Finish when done. Choose external (200mm) or internal (90mm) below."
     : tool === "fenceline" ? "Tap to drop each fence corner and keep going — Finish when done. Pick the fence style below."
     : tool === "curve" ? "Drag to draw a freehand curved wall."
@@ -2447,12 +2501,19 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         </select>
         {STAMP_DEFAULT_M[tool] && <span className="text-sm" style={{ color: "var(--muted)" }}>Placing <b className="brand-text">{stampLabel}</b> — tap the plan</span>}
       </div>
-      {tool === "room" && <div className="flex gap-1.5 items-center flex-wrap">
+      {tool === "room" && !wallPick && <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Room shape:</span>
         <button className={"tab " + (roomMode === "rect" ? "tab-active" : "card")} onClick={() => { setRoomMode("rect"); setDraft(null); }}>▭ Box (drag)</button>
         <button className={"tab " + (roomMode === "poly" ? "tab-active" : "card")} onClick={() => { setRoomMode("poly"); setDraft(null); }}>⬠ Dot-to-dot</button>
+        {rooms.some(r => r.wall && !r.fence) && <button className="tab card" onClick={() => { setDraft(null); setSel(null); setSelShape(null); setWallPick([]); }} title="Tap existing walls that bound a space, then make a room from them">▧ From existing walls</button>}
         <span className="text-xs ml-1" style={{ color: "var(--muted)" }}>Floor:</span>
         <select className="inp !py-1 !w-auto" value={newFloor} onChange={e => setNewFloor(e.target.value)} title="Floor finish applied to rooms you draw">{FLOOR_TYPES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
+      </div>}
+      {wallPick && <div className="flex gap-2 items-center flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
+        <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>Pick walls that enclose the space</span>
+        <span className="text-sm" style={{ color: "var(--muted)" }}>{wallPick.length} wall{wallPick.length === 1 ? "" : "s"} selected — tap a wall to add/remove</span>
+        <button className="btn btn-accent !py-1 ml-auto" disabled={wallPick.length < 3} onClick={makeRoomFromPicked}><IcCheck size={14} /> Make room</button>
+        <button className="btn btn-ghost !py-1" onClick={() => setWallPick(null)}>Cancel</button>
       </div>}
       <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Ground area:</span>
