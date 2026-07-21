@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v55 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v56 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1239,6 +1239,9 @@ const GATE_COLORS = { gate: "#8a6a3f", gate_black: "#2a2f36", gate_glass: "#5fa9
 const WALL_THICK = { ext: 0.2, int: 0.09 };   // default wall thickness (m): external 200mm, internal 90mm
 const FLOOR_TYPES = [["", "— floor —"], ["tile", "Tile"], ["timber", "Timber"], ["carpet", "Carpet"], ["vinyl", "Vinyl"], ["laminate", "Laminate"], ["concrete", "Concrete polish"], ["epoxy", "Epoxy"]];
 const FLOOR_LABEL = Object.fromEntries(FLOOR_TYPES);
+// objects/symbols are drawn in this ink — a distinct blue so they don't get lost
+// against the brand-navy walls (e.g. a window sitting in an external wall)
+const OBJECT_INK = "#1f74c4";
 // floor-finish colours so a room's floor reads at a glance in 2D, the PDF and 3D
 const FLOOR_COL = { tile: "#dfe7ee", timber: "#d6a869", carpet: "#cdbfad", vinyl: "#dbe2e8", laminate: "#e3c690", concrete: "#c4c9cf", epoxy: "#a9c3d4" };
 const FLOOR_3D = { tile: 0xd3dce4, timber: 0xc4915a, carpet: 0xbfb2a2, vinyl: 0xd0d8e0, laminate: 0xd2b079, concrete: 0xb8bec5, epoxy: 0x9dbacb };
@@ -1452,20 +1455,25 @@ function drawStamp(ctx, s, brand){
 // Subtle floor-finish pattern clipped to a room polygon (world coords).
 // wpm = world px per metre; lw = line width in world px (so it stays ~1px on screen).
 function drawFloorTexture(ctx, pts, ft, wpm, lw){
-  if (ft !== "tile" && ft !== "timber" && ft !== "laminate") return;   // others read fine as a flat colour
+  if (!FLOOR_COL[ft]) return;
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   ctx.save();
   ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
   ctx.lineWidth = lw || 1;
-  if (ft === "tile"){
-    ctx.strokeStyle = "rgba(60,80,100,0.12)"; const step = 0.6 * wpm;
-    for (let x = Math.ceil(x0/step)*step; x <= x1; x += step){ ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); }
-    for (let y = Math.ceil(y0/step)*step; y <= y1; y += step){ ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
-  } else {   // timber / laminate — plank lines one way
-    ctx.strokeStyle = "rgba(90,60,25,0.16)"; const step = 0.19 * wpm;
-    for (let y = Math.ceil(y0/step)*step; y <= y1; y += step){ ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+  const hLines = (step, ang0) => { for (let y = Math.ceil(y0/step)*step; y <= y1; y += step){ ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); } };
+  const vLines = (step) => { for (let x = Math.ceil(x0/step)*step; x <= x1; x += step){ ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); } };
+  // 45° diagonal lines spanning the bbox, spaced `step`
+  const diag = (step, dir) => { const span = (x1-x0) + (y1-y0); for (let o = -span; o <= span; o += step){ ctx.beginPath(); if (dir > 0){ ctx.moveTo(x0, y0 + o); ctx.lineTo(x0 + span, y0 + o - span); } else { ctx.moveTo(x0, y1 - o); ctx.lineTo(x0 + span, y1 - o + span); } ctx.stroke(); } };
+  if (ft === "tile"){ ctx.strokeStyle = "rgba(60,80,100,0.13)"; vLines(0.6*wpm); hLines(0.6*wpm); }
+  else if (ft === "timber" || ft === "laminate"){ ctx.strokeStyle = "rgba(90,60,25,0.16)"; hLines(0.19*wpm); }
+  else if (ft === "carpet"){ // soft speckle
+    ctx.fillStyle = "rgba(70,60,55,0.16)"; const step = 0.14*wpm, r = Math.max(0.4, lw*0.8);
+    for (let y = Math.ceil(y0/step)*step; y <= y1; y += step) for (let x = Math.ceil(x0/step)*step; x <= x1; x += step){ const jx = ((x*7+y*13)%step)*0.15; ctx.beginPath(); ctx.arc(x+jx, y, r, 0, 7); ctx.fill(); }
   }
+  else if (ft === "vinyl"){ ctx.strokeStyle = "rgba(70,90,110,0.12)"; diag(0.35*wpm, 1); }   // fine diagonal
+  else if (ft === "concrete"){ ctx.strokeStyle = "rgba(70,75,85,0.18)"; vLines(1.5*wpm); hLines(1.5*wpm); }   // sparse saw-cut joints
+  else if (ft === "epoxy"){ ctx.strokeStyle = "rgba(70,120,150,0.14)"; diag(0.9*wpm, 1); diag(0.9*wpm, -1); }   // subtle cross sheen
   ctx.restore();
 }
 
@@ -1528,7 +1536,7 @@ function renderPlanExport(plan, brand){
     }
   });
   // objects (reuse the plan symbol renderer)
-  stamps.forEach(s => drawStamp(ctx, s, brand));
+  stamps.forEach(s => drawStamp(ctx, s, OBJECT_INK));
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   stamps.forEach(s => { const lbl = STAMP_LABEL[s.type] || s.type; label(s.x, s.y + Math.max(stampW(s), stampD(s)) / 2 + px(11), lbl, "#5b6472", 11); });
   // markups
@@ -1587,6 +1595,8 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
   const [roofType, setRoofType] = useState(plan.roofType || (plan.roof ? "hip" : "none"));
   const [pitch, setPitch] = useState(plan.roofPitch || 22);
   const [roofColor, setRoofColor] = useState(plan.roofColor || "#6f7683");
+  const [editMode, setEditMode] = useState(false);   // drag objects to reposition (off by default so nothing moves by accident)
+  const [rev, setRev] = useState(0);                  // bump to rebuild the scene after a move
   useEffect(() => {
     const THREE = window.THREE; const mount = mountRef.current;
     if (!THREE || !mount){ setOk(false); return; }
@@ -1917,13 +1927,29 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       scene.add(grp);
     });
 
+    // ---- edit mode: draggable handles to reposition objects on the plan ----
+    const handles = [];
+    if (editMode){
+      const hMat = new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false });
+      stamps.forEach(s => { const M = toM({ x: s.x, y: s.y }); const hnd = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 16), hMat); hnd.position.set(M.x, 0.6, M.z); hnd.userData = { stampId: s.id }; hnd.renderOrder = 999; scene.add(hnd); handles.push(hnd); });
+    }
+    const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2(); const gPlane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+    let dragH = null;
+    const setNdc = (ev) => { const r = renderer.domElement.getBoundingClientRect(); ndc.x = ((ev.clientX-r.left)/r.width)*2-1; ndc.y = -((ev.clientY-r.top)/r.height)*2+1; ray.setFromCamera(ndc, camera); };
+    const onPD = (ev) => { if (!editMode || !handles.length) return; setNdc(ev); const hit = ray.intersectObjects(handles)[0]; if (hit){ dragH = hit.object; controls.enabled = false; } };
+    const onPM = (ev) => { if (!dragH) return; setNdc(ev); const pt = new THREE.Vector3(); if (ray.ray.intersectPlane(gPlane, pt)){ dragH.position.x = pt.x; dragH.position.z = pt.z; } };
+    const onPU = () => { if (!dragH) return; const id = dragH.userData.stampId, nx = dragH.position.x / mpp + cx, ny = dragH.position.z / mpp + cy; controls.enabled = true; dragH = null; if (onPersist) onPersist({ stamps: (plan.stamps || []).map(s => s.id === id ? { ...s, x: nx, y: ny } : s) }); setRev(v => v + 1); };
+    renderer.domElement.addEventListener("pointerdown", onPD, true);
+    renderer.domElement.addEventListener("pointermove", onPM, true);
+    window.addEventListener("pointerup", onPU, true);
+
     let raf; const loop = () => { controls.update(); renderer.render(scene, camera); raf = requestAnimationFrame(loop); }; loop();
     const onR = () => { const w = mount.clientWidth, h = mount.clientHeight; if (!w || !h) return; camera.aspect = w/h; camera.updateProjectionMatrix(); renderer.setSize(w, h); };
     window.addEventListener("resize", onR);
     capRef.current = () => { renderer.render(scene, camera); return renderer.domElement.toDataURL("image/jpeg", 0.9); };
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onR); try { controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement); } catch(_){} };
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onR); renderer.domElement.removeEventListener("pointerdown", onPD, true); renderer.domElement.removeEventListener("pointermove", onPM, true); window.removeEventListener("pointerup", onPU, true); try { controls.dispose(); renderer.dispose(); mount.removeChild(renderer.domElement); } catch(_){} };
     } catch (err) { setOk(false); }
-  }, [roofType, pitch, roofColor]);
+  }, [roofType, pitch, roofColor, editMode, rev]);
   const persist = (patch) => { if (onPersist) onPersist(patch); };
   return (
     <div className="fixed inset-0 z-50 flex flex-col no-print" style={{ background: "#eef2f7" }}>
@@ -1937,13 +1963,14 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
           </div>
         )}
         <div className="flex gap-2 items-center">
+          {ok && <button className={"btn " + (editMode ? "btn-accent" : "btn-ghost !text-white")} style={editMode ? {} : { borderColor: "rgba(255,255,255,.4)" }} onClick={() => setEditMode(v => !v)} title="Drag the orange handles to move objects; toggle off to orbit without moving anything">{editMode ? "✓ Editing objects" : "✏️ Edit objects"}</button>}
           {ok && <button className="btn btn-accent" onClick={() => { const d = capRef.current && capRef.current(); if (d) onSave(d); }}><IcCheck size={16} /> Save render</button>}
           <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)" }} onClick={onClose}><IcX size={16} /> Close</button>
         </div>
       </div>
       {ok ? <div ref={mountRef} className="flex-1" style={{ touchAction: "none", minHeight: 0 }} />
           : <div className="flex-1 flex items-center justify-center text-center p-6" style={{ color: "var(--muted)" }}>3D engine needs to load once online. Reconnect and reopen.</div>}
-      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>Drag to orbit · pinch / scroll to zoom · walls {plan.wallHeight || 2.7} m · roofs need a closed room/wall outline</div>
+      <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>{editMode ? "Editing — drag an orange handle to move that object; orbit still works on empty space. Toggle Edit off when done." : "Drag to orbit · pinch / scroll to zoom · walls " + (plan.wallHeight || 2.7) + " m · Edit objects to reposition items"}</div>
     </div>
   );
 }
@@ -2116,7 +2143,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         ctx.restore();
       }
     }
-    stamps.forEach(s => drawStamp(ctx, s, brand));
+    stamps.forEach(s => drawStamp(ctx, s, OBJECT_INK));
     // object labels
     if (labels && !cleanView){ ctx.fillStyle = "#5b6472"; ctx.font = "600 11px system-ui"; ctx.textAlign = "center"; stamps.forEach(s => { const lbl = (STAMP_TYPES.find(x => x[0] === s.type) || [null, s.type])[1]; ctx.fillText(lbl, s.x, s.y + Math.max(stampW(s), stampD(s))/2 + 13); }); }
     // reference markups (lines / arrows / text) — on top; captured in the report snapshot but not shown in 3D
