@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v57 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v58 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -263,8 +263,9 @@ function StoreProvider({ children }){
   // ---- projects ----
   const upsertProject = async (proj) => {
     const rec = { ...proj, id: proj.id || uid(), updatedAt: now(), createdAt: proj.createdAt || now() };
-    await dbPut("projects", rec);
+    // update state first (optimistic) so the UI never waits on the disk write
     setProjects((prev) => { const i = prev.findIndex(p => p.id === rec.id); let c; if (i === -1) c = [rec, ...prev]; else { c = prev.slice(); c[i] = rec; } return c.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)); });
+    await dbPut("projects", rec);
     return rec;
   };
   const deleteProject = async (id) => { await dbDel("projects", id); setProjects(prev => prev.filter(p => p.id !== id)); };
@@ -3360,8 +3361,16 @@ function newDrawingsFromFile(file){
   });
 }
 
-function JobWorkspace({ project, onChange, onBack, onDelete }){
+function JobWorkspace({ project: incoming, onChange: persist, onBack, onDelete }){
   const { notify } = useStore();
+  // Keep an instant local copy of the job and only write to the database a short
+  // moment after typing stops. Persisting on every keystroke round-tripped through
+  // an async DB save + global re-sort, which made textareas lag and the caret jump.
+  const [project, setLocal] = useState(incoming);
+  const idRef = useRef(incoming.id), latest = useRef(incoming), tRef = useRef(null);
+  useEffect(() => { if (incoming.id !== idRef.current){ idRef.current = incoming.id; latest.current = incoming; setLocal(incoming); } }, [incoming]);
+  const onChange = (p) => { latest.current = p; setLocal(p); if (tRef.current) clearTimeout(tRef.current); tRef.current = setTimeout(() => { tRef.current = null; persist(p); }, 200); };
+  useEffect(() => () => { if (tRef.current){ clearTimeout(tRef.current); persist(latest.current); } }, []);   // flush pending save on close
   const [tab, setTab] = useState("details");
   const [openDrawing, setOpenDrawing] = useState(null);
   const [openPlan, setOpenPlan] = useState(null);
