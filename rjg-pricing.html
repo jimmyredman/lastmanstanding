@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v62 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v63 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1523,10 +1523,10 @@ function renderPlanExport(plan, brand){
     const surf = r.surface, wall = r.wall;
     ctx.beginPath(); r.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (!wall) ctx.closePath();
     if (wall){ ctx.lineWidth = Math.max((r.thick || WALL_THICK.int) / mpp, px(2)); ctx.strokeStyle = r.fence ? (FENCE_WALL_COLOR[r.fence] || brand) : brand; ctx.stroke(); }
-    else { ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.05)") : (r.floorType && FLOOR_COL[r.floorType] ? FLOOR_COL[r.floorType] : "rgba(2,34,75,.04)"); ctx.fill(); if (!surf && r.floorType && FLOOR_COL[r.floorType]) drawFloorTexture(ctx, r.points, r.floorType, 1/mpp, px(1)); ctx.lineWidth = px(2); ctx.strokeStyle = surf ? (SURFACE_STROKE[surf] || brand) : brand; ctx.stroke(); }
-    // edge lengths
+    else { ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.05)") : (r.floorType && FLOOR_COL[r.floorType] ? FLOOR_COL[r.floorType] : "rgba(2,34,75,.04)"); ctx.fill(); if (!surf && r.floorType && FLOOR_COL[r.floorType]) drawFloorTexture(ctx, r.points, r.floorType, 1/mpp, px(1)); ctx.lineWidth = r.noWalls ? px(1) : px(2); ctx.strokeStyle = r.noWalls ? "rgba(2,34,75,.3)" : (surf ? (SURFACE_STROKE[surf] || brand) : brand); ctx.stroke(); }
+    // edge lengths (skip for noWalls rooms — their walls carry the lengths)
     const n = wall ? r.points.length - 1 : r.points.length;
-    for (let i = 0; i < n; i++) edgeLen(r.points[i], r.points[(i + 1) % r.points.length]);
+    if (!r.noWalls) for (let i = 0; i < n; i++) edgeLen(r.points[i], r.points[(i + 1) % r.points.length]);
     // room name + area
     if (!wall){ const c = centroid(r.points), area = shoelace(r.points) * mpp * mpp; const nm = r.name || (surf ? SURFACE_LABEL[surf] : "Room"); const ft = (!surf && r.floorType) ? " · " + FLOOR_LABEL[r.floorType] : "";
       label(c.x, c.y - px(9), nm + ft, "#141922", 14); label(c.x, c.y + px(9), area.toFixed(2) + " m²", "#5b6472", 12); }
@@ -1699,7 +1699,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       if (r.surface) return;   // surfaces handled above — no walls
       if (r.fence){ for (let i = 0; i < r.points.length-1; i++) fenceEdge(r.points[i], r.points[i+1], r.fence); return; }   // fences: posts/rails, no roof
       const h = r.height || wallH; const pts = r.points.map(toM);
-      if (!r.wall && pts.length >= 3){ curThick = r.thick || WALL_THICK.ext; for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); cands.push({ pts, h, area: polyArea2(pts), floorType: r.floorType }); }
+      if (!r.wall && pts.length >= 3){ if (!r.noWalls){ curThick = r.thick || WALL_THICK.ext; for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); } cands.push({ pts, h, area: polyArea2(pts), floorType: r.floorType }); }   // noWalls: walls come from separate shapes — just the floor/roof
       else if (r.wall){ curThick = r.thick || WALL_THICK.int; for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) cands.push({ pts, h, area: polyArea2(pts), floorType: r.floorType }); }
     });
     // only the outer outlines get a floor + roof — a room drawn inside a larger
@@ -2168,14 +2168,14 @@ function FloorPlanEditor({ plan, onChange: rawChange, onAddToQuote }){
     const brand = getComputedStyle(document.documentElement).getPropertyValue("--brand").trim() || "#02224B";
     const lenLabel = (a, b, len) => { if (cleanView) return; const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; const t=round2(len).toFixed(2)+"m"; ctx.font="600 12px system-ui"; ctx.textAlign="center"; ctx.fillStyle="rgba(255,255,255,.88)"; const w=ctx.measureText(t).width+6; ctx.fillRect(mx-w/2,my-8,w,15); ctx.fillStyle="#111"; ctx.fillText(t,mx,my+4); };
     const drawRoom = (r) => {
-      const pts = r.points, surf = r.surface;
+      const pts = r.points, surf = r.surface, noWalls = r.noWalls;   // noWalls: floor built from separate wall shapes — don't draw its own walls
       const stroke = surf ? (SURFACE_STROKE[surf] || brand) : brand;
-      ctx.strokeStyle = stroke; ctx.lineWidth = surf ? 3 : Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM); ctx.lineJoin = "round";
       ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
-      ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : (r.floorType && FLOOR_COL[r.floorType] ? FLOOR_COL[r.floorType] : "rgba(2,34,75,.06)"); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : (r.floorType && FLOOR_COL[r.floorType] ? FLOOR_COL[r.floorType] : "rgba(2,34,75,.06)"); ctx.fill();
+      ctx.strokeStyle = noWalls ? "rgba(2,34,75,.30)" : stroke; ctx.lineWidth = noWalls ? Math.max(1, 1.5/S) : (surf ? 3 : Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM)); ctx.lineJoin = "round"; ctx.stroke();
       if (!surf && r.floorType && FLOOR_COL[r.floorType]) drawFloorTexture(ctx, pts, r.floorType, pxPerM, 1/S);
-      if (!cleanView) ctx.fillStyle = stroke, pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
-      for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
+      if (!cleanView && !noWalls) ctx.fillStyle = stroke, pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
+      if (!noWalls) for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }   // walls carry their own lengths
       if (!cleanView && pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=stroke; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(r.name||(surf?SURFACE_LABEL[surf]:"Room"),c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
     };
     const drawWall = (r) => {
@@ -2485,7 +2485,7 @@ function FloorPlanEditor({ plan, onChange: rawChange, onAddToQuote }){
   const makeRoomFromWall = (id) => {
     const w = rooms.find(r => r.id === id); if (!w) return;
     const n = rooms.filter(r => !r.wall && !r.surface).length + 1;
-    onChange({ ...plan, rooms: [...rooms.map(r => r.id === id ? { ...r, noFloor: true } : r), { id: uid(), name: (w.name ? w.name + " floor" : "Room " + n), points: w.points.map(p => ({ ...p })), thick: WALL_THICK.ext, floorType: w.floorType || newFloor || undefined }] });
+    onChange({ ...plan, rooms: [...rooms.map(r => r.id === id ? { ...r, noFloor: true } : r), { id: uid(), name: (w.name ? w.name + " floor" : "Room " + n), points: w.points.map(p => ({ ...p })), thick: WALL_THICK.ext, floorType: w.floorType || newFloor || undefined, noWalls: true }] });
     notify("Room created from wall");
   };
   // distance from a point to a wall's nearest segment (world px) — for tapping to pick a wall
@@ -2539,7 +2539,7 @@ function FloorPlanEditor({ plan, onChange: rawChange, onAddToQuote }){
     else if ((wallRoom.points || []).length >= 3) poly = wallRoom.points;
     if (!poly){ alert(wallRoom.mode === "pick" ? "Those walls don't form one closed loop. Pick walls whose corners meet all the way around a single space — or use Dot-to-dot to trace the room by hand." : "Tap at least 3 corners around the room first."); return; }
     const n = rooms.filter(r => !r.wall && !r.surface).length + 1;
-    onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Room " + n, points: poly.map(p => ({ x: p.x, y: p.y })), thick: WALL_THICK.ext, floorType: newFloor || undefined }] });
+    onChange({ ...plan, rooms: [...rooms, { id: uid(), name: "Room " + n, points: poly.map(p => ({ x: p.x, y: p.y })), thick: WALL_THICK.ext, floorType: newFloor || undefined, noWalls: true }] });
     setWallRoom(null); setTool("move");
     notify("Room created · " + round2(shoelace(poly) * mPerPx * mPerPx).toFixed(2) + " m²");
   };
