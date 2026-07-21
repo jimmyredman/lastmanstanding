@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v48 · 20 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v49 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2506,6 +2506,10 @@ function buildWordHtml(project, settings, t, logo, attachments){
   const nl = (s) => esc(s).replace(/\n/g, "<br/>");
   const b = settings.brand || "#02224B";
   const kind = jobKind(project), priced = JOB_KINDS[kind].priced;
+  // mirror the on-screen report section toggles (everything shows unless turned off)
+  const rShow = project.reportShow || {};
+  const wScope = rShow.scope !== false, wExcl = rShow.exclusions !== false, wTerms = rShow.terms !== false;
+  const wAtt = rShow.attachments !== false, wLines = rShow.lines !== false, wPrices = priced && rShow.prices !== false;
   const dueStr = project.dueDate ? fmtDate(project.dueDate) : "";
   const atts = (attachments || []).map(a => `<div style="margin:8px 0"><img src="${a.src}" style="max-width:520px;border:1px solid #e4e7ec"/><div style="font-size:11px;color:#5b6472">${esc(a.caption)}</div></div>`).join("");
   const block = (title, body) => body ? `<div style="margin:0 0 12px 0"><div style="font-weight:bold">${esc(title)}</div><div>${nl(body)}</div></div>` : "";
@@ -2522,7 +2526,16 @@ function buildWordHtml(project, settings, t, logo, attachments){
     const spread = project.marginMode === "spread" && t.margin > 0;
     const mf = 1 + t.margin / 100;
     const dRate = (l) => spread ? num(l.rateEx) * mf : num(l.rateEx);
-    const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(dRate(l))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*dRate(l))}</td></tr>`).join("");
+    const rows = (project.quoteLines || []).map((l, i) => `<tr><td style="border:1px solid #e4e7ec;padding:6px 10px;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.desc)}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${round2(num(l.qty))}</td><td style="border:1px solid #e4e7ec;padding:6px;text-align:center;background:${i%2?'#f4f6f9':'#ffffff'}">${esc(l.unit)}</td>${wPrices?`<td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(dRate(l))}</td><td style="border:1px solid #e4e7ec;padding:6px 10px;text-align:right;background:${i%2?'#f4f6f9':'#ffffff'}">${money(num(l.qty)*dRate(l))}</td>`:""}</tr>`).join("");
+    const lineTable = wLines ? `<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:12px">
+      <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th>${wPrices?`<th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th>`:""}</tr>${rows}
+    </table>` : "";
+    const totalsTable = wPrices ? `<table align="right" style="margin-bottom:14px;font-size:13px">
+      ${(!spread && t.margin>0)?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr><tr><td style="color:#5b6472;padding:2px 16px 2px 0">Margin (${t.margin}%)</td><td align="right">${money(t.marginAmt)}</td></tr>`:""}
+      <tr><td style="font-weight:bold;padding:2px 16px 2px 0">Total price ex GST</td><td align="right"><b>${money(t.totalEx)}</b></td></tr>
+      <tr><td style="color:#5b6472;padding:2px 16px 2px 0">GST component (${settings.gst}%)</td><td align="right">${money(t.gstAmt)}</td></tr>
+      <tr><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px">Total price inc GST</td><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px" align="right">${money(t.totalInc)}</td></tr>
+    </table><div style="clear:both"></div>` : "";
     return wrap("QUOTATION", `
     <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:14px"><tr>
       <td style="font-size:30px;font-weight:bold;color:${b}">QUOTATION</td>
@@ -2532,18 +2545,11 @@ function buildWordHtml(project, settings, t, logo, attachments){
       <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Prepared for</div><b>${esc(project.client)}</b></td>
       <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Site / project</div><b>${esc(project.title)}</b><br/>${esc(project.site)}</td>
     </tr></table>
-    ${block("Scope of works", project.notes)}${block("Exclusions", project.exclusions)}
-    <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:12px">
-      <tr style="background:${b};color:#fff"><th align="left" style="padding:7px 10px">Description</th><th style="padding:7px">Qty</th><th style="padding:7px">Unit</th><th align="right" style="padding:7px 10px">Rate</th><th align="right" style="padding:7px 10px">Amount</th></tr>${rows}
-    </table>
-    <table align="right" style="margin-bottom:14px;font-size:13px">
-      ${(!spread && t.margin>0)?`<tr><td style="color:#5b6472;padding:2px 16px 2px 0">Subtotal</td><td align="right">${money(t.subEx)}</td></tr><tr><td style="color:#5b6472;padding:2px 16px 2px 0">Margin (${t.margin}%)</td><td align="right">${money(t.marginAmt)}</td></tr>`:""}
-      <tr><td style="font-weight:bold;padding:2px 16px 2px 0">Total price ex GST</td><td align="right"><b>${money(t.totalEx)}</b></td></tr>
-      <tr><td style="color:#5b6472;padding:2px 16px 2px 0">GST component (${settings.gst}%)</td><td align="right">${money(t.gstAmt)}</td></tr>
-      <tr><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px">Total price inc GST</td><td style="background:${b};color:#fff;font-weight:bold;padding:6px 10px" align="right">${money(t.totalInc)}</td></tr>
-    </table><div style="clear:both"></div>
-    <div style="margin:8px 0 14px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> notice needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
-    ${atts?`<div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Attachments</div>${atts}`:""}
+    ${wScope?block("Scope of works", project.notes):""}${wExcl?block("Exclusions", project.exclusions):""}
+    ${lineTable}
+    ${totalsTable}
+    ${(wTerms&&wPrices)?`<div style="margin:8px 0 14px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> notice needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>`:""}
+    ${(wAtt&&atts)?`<div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Attachments</div>${atts}`:""}
     <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Terms &amp; conditions</b><br/>${nl(project.terms||settings.terms)}</div>`);
   }
 
@@ -2553,10 +2559,11 @@ function buildWordHtml(project, settings, t, logo, attachments){
   const knownQty = (kind === "rfq" && (project.quoteLines||[]).length) ? `<div style="font-weight:bold;margin-bottom:4px">Known quantities / measurements:</div><table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:4px"><tr style="background:${b};color:#fff"><th align="left" style="padding:6px 10px">Description</th><th style="padding:6px">Qty</th><th style="padding:6px">Unit</th></tr>${qtyRows}</table><div style="font-size:11px;color:#5b6472;margin-bottom:10px">Quantities are for reference only — please verify on site and from the attached before pricing.</div>` : "";
   const wMarginMode = project.marginMode || (kind === "variation" ? "spread" : "show");
   const marginRows = (kind === "variation" && wMarginMode === "show" && t.margin > 0) ? `<tr><td style="padding-right:24px;color:#5b6472">Subtotal:</td><td style="color:#5b6472">${money(t.subEx)}</td></tr><tr><td style="padding-right:24px;color:#5b6472">Margin (${t.margin}%):</td><td style="color:#5b6472">${money(t.totalEx - t.subEx)}</td></tr>` : "";
-  const priceAndTerms = priced ? `<div style="margin:10px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> is needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>
-    <table style="font-size:13px;margin-bottom:8px">${marginRows}<tr><td style="padding-right:24px">Total price ex GST:</td><td><b>${money(t.totalEx)}</b></td></tr>
+  const wTermsBlock = (priced && wTerms) ? `<div style="margin:10px 0">Price is valid for <b>${esc(settings.validity)}</b>.<br/>${settings.noticeToStart?`<b>${esc(settings.noticeToStart)}</b> is needed to start.<br/>`:""}${settings.paymentTerms?`Payment terms are <b>${esc(settings.paymentTerms)}</b>.`:""}</div>` : "";
+  const wTotalsBlock = wPrices ? `<table style="font-size:13px;margin-bottom:8px">${marginRows}<tr><td style="padding-right:24px">Total price ex GST:</td><td><b>${money(t.totalEx)}</b></td></tr>
       <tr><td style="padding-right:24px">GST component:</td><td>${money(t.gstAmt)}</td></tr>
       <tr><td style="padding-right:24px;font-weight:bold">Total price inc GST:</td><td style="font-weight:bold">${money(t.totalInc)}</td></tr></table>` : "";
+  const priceAndTerms = wTermsBlock + wTotalsBlock;
   return wrap(kind === "variation" ? "VARIATION REQUEST" : "REQUEST FOR QUOTATION", `
     <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:12px"><tr>
       <td style="font-size:24px;font-weight:bold;color:${b}">${kind==="variation"?"VARIATION REQUEST":"REQUEST FOR QUOTATION"}</td>
@@ -2568,11 +2575,11 @@ function buildWordHtml(project, settings, t, logo, attachments){
       <div><b>Cause / Source:</b> ${esc(project.cause)||"—"}</div>
       ${kind==="rfq"?`<div><b>Quote to be submitted to:</b> ${esc(project.submitTo)||"—"}</div>${(project.subCompany||project.subName)?`<div><b>Sent to (subcontractor):</b> ${esc(project.subCompany)}${project.subName?" — "+esc(project.subName):""}${project.subEmail?" · "+esc(project.subEmail):""}${project.subPhone?" · "+esc(project.subPhone):""}</div>`:""}`:`<div><b>Prepared for:</b> ${esc(project.client)||"—"}</div>${project.contractRef?`<div><b>Original job / contract ref:</b> ${esc(project.contractRef)}</div>`:""}`}
     </div>
-    ${block("Exclusions / notes related to this:", project.exclusions)}
-    ${block("Description of scope / works "+(kind==="rfq"?"to be priced:":":"), project.notes)}
+    ${wExcl?block("Exclusions / notes related to this:", project.exclusions):""}
+    ${wScope?block("Description of scope / works "+(kind==="rfq"?"to be priced:":":"), project.notes):""}
     ${block("Documents / mark-ups / drawings to reference:", project.refs)}
     ${knownQty}
-    ${atts?`<div style="font-weight:bold">Attached photos / mark-ups / plans</div>${atts}`:""}
+    ${(wAtt&&atts)?`<div style="font-weight:bold">Attached photos / mark-ups / plans</div>${atts}`:""}
     ${priceAndTerms}
     ${kind==="rfq"?`<div style="background:#e7f2f0;padding:10px;border-radius:4px;margin-bottom:8px">Please review the attached and provide your price for the above works${dueStr?" by "+esc(dueStr):""}. Return to ${esc(settings.email||settings.company)}.</div>`:""}
     <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Request for Quotation / Variation Request</b><br/>Document No.: ${esc(settings.formDocNo)||"—"} &nbsp;&nbsp; Version No.: ${esc(settings.formDocVer)||"—"} &nbsp;&nbsp; Release Date: ${esc(settings.formDocRelease)||"—"}<br/>Uncontrolled if printed</div>`);
@@ -2588,6 +2595,12 @@ function ReportView({ project, onChange }){
   const qtSpread = kind === "new" && effMarginMode === "spread" && t.margin > 0;
   const qtRate = (l) => qtSpread ? num(l.rateEx) * (1 + t.margin / 100) : num(l.rateEx);
   const showVarMargin = kind === "variation" && effMarginMode === "show" && t.margin > 0;   // variation: itemise subtotal + margin
+  // report section visibility — everything shows by default; each can be turned off
+  const rShow = project.reportShow || {};
+  const showScope = rShow.scope !== false, showExcl = rShow.exclusions !== false, showTerms = rShow.terms !== false;
+  const showAtt = rShow.attachments !== false, showLines = rShow.lines !== false;
+  const showPrices = priced && rShow.prices !== false;   // hide $ even on a priced quote (scope-only document)
+  const setRShow = (k, v) => onChange({ ...project, reportShow: { ...rShow, [k]: v } });
   const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : "QUOTATION";
   const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #";
   const sheetRef = useRef(null);
@@ -2613,7 +2626,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit]), att: attachments.map(a => a.caption) });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
@@ -2672,6 +2685,17 @@ function ReportView({ project, onChange }){
             </div>
           ) : <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Nothing to attach yet. Add site photos in the <b>Photos</b> tab, drawings/takeoffs in <b>Drawings / Takeoff</b>, or a <b>Floor plan</b> — they'll appear here to tick on.</div>}
         </div>
+        <div className="card p-3">
+          <div className="font-semibold text-sm brand-text mb-1">Show on this report — untick to hide a section</div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm mt-2">
+            {priced && <label className="flex items-center gap-2"><input type="checkbox" checked={showPrices} onChange={(e) => setRShow("prices", e.target.checked)} /> Prices ($ rates &amp; totals)</label>}
+            {kind === "new" && <label className="flex items-center gap-2"><input type="checkbox" checked={showLines} onChange={(e) => setRShow("lines", e.target.checked)} /> Line-item table</label>}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={showScope} onChange={(e) => setRShow("scope", e.target.checked)} /> Scope of works</label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={showExcl} onChange={(e) => setRShow("exclusions", e.target.checked)} /> Exclusions</label>
+            {priced && <label className="flex items-center gap-2"><input type="checkbox" checked={showTerms} onChange={(e) => setRShow("terms", e.target.checked)} /> Terms &amp; payment</label>}
+            <label className="flex items-center gap-2"><input type="checkbox" checked={showAtt} onChange={(e) => setRShow("attachments", e.target.checked)} /> Attachments</label>
+          </div>
+        </div>
       </div>
 
       <div ref={sheetRef} className="report-sheet mx-auto shadow-sm overflow-hidden" style={{ border: "2px solid var(--brand)", borderRadius: 6 }}>
@@ -2700,11 +2724,12 @@ function ReportView({ project, onChange }){
             <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Prepared for</div><div className="font-semibold">{project.client || "—"}</div></div>
             <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Site / project</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
           </div>
-          {project.notes && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Scope of works</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.notes}</div></div>}
-          {project.exclusions && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Exclusions</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.exclusions}</div></div>}
+          {showScope && project.notes && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Scope of works</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.notes}</div></div>}
+          {showExcl && project.exclusions && <div className="mb-5 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Exclusions</div><div style={{ whiteSpace: "pre-wrap", color: "var(--ink)" }}>{project.exclusions}</div></div>}
+          {showLines && (
           <table className="w-full text-sm mb-4" style={{ borderCollapse: "collapse" }}>
             <thead><tr style={{ background: "var(--brand)", color: "#fff" }}>
-              <th className="text-left px-3 py-2">Description</th><th className="px-2 py-2 w-14">Qty</th><th className="px-2 py-2 w-14">Unit</th><th className="px-3 py-2 w-24 text-right">Rate</th><th className="px-3 py-2 w-24 text-right">Amount</th>
+              <th className="text-left px-3 py-2">Description</th><th className="px-2 py-2 w-14">Qty</th><th className="px-2 py-2 w-14">Unit</th>{showPrices && <><th className="px-3 py-2 w-24 text-right">Rate</th><th className="px-3 py-2 w-24 text-right">Amount</th></>}
             </tr></thead>
             <tbody>
               {lines.map((l, i) => (
@@ -2712,13 +2737,15 @@ function ReportView({ project, onChange }){
                   <td className="px-3 py-2" style={{ borderBottom: "1px solid var(--line)" }}>{l.desc}</td>
                   <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{round2(num(l.qty))}</td>
                   <td className="px-2 py-2 text-center" style={{ borderBottom: "1px solid var(--line)" }}>{l.unit}</td>
-                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(qtRate(l))}</td>
-                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * qtRate(l))}</td>
+                  {showPrices && <><td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(qtRate(l))}</td>
+                  <td className="px-3 py-2 text-right" style={{ borderBottom: "1px solid var(--line)" }}>{money(num(l.qty) * qtRate(l))}</td></>}
                 </tr>
               ))}
-              {lines.length === 0 && <tr><td colSpan="5" className="px-3 py-4 text-center" style={{ color: "var(--muted)" }}>No line items.</td></tr>}
+              {lines.length === 0 && <tr><td colSpan={showPrices ? "5" : "3"} className="px-3 py-4 text-center" style={{ color: "var(--muted)" }}>No line items.</td></tr>}
             </tbody>
           </table>
+          )}
+          {showPrices && (
           <div className="flex justify-end mb-5" style={{ pageBreakInside: "avoid" }}>
             <div className="w-96 max-w-full text-sm space-y-1">
               {!qtSpread && t.margin > 0 && <div className="flex justify-between gap-6" style={{ color: "var(--muted)" }}><span>Subtotal</span><span>{money(t.subEx)}</span></div>}
@@ -2728,12 +2755,15 @@ function ReportView({ project, onChange }){
               <div className="flex justify-between gap-6 text-base font-extrabold px-3 py-2 rounded mt-1" style={{ background: "var(--brand)", color: "#fff" }}><span>Total price inc GST</span><span>{money(t.totalInc)}</span></div>
             </div>
           </div>
+          )}
+          {showTerms && showPrices && (
           <div className="text-sm mb-4 space-y-0.5" style={{ pageBreakInside: "avoid" }}>
             <div>Price is valid for <b>{settings.validity}</b>.</div>
             {settings.noticeToStart && <div><b>{settings.noticeToStart}</b> notice needed to start.</div>}
             {settings.paymentTerms && <div>Payment terms are <b>{settings.paymentTerms}</b>.</div>}
           </div>
-          {attachments.length > 0 && (
+          )}
+          {showAtt && attachments.length > 0 && (
             <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
               <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Attachments</div>
               <div className="grid grid-cols-2 gap-3">{attachments.map((a, i) => <div key={i} style={{ pageBreakInside: "avoid" }}><img src={a.src} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{a.caption}</div></div>)}</div>
@@ -2762,8 +2792,8 @@ function ReportView({ project, onChange }){
             {kind === "rfq" && (project.subCompany || project.subName) && <div><b>Sent to (subcontractor):</b> {project.subCompany}{project.subName ? " — " + project.subName : ""}{project.subEmail ? " · " + project.subEmail : ""}{project.subPhone ? " · " + project.subPhone : ""}</div>}
             {kind === "variation" && project.contractRef && <div><b>Original job / contract ref:</b> {project.contractRef}</div>}
           </div>
-          {project.exclusions && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Exclusions / notes related to this:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.exclusions}</div></div>}
-          {project.notes && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Description of scope / works {kind === "rfq" ? "to be priced" : ""}:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.notes}</div></div>}
+          {showExcl && project.exclusions && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Exclusions / notes related to this:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.exclusions}</div></div>}
+          {showScope && project.notes && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Description of scope / works {kind === "rfq" ? "to be priced" : ""}:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.notes}</div></div>}
           {project.refs && <div className="mb-3 text-sm" style={{ pageBreakInside: "avoid" }}><div className="font-bold mb-1">Documents / mark-ups / drawings to reference:</div><div style={{ whiteSpace: "pre-wrap" }}>{project.refs}</div></div>}
 
           {/* known quantities / measurements (RFQ) — from takeoffs, floor plans or manual */}
@@ -2778,7 +2808,7 @@ function ReportView({ project, onChange }){
             </div>
           )}
 
-          {attachments.length > 0 && (
+          {showAtt && attachments.length > 0 && (
             <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
               <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Attached photos / mark-ups / plans</div>
               <div className="grid grid-cols-2 gap-3">{attachments.map((a, i) => <div key={i} style={{ pageBreakInside: "avoid" }}><img src={a.src} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /><div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{a.caption}</div></div>)}</div>
@@ -2787,11 +2817,14 @@ function ReportView({ project, onChange }){
 
           {/* validity / notice / payment + price — priced kinds only (not on a subbie price request) */}
           {priced && (<>
+          {showTerms && (
           <div className="text-sm space-y-0.5 mb-3" style={{ pageBreakInside: "avoid" }}>
             <div>Price is valid for <b>{settings.validity}</b>.</div>
             {settings.noticeToStart && <div><b>{settings.noticeToStart}</b> is needed to start.</div>}
             {settings.paymentTerms && <div>Payment terms are <b>{settings.paymentTerms}</b>.</div>}
           </div>
+          )}
+          {showPrices && (
           <div className="text-sm mb-2" style={{ pageBreakInside: "avoid" }}>
             {showVarMargin && <>
               <div className="flex justify-between" style={{ maxWidth: 320, color: "var(--muted)" }}><span>Subtotal:</span><span>{money(t.subEx)}</span></div>
@@ -2801,6 +2834,7 @@ function ReportView({ project, onChange }){
             <div className="flex justify-between" style={{ maxWidth: 320 }}><span>GST component:</span><span>{money(t.gstAmt)}</span></div>
             <div className="flex justify-between font-bold" style={{ maxWidth: 320 }}><span>Total price inc GST:</span><span>{money(t.totalInc)}</span></div>
           </div>
+          )}
           </>)}
           {kind === "rfq" && <div className="text-xs mt-2 p-2 rounded" style={{ background: "rgba(15,118,110,.08)" }}>Please review the attached and provide your price for the above works{dueStr ? " by " + dueStr : ""}. Return to {settings.email || settings.company}.</div>}
           {/* doc-control block (matches form footer) */}
