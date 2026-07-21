@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v59 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v60 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2069,7 +2069,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
   const rooms = (preview && preview.rooms) || plan.rooms || [];
   const stamps = (preview && preview.stamps) || plan.stamps || [];
   const markups = plan.markups || [];   // reference lines / arrows / text (2D only, not in 3D)
-  const cols = 60, rowsN = 46;   // larger drawable site; zoom out to see it all
+  const cols = 90, rowsN = 66;   // large drawable site (~45 × 33 m at 0.5 m/cell) — fits big/commercial jobs; zoom out to see it all
   const worldW = cols * gridPx, worldH = rowsN * gridPx;
   const pxPerM = gridPx / gridM;
 
