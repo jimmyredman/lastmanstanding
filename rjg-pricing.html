@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v60 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v61 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1598,6 +1598,8 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
   const [roofColor, setRoofColor] = useState(plan.roofColor || "#6f7683");
   const [editMode, setEditMode] = useState(null);     // null | "objects" (drag objects) | "walls" (drag wall corners). Off by default.
   const [rev, setRev] = useState(0);                  // bump to rebuild after a wall-corner move
+  const [undoN, setUndoN] = useState(0);              // depth of the 3D-edit undo stack
+  const undoStack = useRef([]);                       // previous states for undo (survives rebuilds)
   const camView = useRef(null);                       // preserve orbit position/target across rebuilds
   const planRef = useRef(plan); planRef.current = plan;   // always-fresh plan for edit handlers (objects move without a rebuild)
   const [showLabels, setShowLabels] = useState(false); // room names / areas / wall lengths on the render for the client
@@ -1973,11 +1975,13 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       const im = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
       stamps.forEach(s => { const M = toM({ x: s.x, y: s.y }), w = stampW(s)*mpp, d = stampD(s)*mpp, rad = Math.max(0.45, Math.max(w, d) * 0.55); const pk = new THREE.Mesh(new THREE.SphereGeometry(rad, 10, 8), im); pk.position.set(M.x, Math.max(0.4, rad*0.6), M.z); pk.userData = { stampId: s.id }; scene.add(pk); pickObjs.push(pk); });
     }
+    // small handle size — a discreet dot so it doesn't hide what you're editing (grabbing is by proximity, not the dot)
+    const hR = Math.max(0.08, Math.min(0.2, ext * 0.004));
     // WALLS: small corner handles you drag to lengthen / shorten walls
     const vtxHandles = [];
     if (editMode === "walls"){
       const hMat = new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false });
-      rooms.forEach(r => { if (r.surface) return; r.points.forEach((p, idx) => { const M = toM(p); const hnd = new THREE.Mesh(new THREE.SphereGeometry(0.4, 18, 14), hMat); hnd.position.set(M.x, 0.3, M.z); hnd.userData = { roomId: r.id, idx }; hnd.renderOrder = 999; scene.add(hnd); vtxHandles.push(hnd); }); });
+      rooms.forEach(r => { if (r.surface) return; r.points.forEach((p, idx) => { const M = toM(p); const hnd = new THREE.Mesh(new THREE.SphereGeometry(hR, 14, 10), hMat); hnd.position.set(M.x, hR + 0.05, M.z); hnd.userData = { roomId: r.id, idx }; hnd.renderOrder = 999; scene.add(hnd); vtxHandles.push(hnd); }); });
     }
     let drag = null, marker = null;
     const onPD = (ev) => {
@@ -1986,13 +1990,14 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       // objects: try the invisible pick spheres, then any visible object mesh
       let id = null; const h1 = ray.intersectObjects(pickObjs)[0]; if (h1) id = h1.object.userData.stampId;
       if (!id){ const hits = ray.intersectObjects(scene.children, true); for (const h of hits){ const sid = findStampId(h.object); if (sid){ id = sid; break; } } }
-      if (id){ controls.enabled = false; const grp = stampGroups[id]; marker = new THREE.Mesh(new THREE.SphereGeometry(0.26, 16, 12), new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false })); marker.renderOrder = 1000; const st = (planRef.current.stamps||[]).find(x => x.id === id), M = st ? toM({ x: st.x, y: st.y }) : { x: 0, z: 0 }; marker.position.set(M.x, 0.9, M.z); scene.add(marker); drag = { kind: "obj", id, group: grp }; }
+      if (id){ controls.enabled = false; const grp = stampGroups[id]; marker = new THREE.Mesh(new THREE.SphereGeometry(hR, 14, 10), new THREE.MeshBasicMaterial({ color: 0xe8792b, depthTest: false })); marker.renderOrder = 1000; const st = (planRef.current.stamps||[]).find(x => x.id === id), M = st ? toM({ x: st.x, y: st.y }) : { x: 0, z: 0 }; marker.position.set(M.x, 0.6, M.z); scene.add(marker); drag = { kind: "obj", id, group: grp }; }
     };
-    const onPM = (ev) => { if (!drag) return; setNdc(ev); const pt = groundPt(); if (!pt) return; drag.lastPt = pt; if (drag.kind === "vtx"){ if (drag.handle){ drag.handle.position.x = pt.x; drag.handle.position.z = pt.z; } } else { if (drag.group){ drag.group.position.x = pt.x; drag.group.position.z = pt.z; } if (marker) marker.position.set(pt.x, 0.9, pt.z); } };
+    const onPM = (ev) => { if (!drag) return; setNdc(ev); const pt = groundPt(); if (!pt) return; drag.lastPt = pt; if (drag.kind === "vtx"){ if (drag.handle){ drag.handle.position.x = pt.x; drag.handle.position.z = pt.z; } } else { if (drag.group){ drag.group.position.x = pt.x; drag.group.position.z = pt.z; } if (marker) marker.position.set(pt.x, 0.6, pt.z); } };
+    const pushUndo = (snap) => { undoStack.current.push(snap); if (undoStack.current.length > 40) undoStack.current.shift(); setUndoN(undoStack.current.length); };
     const onPU = () => {
       if (!drag) return; controls.enabled = true;
-      if (drag.kind === "vtx"){ if (!drag.lastPt){ drag = null; return; } const nx = Math.max(0, drag.lastPt.x / mpp + cx), ny = Math.max(0, drag.lastPt.z / mpp + cy); if (onPersist) onPersist({ rooms: (planRef.current.rooms || []).map(r => r.id === drag.roomId ? { ...r, points: r.points.map((p, i) => i === drag.idx ? { x: nx, y: ny } : p) } : r) }); setRev(v => v + 1); }
-      else { const src = drag.group || marker; const mx = Math.max(0, src.position.x / mpp + cx), my = Math.max(0, src.position.z / mpp + cy); if (onPersist) onPersist({ stamps: (planRef.current.stamps || []).map(s => s.id === drag.id ? { ...s, x: mx, y: my } : s) }); }
+      if (drag.kind === "vtx"){ if (!drag.lastPt){ drag = null; return; } const nx = Math.max(0, drag.lastPt.x / mpp + cx), ny = Math.max(0, drag.lastPt.z / mpp + cy); pushUndo({ rooms: planRef.current.rooms }); if (onPersist) onPersist({ rooms: (planRef.current.rooms || []).map(r => r.id === drag.roomId ? { ...r, points: r.points.map((p, i) => i === drag.idx ? { x: nx, y: ny } : p) } : r) }); setRev(v => v + 1); }
+      else { const src = drag.group || marker; const mx = Math.max(0, src.position.x / mpp + cx), my = Math.max(0, src.position.z / mpp + cy); pushUndo({ stamps: planRef.current.stamps }); if (onPersist) onPersist({ stamps: (planRef.current.stamps || []).map(s => s.id === drag.id ? { ...s, x: mx, y: my } : s) }); }
       if (marker){ scene.remove(marker); marker = null; } drag = null;
     };
     renderer.domElement.addEventListener("pointerdown", onPD, true);
@@ -2007,6 +2012,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     } catch (err) { setOk(false); }
   }, [roofType, pitch, roofColor, editMode, showLabels, rev]);
   const persist = (patch) => { if (onPersist) onPersist(patch); };
+  const undo3d = () => { const prev = undoStack.current.pop(); if (!prev) return; setUndoN(undoStack.current.length); if (onPersist) onPersist(prev); setRev(v => v + 1); };
   return (
     <div className="fixed inset-0 z-50 flex flex-col no-print" style={{ background: "#eef2f7" }}>
       <div className="brand-bg text-white flex items-center justify-between px-4 py-3 gap-2 flex-wrap">
@@ -2022,6 +2028,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
         <div className="flex gap-2 items-center">
           {ok && <button className={"btn " + (editMode === "objects" ? "btn-accent" : "btn-ghost !text-white")} style={editMode === "objects" ? {} : { borderColor: "rgba(255,255,255,.4)" }} onClick={() => setEditMode(m => m === "objects" ? null : "objects")} title="Drag objects to reposition them; orbit still works on empty space">{editMode === "objects" ? "✓ Moving objects" : "✋ Move objects"}</button>}
           {ok && <button className={"btn " + (editMode === "walls" ? "btn-accent" : "btn-ghost !text-white")} style={editMode === "walls" ? {} : { borderColor: "rgba(255,255,255,.4)" }} onClick={() => setEditMode(m => m === "walls" ? null : "walls")} title="Drag a wall corner to lengthen or shorten the wall">{editMode === "walls" ? "✓ Editing walls" : "📐 Edit walls"}</button>}
+          {ok && editMode && <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)", opacity: undoN ? 1 : 0.45 }} disabled={!undoN} onClick={undo3d} title="Undo the last move">↶ Undo{undoN ? " (" + undoN + ")" : ""}</button>}
           {ok && <button className="btn btn-accent" onClick={() => { const d = capRef.current && capRef.current(); if (d) onSave(d); }}><IcCheck size={16} /> Save render</button>}
           <button className="btn btn-ghost !text-white" style={{ borderColor: "rgba(255,255,255,.4)" }} onClick={onClose}><IcX size={16} /> Close</button>
         </div>
