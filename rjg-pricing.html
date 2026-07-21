@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v54 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v55 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1239,6 +1239,9 @@ const GATE_COLORS = { gate: "#8a6a3f", gate_black: "#2a2f36", gate_glass: "#5fa9
 const WALL_THICK = { ext: 0.2, int: 0.09 };   // default wall thickness (m): external 200mm, internal 90mm
 const FLOOR_TYPES = [["", "— floor —"], ["tile", "Tile"], ["timber", "Timber"], ["carpet", "Carpet"], ["vinyl", "Vinyl"], ["laminate", "Laminate"], ["concrete", "Concrete polish"], ["epoxy", "Epoxy"]];
 const FLOOR_LABEL = Object.fromEntries(FLOOR_TYPES);
+// floor-finish colours so a room's floor reads at a glance in 2D, the PDF and 3D
+const FLOOR_COL = { tile: "#dfe7ee", timber: "#d6a869", carpet: "#cdbfad", vinyl: "#dbe2e8", laminate: "#e3c690", concrete: "#c4c9cf", epoxy: "#a9c3d4" };
+const FLOOR_3D = { tile: 0xd3dce4, timber: 0xc4915a, carpet: 0xbfb2a2, vinyl: 0xd0d8e0, laminate: 0xd2b079, concrete: 0xb8bec5, epoxy: 0x9dbacb };
 const FENCE_WALL_STYLES = [["fence","Timber"],["fence_black","Black steel"],["fence_glass","Glass"]];
 const FENCE_WALL_COLOR = { fence: "#9c7b56", fence_black: "#2a2f36", fence_glass: "#5fa9d6" };
 // Structures with selectable roof lines. Roofs use the same hip/gable/skillion/
@@ -1446,6 +1449,26 @@ function drawStamp(ctx, s, brand){
   ctx.restore();
 }
 
+// Subtle floor-finish pattern clipped to a room polygon (world coords).
+// wpm = world px per metre; lw = line width in world px (so it stays ~1px on screen).
+function drawFloorTexture(ctx, pts, ft, wpm, lw){
+  if (ft !== "tile" && ft !== "timber" && ft !== "laminate") return;   // others read fine as a flat colour
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  ctx.save();
+  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
+  ctx.lineWidth = lw || 1;
+  if (ft === "tile"){
+    ctx.strokeStyle = "rgba(60,80,100,0.12)"; const step = 0.6 * wpm;
+    for (let x = Math.ceil(x0/step)*step; x <= x1; x += step){ ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke(); }
+    for (let y = Math.ceil(y0/step)*step; y <= y1; y += step){ ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+  } else {   // timber / laminate — plank lines one way
+    ctx.strokeStyle = "rgba(90,60,25,0.16)"; const step = 0.19 * wpm;
+    for (let y = Math.ceil(y0/step)*step; y <= y1; y += step){ ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+
 /* ---- measurable floor-plan export ---------------------------------------
    Renders the whole plan to an off-screen canvas at a chosen output scale
    (px per metre), draws every room/wall/surface/object/markup with dimension
@@ -1491,7 +1514,7 @@ function renderPlanExport(plan, brand){
     const surf = r.surface, wall = r.wall;
     ctx.beginPath(); r.points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); if (!wall) ctx.closePath();
     if (wall){ ctx.lineWidth = Math.max((r.thick || WALL_THICK.int) / mpp, px(2)); ctx.strokeStyle = r.fence ? (FENCE_WALL_COLOR[r.fence] || brand) : brand; ctx.stroke(); }
-    else { ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.05)") : "rgba(2,34,75,.04)"; ctx.fill(); ctx.lineWidth = px(2); ctx.strokeStyle = surf ? (SURFACE_STROKE[surf] || brand) : brand; ctx.stroke(); }
+    else { ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.05)") : (r.floorType && FLOOR_COL[r.floorType] ? FLOOR_COL[r.floorType] : "rgba(2,34,75,.04)"); ctx.fill(); if (!surf && r.floorType && FLOOR_COL[r.floorType]) drawFloorTexture(ctx, r.points, r.floorType, 1/mpp, px(1)); ctx.lineWidth = px(2); ctx.strokeStyle = surf ? (SURFACE_STROKE[surf] || brand) : brand; ctx.stroke(); }
     // edge lengths
     const n = wall ? r.points.length - 1 : r.points.length;
     for (let i = 0; i < n; i++) edgeLen(r.points[i], r.points[(i + 1) % r.points.length]);
@@ -1581,22 +1604,25 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 3000);
     // Frame the whole footprint from a raised 3/4 angle so furniture inside a
     // roofless plan is actually visible (pull back based on the scene radius).
-    const R = Math.max(ext * 0.72, 4);                       // bounding radius in metres
-    const dist = R / Math.sin((50 * Math.PI / 180) / 2) * 1.15;
+    const R = Math.max(ext * 0.62, 3.5);                     // bounding radius in metres
+    const dist = R / Math.sin((50 * Math.PI / 180) / 2) * 0.95;
     camera.position.set(dist * 0.72, dist * 0.82, dist * 0.72);
     const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1)); renderer.setSize(W, H);
     mount.appendChild(renderer.domElement);
     const controls = new THREE.OrbitControls(camera, renderer.domElement); controls.target.set(0, wallH * 0.35, 0); controls.update();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.05));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.6); dir.position.set(ext, ext*1.6, ext*0.6); scene.add(dir);
-    scene.add(new THREE.GridHelper(Math.ceil(ext*2)+14, Math.ceil(ext*2)+14, 0xc7d0da, 0xdfe5ec));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c2cf, 0.7));
+    scene.add(new THREE.AmbientLight(0xffffff, 0.1));                                     // gentle fill; kept low so light greys don't wash to white
+    const dir = new THREE.DirectionalLight(0xffffff, 0.32); dir.position.set(ext*0.9, ext*1.8, ext*0.7); scene.add(dir);
+    scene.add(new THREE.GridHelper(Math.ceil(ext*2)+14, Math.ceil(ext*2)+14, 0xd2dae4, 0xe6ebf1));
 
     const mat = (c, opts) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, opts || {}));
     const glossy = (c, shin, opts) => new THREE.MeshPhongMaterial(Object.assign({ color: c, shininess: shin || 40, specular: 0x333333 }, opts || {}));  // metal / gloss / water highlights
-    // Dollhouse walls: slightly see-through so furniture inside is always visible.
-    const wallMat = mat(0xcbd3de, { transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false });
-    const floorMat = mat(0xd5dde7, { side: THREE.DoubleSide }), roofMat = mat(new THREE.Color(roofColor), { side: THREE.DoubleSide, transparent: true, opacity: 0.85 }), glassMat = glossy(0x9fd0e6, 90, { transparent: true, opacity: 0.4 });
+    // Solid, opaque walls — the old see-through walls stacked into a muddy, jagged
+    // mess where segments overlapped. A roofless plan is viewed from above, so you
+    // still see into every room over the wall tops.
+    const wallMat = mat(0x9aa4b5, { side: THREE.DoubleSide });
+    const floorMat = mat(0xdbe1e8, { side: THREE.DoubleSide }), roofMat = mat(new THREE.Color(roofColor), { side: THREE.DoubleSide, transparent: true, opacity: 0.85 }), glassMat = glossy(0x9fd0e6, 90, { transparent: true, opacity: 0.4 });
     const box = (w, h, d, m, x, y, z, ry) => { const me = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); me.position.set(x, y, z); if (ry) me.rotation.y = ry; return me; };
 
     // ---- walls with door/window openings ----
@@ -1654,8 +1680,8 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       if (r.surface) return;   // surfaces handled above — no walls
       if (r.fence){ for (let i = 0; i < r.points.length-1; i++) fenceEdge(r.points[i], r.points[i+1], r.fence); return; }   // fences: posts/rails, no roof
       const h = r.height || wallH; const pts = r.points.map(toM);
-      if (!r.wall && pts.length >= 3){ curThick = r.thick || WALL_THICK.ext; for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); cands.push({ pts, h, area: polyArea2(pts) }); }
-      else if (r.wall){ curThick = r.thick || WALL_THICK.int; for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) cands.push({ pts, h, area: polyArea2(pts) }); }
+      if (!r.wall && pts.length >= 3){ curThick = r.thick || WALL_THICK.ext; for (let i = 0; i < r.points.length; i++) wallEdge(r.points[i], r.points[(i+1)%r.points.length], h); cands.push({ pts, h, area: polyArea2(pts), floorType: r.floorType }); }
+      else if (r.wall){ curThick = r.thick || WALL_THICK.int; for (let i = 0; i < r.points.length-1; i++) wallEdge(r.points[i], r.points[i+1], h); if (pts.length >= 3 && Math.hypot(pts[0].x-pts[pts.length-1].x, pts[0].z-pts[pts.length-1].z) < 0.6) cands.push({ pts, h, area: polyArea2(pts), floorType: r.floorType }); }
     });
     // only the outer outlines get a floor + roof — a room drawn inside a larger
     // outline is an interior room of that house, so it must not add its own roof
@@ -1703,7 +1729,7 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
     outer.forEach(fp => {
       const pts = fp.pts;
       const shape = new THREE.Shape(); shape.moveTo(pts[0].x, pts[0].z); for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z);
-      const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const fm = new THREE.Mesh(g, floorMat); fm.position.y = 0.02; scene.add(fm);
+      const g = new THREE.ShapeGeometry(shape); g.rotateX(Math.PI/2); const fMat = (fp.floorType && FLOOR_3D[fp.floorType]) ? mat(FLOOR_3D[fp.floorType], { side: THREE.DoubleSide }) : floorMat; const fm = new THREE.Mesh(g, fMat); fm.position.y = 0.02; scene.add(fm);
       if (roofType !== "none") addRoof(fp);
     });
 
@@ -1824,11 +1850,11 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
         leg(-w/2+0.1,-d/2+0.05,0.44,mat(0x59431f)); leg(w/2-0.1,-d/2+0.05,0.44,mat(0x59431f)); leg(-w/2+0.1,d/2-0.05,0.44,mat(0x59431f)); leg(w/2-0.1,d/2-0.05,0.44,mat(0x59431f));
       }
       else if (s.type === "bed"){
-        grp.add(box(w, 0.28, d, mat(0x63492e), 0, 0.16, 0));                                     // base
-        grp.add(box(w*0.97, 0.2, d*0.97, mat(0xc3ccd7), 0, 0.4, 0));                             // mattress
-        grp.add(box(w*0.97, 0.12, d*0.6, glossy(0x4f7aa6, 15), 0, 0.5, d*0.16));                 // blanket
-        grp.add(box(w*0.4, 0.16, d*0.2, mat(0xdfe5ec), -w*0.24, 0.56, -d*0.36)); grp.add(box(w*0.4, 0.16, d*0.2, mat(0xdfe5ec), w*0.24, 0.56, -d*0.36));  // pillows
-        grp.add(box(w*1.02, 0.62, 0.12, mat(0x6a5236), 0, 0.55, -d/2));                          // headboard
+        grp.add(box(w, 0.30, d, mat(0x8a6a44), 0, 0.15, 0));                                     // base (spans 0.00–0.30)
+        grp.add(box(w*0.98, 0.24, d*0.97, mat(0xd3dae4), 0, 0.40, 0));                           // mattress (0.28–0.52, overlaps base — no coplanar z-fight)
+        grp.add(box(w*0.98, 0.14, d*0.58, glossy(0x5f88b4, 12), 0, 0.54, d*0.18));               // blanket
+        grp.add(box(w*0.4, 0.14, d*0.2, mat(0xeef2f7), -w*0.24, 0.60, -d*0.34)); grp.add(box(w*0.4, 0.14, d*0.2, mat(0xeef2f7), w*0.24, 0.60, -d*0.34));  // pillows
+        grp.add(box(w*1.02, 0.66, 0.12, mat(0x7a5a38), 0, 0.55, -d/2));                          // headboard
       }
       else if (s.type === "kitchen"){
         grp.add(box(w*0.96, 0.12, d*0.86, mat(0x474e58), 0, 0.06, 0.02));                        // recessed toe-kick
@@ -2048,7 +2074,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       const stroke = surf ? (SURFACE_STROKE[surf] || brand) : brand;
       ctx.strokeStyle = stroke; ctx.lineWidth = surf ? 3 : Math.max(4, (r.thick || WALL_THICK.ext) * pxPerM); ctx.lineJoin = "round";
       ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath();
-      ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : "rgba(2,34,75,.06)"; ctx.fill(); ctx.stroke();
+      ctx.fillStyle = surf ? (SURFACE_FILL[surf] || "rgba(2,34,75,.06)") : (r.floorType && FLOOR_COL[r.floorType] ? FLOOR_COL[r.floorType] : "rgba(2,34,75,.06)"); ctx.fill(); ctx.stroke();
+      if (!surf && r.floorType && FLOOR_COL[r.floorType]) drawFloorTexture(ctx, pts, r.floorType, pxPerM, 1/S);
       if (!cleanView) ctx.fillStyle = stroke, pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();});
       for (let i=0;i<pts.length;i++){ const a=pts[i],b=pts[(i+1)%pts.length]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); }
       if (!cleanView && pts.length>=3){ const c=centroid(pts); const area=shoelace(pts)*mPerPx*mPerPx; ctx.fillStyle=stroke; ctx.textAlign="center"; ctx.font="700 14px system-ui"; ctx.fillText(r.name||(surf?SURFACE_LABEL[surf]:"Room"),c.x,c.y-6); ctx.font="600 12px system-ui"; ctx.fillText(round2(area).toFixed(2)+" m²",c.x,c.y+12); }
@@ -2418,26 +2445,27 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
     setWallRoom(null); setTool("move");
     notify("Room created · " + round2(shoelace(poly) * mPerPx * mPerPx).toFixed(2) + " m²");
   };
-  // Send rooms/walls to the quote. Linking a rate is optional — unlinked ones
-  // come through with the area/length + a blank rate to enter on the quote.
+  // Build the quote line(s) for one room/wall. Linking a rate is optional — unlinked
+  // ones come through with the measured qty + a blank rate to fill in on the quote.
+  const linesForRoom = (r) => {
+    const it = r.priceItemId ? items.find(i => i.id === r.priceItemId) : null;
+    const ft = r.floorType ? " (" + FLOOR_LABEL[r.floorType] + ")" : "";
+    const nm = (r.name || (r.wall ? "Wall" : "Room")) + ft;
+    const main = { id: uid(), desc: it ? (it.description + " — " + nm) : nm, unit: it ? it.unit : (r.wall ? "m" : "m2"), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name };
+    const encl = wallEncloses(r);   // a closed wall with a floor type also sends its enclosed floor as an m² line
+    if (r.wall && encl > 0.01 && r.floorType) return [main, { id: uid(), desc: "Floor — " + FLOOR_LABEL[r.floorType] + (r.name ? " (" + r.name + ")" : ""), unit: "m2", rateEx: 0, category: "", qty: round2(encl), source: "Floor plan: " + plan.name }];
+    return [main];
+  };
   const addToQuote = () => {
     if (!rooms.length) { alert("Draw a room or wall first."); return; }
-    const lines = rooms.flatMap(r => {
-      const it = r.priceItemId ? items.find(i => i.id === r.priceItemId) : null;
-      const ft = r.floorType ? " (" + FLOOR_LABEL[r.floorType] + ")" : "";
-      const nm = (r.name || (r.wall ? "Wall" : "Room")) + ft;
-      const main = { id: uid(), desc: it ? (it.description + " — " + nm) : nm, unit: it ? it.unit : (r.wall ? "m" : "m2"), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name };
-      // a closed wall with a floor type also sends its enclosed floor as an m² line
-      const encl = wallEncloses(r);
-      if (r.wall && encl > 0.01 && r.floorType){
-        return [main, { id: uid(), desc: "Floor — " + FLOOR_LABEL[r.floorType] + (r.name ? " (" + r.name + ")" : ""), unit: "m2", rateEx: 0, category: "", qty: round2(encl), source: "Floor plan: " + plan.name }];
-      }
-      return [main];
-    });
+    const lines = rooms.flatMap(linesForRoom);
     saveSnapshot(); onAddToQuote(lines);
     const priced = lines.filter(l => l.rateEx > 0).length;
     notify(lines.length + " sent to quote" + (priced < lines.length ? " · " + (lines.length - priced) + " need a rate" : ""));
   };
+  // send just this one room/wall — stay on the plan so you can send others too
+  const sendRoomToQuote = (r) => { saveSnapshot(); onAddToQuote(linesForRoom(r), { stay: true }); };
+  const sendStampToQuote = (s) => onAddToQuote([{ id: uid(), desc: STAMP_LABEL[s.type] || s.type, qty: 1, unit: "ea", rateEx: 0, category: "", source: "Floor plan: " + plan.name }], { stay: true });
   const totalArea = rooms.reduce((s, r) => s + ((!r.wall && !r.surface) ? shoelace(r.points) * mPerPx * mPerPx : wallEncloses(r)), 0);
   const setStampRoof = (id, roof) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, roof } : s) });
   const toggleStampLock = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) });
@@ -2623,6 +2651,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
                 <input className="inp !py-1 min-w-0" style={{ flex: "1 1 80px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} disabled={r.locked} />
                 <span className="text-sm font-semibold whitespace-nowrap">{meas}</span>
                 {encl > 0.01 && <span className="chip whitespace-nowrap" title="Enclosed floor" style={{ background: "rgba(2,34,75,.06)" }}>⌂ {round2(encl).toFixed(2)}</span>}
+                <button className="btn btn-ghost !p-1.5 brand-text" title="Send just this one to the quote" onClick={() => sendRoomToQuote(r)}><IcPlus size={15} /></button>
                 <button className="btn btn-ghost !p-1.5" title={r.locked ? "Unlock" : "Lock"} onClick={() => toggleShapeLock(r.id)}>{r.locked ? "🔒" : "🔓"}</button>
                 <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
               </div>
@@ -2660,6 +2689,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
                   <button className="btn btn-ghost !py-1 !px-2" title="Rotate left" onClick={() => rotStamp(s.id, -15)}>↺</button>
                   <button className="btn btn-ghost !py-1 !px-2" title="Rotate right" onClick={() => rotStamp(s.id, 15)}>↻</button>
                   {STAMP_FLIP.has(s.type) && <button className="btn btn-ghost !py-1 !px-2" title="Flip" onClick={() => flipStamp(s.id)}>⇅</button>}
+                  <button className="btn btn-ghost !p-1.5 brand-text" title="Send just this object to the quote" onClick={() => sendStampToQuote(s)}><IcPlus size={15} /></button>
                   <button className="btn btn-ghost !p-1.5" title={s.locked ? "Unlock" : "Lock"} onClick={() => toggleStampLock(s.id)}>{s.locked ? "🔒" : "🔓"}</button>
                   <button className="btn btn-ghost !p-1.5" onClick={() => delStamp(s.id)}><IcTrash size={15} /></button>
                 </div>
@@ -3295,7 +3325,7 @@ function JobWorkspace({ project, onChange, onBack, onDelete }){
     files.forEach(file => { const r = new FileReader(); r.onload = () => { added.push({ id: uid(), data: r.result, caption: "", include: true }); if (--pending === 0) onChange({ ...project, photos: [...photos, ...added] }); }; r.readAsDataURL(file); });
     e.target.value = "";
   };
-  const addToQuote = (newLines) => { onChange({ ...project, quoteLines: [...(project.quoteLines || []), ...newLines] }); notify(newLines.length + " line(s) added to quote"); setTab("quote"); setOpenDrawing(null); setOpenPlan(null); };
+  const addToQuote = (newLines, opts) => { onChange({ ...project, quoteLines: [...(project.quoteLines || []), ...newLines] }); notify(newLines.length + " line(s) added to quote"); if (!(opts && opts.stay)){ setTab("quote"); setOpenDrawing(null); setOpenPlan(null); } };
 
   const onFile = async (e) => {
     const file = e.target.files[0]; if (!file) return; setLoading(true);
