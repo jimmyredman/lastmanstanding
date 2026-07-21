@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v50 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v51 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1498,6 +1498,11 @@ function renderPlanExport(plan, brand){
     // room name + area
     if (!wall){ const c = centroid(r.points), area = shoelace(r.points) * mpp * mpp; const nm = r.name || (surf ? SURFACE_LABEL[surf] : "Room"); const ft = (!surf && r.floorType) ? " · " + FLOOR_LABEL[r.floorType] : "";
       label(c.x, c.y - px(9), nm + ft, "#141922", 14); label(c.x, c.y + px(9), area.toFixed(2) + " m²", "#5b6472", 12); }
+    // a closed wall run encloses a floor — report the area
+    else if (!r.fence && r.points.length >= 3 && dist(r.points[0], r.points[r.points.length-1]) < 0.6 / mpp){
+      const c = centroid(r.points), area = shoelace(r.points) * mpp * mpp; const ft = r.floorType ? " · " + FLOOR_LABEL[r.floorType] : "";
+      label(c.x, c.y - px(9), (r.name || "Floor") + ft, "#141922", 14); label(c.x, c.y + px(9), area.toFixed(2) + " m²", "#5b6472", 12);
+    }
   });
   // objects (reuse the plan symbol renderer)
   stamps.forEach(s => drawStamp(ctx, s, brand));
@@ -2058,6 +2063,11 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
       if (!cleanView){ ctx.fillStyle = brand; pts.forEach(p=>{ctx.beginPath();ctx.arc(p.x,p.y,4,0,7);ctx.fill();}); }
       if (curved){ const len = perimeter(pts,false)*mPerPx; if (len>=0.01){ const m=pts[Math.floor(pts.length/2)]; lenLabel({x:m.x-1,y:m.y},{x:m.x+1,y:m.y},len); } }
       else { for (let i=0;i<pts.length-1;i++){ const a=pts[i],b=pts[i+1]; const len=dist(a,b)*mPerPx; if(len>=0.01) lenLabel(a,b,len); } }   // per-segment lengths
+      // a wall run that closes on itself encloses a floor — report the area in the middle
+      if (!cleanView && !curved && pts.length >= 3 && dist(pts[0], pts[pts.length-1]) < 0.6/mPerPx){
+        const c = centroid(pts), area = shoelace(pts)*mPerPx*mPerPx; const ft = r.floorType ? " · " + FLOOR_LABEL[r.floorType] : "";
+        ctx.fillStyle = brand; ctx.textAlign = "center"; ctx.font = "700 13px system-ui"; ctx.fillText((r.name || "Floor") + ft, c.x, c.y - 7); ctx.font = "600 12px system-ui"; ctx.fillText(round2(area).toFixed(2) + " m²", c.x, c.y + 11);
+      }
     };
     rooms.forEach(r => r.wall ? drawWall(r) : drawRoom(r));
     stamps.forEach(s => drawStamp(ctx, s, brand));
@@ -2299,21 +2309,31 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
 
   const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.85) }); };
   const shapeQty = (r) => r.wall ? perimeter(r.points, false)*mPerPx : shoelace(r.points)*mPerPx*mPerPx;
+  // A run of walls that comes back on itself encloses a floor: if the first and
+  // last corner meet, report the area inside automatically (no separate Room needed).
+  const WALL_CLOSE_M = 0.6;
+  const wallEncloses = (r) => (r.wall && !r.fence && r.points.length >= 3 && dist(r.points[0], r.points[r.points.length - 1]) < WALL_CLOSE_M / mPerPx) ? shoelace(r.points) * mPerPx * mPerPx : 0;
   // Send rooms/walls to the quote. Linking a rate is optional — unlinked ones
   // come through with the area/length + a blank rate to enter on the quote.
   const addToQuote = () => {
     if (!rooms.length) { alert("Draw a room or wall first."); return; }
-    const lines = rooms.map(r => {
+    const lines = rooms.flatMap(r => {
       const it = r.priceItemId ? items.find(i => i.id === r.priceItemId) : null;
       const ft = r.floorType ? " (" + FLOOR_LABEL[r.floorType] + ")" : "";
       const nm = (r.name || (r.wall ? "Wall" : "Room")) + ft;
-      return { id: uid(), desc: it ? (it.description + " — " + nm) : nm, unit: it ? it.unit : (r.wall ? "m" : "m2"), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name };
+      const main = { id: uid(), desc: it ? (it.description + " — " + nm) : nm, unit: it ? it.unit : (r.wall ? "m" : "m2"), rateEx: it ? it.rate : 0, category: it ? it.category : "", qty: round2(shapeQty(r)), source: "Floor plan: " + plan.name };
+      // a closed wall with a floor type also sends its enclosed floor as an m² line
+      const encl = wallEncloses(r);
+      if (r.wall && encl > 0.01 && r.floorType){
+        return [main, { id: uid(), desc: "Floor — " + FLOOR_LABEL[r.floorType] + (r.name ? " (" + r.name + ")" : ""), unit: "m2", rateEx: 0, category: "", qty: round2(encl), source: "Floor plan: " + plan.name }];
+      }
+      return [main];
     });
     saveSnapshot(); onAddToQuote(lines);
     const priced = lines.filter(l => l.rateEx > 0).length;
     notify(lines.length + " sent to quote" + (priced < lines.length ? " · " + (lines.length - priced) + " need a rate" : ""));
   };
-  const totalArea = rooms.filter(r => !r.wall && !r.surface).reduce((s, r) => s + shoelace(r.points) * mPerPx * mPerPx, 0);
+  const totalArea = rooms.reduce((s, r) => s + ((!r.wall && !r.surface) ? shoelace(r.points) * mPerPx * mPerPx : wallEncloses(r)), 0);
   const setStampRoof = (id, roof) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, roof } : s) });
   const toggleStampLock = (id) => onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) });
   const toggleShapeLock = (id) => onChange({ ...plan, rooms: rooms.map(r => r.id === id ? { ...r, locked: !r.locked } : r) });
@@ -2466,11 +2486,13 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
           <div className="flex justify-between items-center"><div className="font-semibold text-sm brand-text">Rooms & walls</div><div className="text-sm font-semibold">Total floor: {round2(totalArea).toFixed(2)} m²</div></div>
           {rooms.map(r => {
             const kindLabel = r.fence ? "Fence" : r.wall ? (r.curved ? "Curve" : "Wall") : r.surface ? SURFACE_LABEL[r.surface] : "Room";
+            const encl = wallEncloses(r);   // >0 when this wall run closes into a floor
             return (
             <div key={r.id} className="rounded-lg p-2 space-y-1.5" style={{ border: "1px solid var(--line)", opacity: r.locked ? 0.65 : 1 }}>
               <div className="flex items-center gap-2">
                 <span className="chip">{kindLabel}</span>
                 <input className="inp !py-1" style={{ flex: "1 1 100px" }} placeholder="Name…" value={r.name || ""} onChange={e => renameShape(r.id, e.target.value)} disabled={r.locked} />
+                {encl > 0.01 && <span className="chip" title="Floor area enclosed by this wall run" style={{ background: "rgba(2,34,75,.06)" }}>⌂ {round2(encl).toFixed(2)} m²</span>}
                 <span className="font-semibold whitespace-nowrap">{round2(shapeQty(r)).toFixed(2)}{r.wall ? " m" : " m²"}</span>
                 <button className="btn btn-ghost !p-1.5" title={r.locked ? "Unlock" : "Lock"} onClick={() => toggleShapeLock(r.id)}>{r.locked ? "🔒" : "🔓"}</button>
                 <button className="btn btn-ghost !p-1.5" onClick={() => delShape(r.id)}><IcTrash size={15} /></button>
@@ -2479,7 +2501,7 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
                 {!r.surface && !r.fence && <label className="flex items-center gap-1">H<NumInput value={r.height || plan.wallHeight || 2.7} onCommit={v => setHeight(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
                 {r.wall && !r.fence && <label className="flex items-center gap-1">Thick<NumInput value={round2(r.thick != null ? r.thick : WALL_THICK.int)} onCommit={v => setWallThick(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
                 {!r.wall && !r.surface && <label className="flex items-center gap-1">Wall<NumInput value={round2(r.thick != null ? r.thick : WALL_THICK.ext)} onCommit={v => setWallThick(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
-                {!r.wall && !r.surface && <select className="inp !py-1 !w-auto" value={r.floorType || ""} onChange={e => setFloorType(r.id, e.target.value)}>{FLOOR_TYPES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>}
+                {((!r.wall && !r.surface) || encl > 0.01) && <select className="inp !py-1 !w-auto" value={r.floorType || ""} onChange={e => setFloorType(r.id, e.target.value)} title="Floor finish for this space">{FLOOR_TYPES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>}
                 {r.surface && <label className="flex items-center gap-1">Slab height<NumInput value={round2(r.slabH || 0)} onCommit={v => setSlabH(r.id, v)} className="inp !py-1" style={{ width: 60 }} />m</label>}
                 <select className="inp !py-1" style={{ flex: "1 1 140px" }} value={r.priceItemId || ""} onChange={e => setLink(r.id, e.target.value)}><option value="">— link {r.wall ? "m" : "m²"} rate —</option>{items.filter(i => unitFamily(i.unit) === (r.wall ? "length" : "area") || i.id === r.priceItemId).map(i => <option key={i.id} value={i.id}>{i.description} ({money(i.rate)}/{i.unit})</option>)}</select>
               </div>
