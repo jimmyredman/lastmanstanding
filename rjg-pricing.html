@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v61 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v62 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2040,8 +2040,14 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
   );
 }
 
-function FloorPlanEditor({ plan, onChange, onAddToQuote }){
+function FloorPlanEditor({ plan, onChange: rawChange, onAddToQuote }){
   const { items, notify, settings } = useStore();
+  // undo history — every change snapshots the previous plan so an accidental
+  // tap (a stray object, a finished shape, a moved wall) can be reverted.
+  const undoRef = useRef([]);
+  const [undoN, setUndoN] = useState(0);
+  const onChange = (next) => { undoRef.current.push(plan); if (undoRef.current.length > 80) undoRef.current.shift(); setUndoN(undoRef.current.length); rawChange(next); };
+  const undoPlan = () => { const prev = undoRef.current.pop(); if (!prev) return; setUndoN(undoRef.current.length); setDraft(null); setSel(null); setSelShape(null); setWallRoom(null); rawChange(prev); };
   const [show3d, setShow3d] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
   const canvasRef = useRef(null);
@@ -2636,7 +2642,8 @@ function FloorPlanEditor({ plan, onChange, onAddToQuote }){
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={ortho} onChange={e => setOrtho(e.target.checked)} /> Straighten (90°/45°)</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={labels} onChange={e => setLabels(e.target.checked)} /> Labels</label>
         <label className="flex items-center gap-1 text-sm mt-4"><input type="checkbox" checked={cleanView} onChange={e => setCleanView(e.target.checked)} /> Clean view</label>
-        {(pr0.length > 0 || ps0.length > 0) && <button className="btn btn-ghost !py-1 mt-3 ml-auto" onClick={() => setAllLocked(anyUnlocked)} title="Lock or unlock every room, wall and object">{anyUnlocked ? "🔒 Lock all" : "🔓 Unlock all"}</button>}
+        <button className="btn btn-ghost !py-1 mt-3 ml-auto" style={{ opacity: undoN ? 1 : 0.45 }} disabled={!undoN} onClick={undoPlan} title="Undo the last change (accidental object, moved wall, etc.)">↶ Undo{undoN ? " (" + undoN + ")" : ""}</button>
+        {(pr0.length > 0 || ps0.length > 0) && <button className="btn btn-ghost !py-1 mt-3" onClick={() => setAllLocked(anyUnlocked)} title="Lock or unlock every room, wall and object">{anyUnlocked ? "🔒 Lock all" : "🔓 Unlock all"}</button>}
         {(rooms.length > 0 || stamps.length > 0) && <button className="btn btn-ghost !py-1 mt-3" onClick={clearAll}><IcTrash size={14} /> Clear plan</button>}
       </div>
       <div className="flex gap-2 items-center flex-wrap">
