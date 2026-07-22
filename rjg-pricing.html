@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v66 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v67 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1308,14 +1308,20 @@ function drawSiteStamp(ctx, s){
   ctx.restore();
 }
 function loadImg(src){ return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("image load failed")); im.src = src; }); }
-// Free aerial: geocode (Nominatim) then a static satellite image (Esri World Imagery). Cached into the plan → offline after.
+// Aerial capture area presets — half-width in degrees longitude (smaller = tighter, sharper for house-scale drawing)
+const AERIAL_AREAS = [["close", "Close (~180 m)", 0.0009], ["site", "Site (~350 m)", 0.0017], ["wide", "Wide (~700 m)", 0.0034]];
+// Free aerial: geocode (Nominatim) then a static satellite image (Esri World Imagery). Captured at high
+// resolution so you can zoom right in to draw around a house; cached into the sheet → offline afterwards.
 async function fetchAerialImage(lat, lon, span){
-  const d = span || 0.0035, W = 1200, H = 900, dLat = d * 0.72;
+  const d = span || 0.0017;
+  // keep ground pixels roughly square: 1° lat is constant, 1° lon shrinks by cos(lat)
+  const dLat = d * Math.cos(lat * Math.PI / 180);
+  const W = 2048, H = Math.round(W * dLat / d);   // ~2048 × 2048·(dLat/d)
   const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
   const url = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image";
   const im = await loadImg(url);
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; cv.getContext("2d").drawImage(im, 0, 0, W, H);
-  return { bg: cv.toDataURL("image/jpeg", 0.85), natW: W, natH: H, lat, lon, span: d };
+  return { bg: cv.toDataURL("image/jpeg", 0.9), natW: W, natH: H, lat, lon, span: d };
 }
 async function geocodeAU(query){
   const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(query), { headers: { "Accept": "application/json" } });
@@ -2133,29 +2139,33 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const [undoN, setUndoN] = useState(0);
   const setDoc = (next) => { undoRef.current.push(doc); if (undoRef.current.length > 80) undoRef.current.shift(); setUndoN(undoRef.current.length); rawChange(next); };
   const undoPlan = () => { const prev = undoRef.current.pop(); if (!prev) return; setUndoN(undoRef.current.length); setDraft(null); setSel(null); rawChange(prev); };
-  // change the active sheet (writes back into the sheets array)
   const patchSheet = (patch, id) => { const sid = id || activeId; setDoc({ ...doc, sheets: sheets.map(s => s.id === sid ? { ...s, ...patch } : s) }); };
 
   const canvasRef = useRef(null), wrapRef = useRef(null);
   const [wrapW, setWrapW] = useState(360);
-  const [tool, setTool] = useState("move");       // move | place | fence | note
+  const [tool, setTool] = useState("move");
   const [stampType, setStampType] = useState("bin");
   const [fenceName, setFenceName] = useState("New site fence");
   const [fenceColor, setFenceColor] = useState("#e11d2e");
   const [fenceStyle, setFenceStyle] = useState("dashed");
-  const [draft, setDraft] = useState(null);         // building a fence line { name, color, style, points:[] }
-  const [sel, setSel] = useState(null);             // selected item { kind:'stamp'|'note', id }
+  const [draft, setDraft] = useState(null);
+  const [sel, setSel] = useState(null);
   const [drag, setDrag] = useState(null);
-  const [preview, setPreview] = useState(null);     // live { stamps, notes, lines } during a drag
-  const [zoom, setZoom] = useState(1);
+  const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState("");
   const [showLoc, setShowLoc] = useState(false);
   const [locQuery, setLocQuery] = useState("");
+  const [aerialArea, setAerialArea] = useState("site");
   const bgImg = useRef(null);
   const [bgRev, setBgRev] = useState(0);
-  const gPointers = useRef(new Map()), pinch = useRef(null), zoomAnchor = useRef(null), moved = useRef(false);
-  const dragRef = useRef(null);   // active drag lives in a ref so pointermove reads it synchronously (no stale state during a fast drag)
+  const gPointers = useRef(new Map()), pinch = useRef(null), moved = useRef(false);
+  const dragRef = useRef(null);
   const startDrag = (d) => { dragRef.current = d; setDrag(d); };
+  // view transform: screen = world * scale + t. Fixed-size canvas — zoom/pan just change this,
+  // so deep zoom stays sharp and light (no giant backing canvas).
+  const [view, setView] = useState(null);
+  const viewRef = useRef(null);
+  const applyView = (v) => { viewRef.current = v; setView(v); };
 
   const stamps = (preview && preview.stamps) || sheet.stamps || [];
   const notes = (preview && preview.notes) || sheet.notes || [];
@@ -2164,52 +2174,55 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const worldH = sheet.bg ? (sheet.natH || 900) : 900;
 
   useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
-  // load the active sheet's background whenever it changes
   useEffect(() => { if (!sheet.bg){ bgImg.current = null; setBgRev(r => r + 1); return; } let live = true; loadImg(sheet.bg).then(im => { if (live){ bgImg.current = im; setBgRev(r => r + 1); } }).catch(() => {}); return () => { live = false; }; }, [sheet.bg]);
 
-  const S = Math.min(1, wrapW / worldW) * zoom;
-  const cssW = worldW * S, cssH = worldH * S;
-  // anchor the scroll so a chosen content point stays put across a zoom change
-  const anchorAt = (sx, sy) => { const wrap = wrapRef.current; if (!wrap) return; zoomAnchor.current = { fx: (wrap.scrollLeft + sx) / (wrap.scrollWidth || 1), fy: (wrap.scrollTop + sy) / (wrap.scrollHeight || 1), sx, sy }; };
-  const zoomBy = (f) => { const wrap = wrapRef.current; if (wrap) anchorAt(wrap.clientWidth/2, wrap.clientHeight/2); setZoom(z => clamp(z * f, 0.25, 8)); };
-  useEffect(() => {
-    const wrap = wrapRef.current; if (!wrap) return;
-    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); anchorAt(e.clientX-rect.left, e.clientY-rect.top); setZoom(z => clamp(z * (e.deltaY < 0 ? 1.15 : 1/1.15), 0.25, 8)); };
-    wrap.addEventListener("wheel", onWheel, { passive: false });
-    return () => wrap.removeEventListener("wheel", onWheel);
-  }, []);
-  useLayoutEffect(() => { const wrap = wrapRef.current, a = zoomAnchor.current; if (!wrap || !a) return; wrap.scrollLeft = a.fx * wrap.scrollWidth - a.sx; wrap.scrollTop = a.fy * wrap.scrollHeight - a.sy; zoomAnchor.current = null; }, [zoom]);
-  const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: clamp((e.clientX - r.left) / S, 0, worldW), y: clamp((e.clientY - r.top) / S, 0, worldH) }; };
+  const cw = Math.max(200, wrapW);
+  const ch = clamp(Math.round(wrapW * 0.72), 300, 620);
+  const fitScale = Math.min(cw / worldW, ch / worldH) || 1;
+  const minScale = fitScale * 0.5, maxScale = Math.max(fitScale * 60, 16);
+  const fitView = () => { const sc = Math.min(cw / worldW, ch / worldH); return { scale: sc, tx: (cw - worldW*sc)/2, ty: (ch - worldH*sc)/2 }; };
+  // refit when the sheet/background or the canvas size changes
+  const fitKey = activeId + ":" + worldW + "x" + worldH + "@" + cw + "x" + ch;
+  useEffect(() => { applyView(fitView()); }, [fitKey]);
 
-  const stampHandles = (s) => {
-    const a = (s.angle || 0) * Math.PI / 180, w = s.size || 46, gap = 14 / S;
+  const zoomTo = (nextScale, sx, sy) => { const v = viewRef.current; if (!v) return; const s = clamp(nextScale, minScale, maxScale); const wx = (sx - v.tx)/v.scale, wy = (sy - v.ty)/v.scale; applyView({ scale: s, tx: sx - wx*s, ty: sy - wy*s }); };
+  const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(), v = viewRef.current || fitView(); const sx = e.clientX - r.left, sy = e.clientY - r.top; return { x: clamp((sx - v.tx)/v.scale, 0, worldW), y: clamp((sy - v.ty)/v.scale, 0, worldH) }; };
+  const SC = () => (viewRef.current ? viewRef.current.scale : fitScale);
+
+  const stampHandles = (s, scale) => {
+    const a = (s.angle || 0) * Math.PI / 180, w = s.size || 46, gap = 14 / scale;
     const rot = (lx, ly) => ({ x: s.x + lx*Math.cos(a) - ly*Math.sin(a), y: s.y + lx*Math.sin(a) + ly*Math.cos(a) });
-    return { rotate: rot(0, -(w/2 + gap + 16/S)), size: rot(w/2 + gap, w/2 + gap), del: rot(-(w/2 + gap), -(w/2 + gap)) };
+    return { rotate: rot(0, -(w/2 + gap + 16/scale)), size: rot(w/2 + gap, w/2 + gap), del: rot(-(w/2 + gap), -(w/2 + gap)) };
+  };
+
+  // draw the site markups in world coordinates (transform already applied). `unit` = screen px per world px,
+  // used to keep line thickness / note text a constant on-screen size at any zoom.
+  const paintMarkups = (ctx, unit, dots) => {
+    lines.forEach(l => { const lp = lineProps(l), pts = l.points; if (!pts.length) return; ctx.save(); ctx.strokeStyle = lp.color; ctx.lineWidth = 3/unit; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash((SITE_LINE_DASH[lp.style] || []).map(x => x/unit)); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); if (dots){ ctx.fillStyle = lp.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/unit, 0, 7); ctx.fill(); }); } ctx.restore(); });
+    stamps.forEach(s => drawSiteStamp(ctx, s));
+    notes.forEach(n => { ctx.save(); ctx.font = "700 " + (15/unit) + "px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top"; const tw = ctx.measureText(n.text || "").width; ctx.fillStyle = "rgba(255,255,255,.86)"; rrect(ctx, n.x - 4/unit, n.y - 3/unit, tw + 8/unit, 20/unit, 3/unit); ctx.fill(); ctx.fillStyle = "#c01722"; ctx.fillText(n.text || "", n.x, n.y); ctx.restore(); });
   };
 
   useEffect(() => {
-    const cv = canvasRef.current; if (!cv) return;
+    const cv = canvasRef.current; if (!cv || !view) return;
     const dpr = window.devicePixelRatio || 1;
-    cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
-    const ctx = cv.getContext("2d"); ctx.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
-    ctx.clearRect(0, 0, worldW, worldH);
-    if (bgImg.current){ ctx.drawImage(bgImg.current, 0, 0, worldW, worldH); }
-    else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, worldW, worldH); ctx.fillStyle = "#aab3bf"; ctx.font = "600 22px system-ui"; ctx.textAlign = "center"; ctx.fillText("Add a background — upload a drawing, take a photo,", worldW/2, worldH/2 - 16); ctx.fillText("or drop an aerial from a searched location.", worldW/2, worldH/2 + 16); }
-    const drawLine = (l) => {
-      const lp = lineProps(l), pts = l.points; if (pts.length < 1) return;
-      ctx.save(); ctx.strokeStyle = lp.color; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(SITE_LINE_DASH[lp.style] || []);
-      ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]);
-      if (tool === "move"){ ctx.fillStyle = lp.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); }
-      ctx.restore();
-    };
-    lines.forEach(l => drawLine(l));
-    stamps.forEach(s => drawSiteStamp(ctx, s));
-    notes.forEach(n => { ctx.save(); ctx.font = "700 15px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top"; const tw = ctx.measureText(n.text || "").width; ctx.fillStyle = "rgba(255,255,255,.86)"; rrect(ctx, n.x - 4, n.y - 3, tw + 8, 20, 3); ctx.fill(); ctx.fillStyle = "#c01722"; ctx.fillText(n.text || "", n.x, n.y); ctx.restore(); });
-    if (draft && draft.points.length){ const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; ctx.save(); ctx.strokeStyle = draft.color; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(SITE_LINE_DASH[draft.style] || []); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = draft.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); ctx.restore(); }
+    cv.width = cw*dpr; cv.height = ch*dpr; cv.style.width = cw + "px"; cv.style.height = ch + "px";
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#dfe4ea"; ctx.fillRect(0, 0, cw, ch);
+    const { scale, tx, ty } = view;
+    ctx.save(); ctx.translate(tx, ty); ctx.scale(scale, scale);
+    // clip to the sheet so markups outside the image aren't drawn over the letterbox
+    ctx.beginPath(); ctx.rect(0, 0, worldW, worldH); ctx.clip();
+    if (bgImg.current){ ctx.imageSmoothingQuality = "high"; ctx.drawImage(bgImg.current, 0, 0, worldW, worldH); }
+    else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, worldW, worldH); }
+    paintMarkups(ctx, scale, tool === "move");
+    // live fence draft
+    if (draft && draft.points.length){ const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; ctx.save(); ctx.strokeStyle = draft.color; ctx.lineWidth = 3/scale; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash((SITE_LINE_DASH[draft.style] || []).map(x => x/scale)); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = draft.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/scale, 0, 7); ctx.fill(); }); ctx.restore(); }
+    // selected stamp handles (constant on-screen size via /scale)
     if (tool === "move" && sel && sel.kind === "stamp"){
       const s = stamps.find(x => x.id === sel.id);
-      if (s){ const h = stampHandles(s), w0 = s.size || 46, a = (s.angle||0)*Math.PI/180, hs = 1/S, knob = 12*hs;
-        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(a); ctx.strokeStyle = "#e8792b"; ctx.setLineDash([5,4]); ctx.lineWidth = 1.5*hs; ctx.strokeRect(-w0/2, -w0/2, w0, w0); ctx.restore(); ctx.setLineDash([]);
+      if (s){ const h = stampHandles(s, scale), w0 = s.size || 46, a = (s.angle||0)*Math.PI/180, hs = 1/scale, knob = 12*hs;
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(a); ctx.strokeStyle = "#e8792b"; ctx.setLineDash([5*hs,4*hs]); ctx.lineWidth = 1.5*hs; ctx.strokeRect(-w0/2, -w0/2, w0, w0); ctx.restore(); ctx.setLineDash([]);
         ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "#e8792b"; ctx.lineWidth = 1.5*hs;
         ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.rotate.x, h.rotate.y); ctx.stroke();
         ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, knob, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, knob*0.45, 0, 7); ctx.fill();
@@ -2217,29 +2230,39 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, knob, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*hs; const cx = knob*0.4; ctx.beginPath(); ctx.moveTo(h.del.x-cx,h.del.y-cx); ctx.lineTo(h.del.x+cx,h.del.y+cx); ctx.moveTo(h.del.x+cx,h.del.y-cx); ctx.lineTo(h.del.x-cx,h.del.y+cx); ctx.stroke();
       }
     }
-    (() => { const nx = worldW - 40, ny = 44; ctx.save(); ctx.translate(nx, ny); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0,0,22,0,7); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#c01722"; ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(6,4); ctx.lineTo(0,0); ctx.lineTo(-6,4); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#111"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("N", 0, 12); ctx.restore(); })();
-  }, [stamps, notes, lines, draft, tool, sel, cssW, cssH, S, worldW, worldH, bgRev, activeId]);
+    ctx.restore();
+    // placeholder prompt when no background (screen space)
+    if (!bgImg.current){ ctx.fillStyle = "#8792a0"; ctx.font = "600 15px system-ui"; ctx.textAlign = "center"; ctx.fillText("Add a background — upload a drawing, take a photo,", cw/2, ch/2 - 12); ctx.fillText("or drop an aerial from a searched location.", cw/2, ch/2 + 12); }
+    // north arrow (screen-space, top-right corner)
+    (() => { ctx.save(); ctx.translate(cw - 30, 30); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0,0,18,0,7); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#c01722"; ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(5,3); ctx.lineTo(0,0); ctx.lineTo(-5,3); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#111"; ctx.font = "700 10px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("N", 0, 10); ctx.restore(); })();
+  }, [stamps, notes, lines, draft, tool, sel, view, cw, ch, worldW, worldH, bgRev]);
 
   const hitStampHandle = (p) => {
     if (!(sel && sel.kind === "stamp")) return null;
     const s = stamps.find(x => x.id === sel.id); if (!s) return null;
-    const h = stampHandles(s), thr = 15 / S;
+    const scale = SC(), h = stampHandles(s, scale), thr = 15 / scale;
     if (dist(p, h.del) < thr) return "del"; if (dist(p, h.rotate) < thr) return "rotate"; if (dist(p, h.size) < thr) return "size"; return null;
   };
   const hitTest = (p) => {
-    const thr = 16 / S;
-    for (let i = notes.length - 1; i >= 0; i--){ const n = notes[i]; if (n.locked) continue; if (Math.abs(p.x - (n.x + 30)) < 40/S + 30/S && Math.abs(p.y - (n.y + 8)) < 16/S) return { kind: "note", id: n.id }; }
+    const scale = SC(), thr = 16 / scale;
+    for (let i = notes.length - 1; i >= 0; i--){ const n = notes[i]; if (n.locked) continue; if (Math.abs(p.x - (n.x + 30/scale)) < 70/scale && Math.abs(p.y - (n.y + 8/scale)) < 16/scale) return { kind: "note", id: n.id }; }
     for (let i = stamps.length - 1; i >= 0; i--){ const s = stamps[i]; if (s.locked) continue; if (dist(p, s) < Math.max(thr, (s.size || 46)/2)) return { kind: "stamp", id: s.id }; }
     for (let i = lines.length - 1; i >= 0; i--){ const l = lines[i]; if (l.locked) continue; for (let j = 0; j < l.points.length; j++){ if (dist(p, l.points[j]) < thr) return { kind: "vertex", id: l.id, idx: j }; } }
     return null;
   };
 
+  // wheel = zoom to cursor (no page scroll)
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const onWheel = (e) => { e.preventDefault(); const r = cv.getBoundingClientRect(); const v = viewRef.current; if (!v) return; zoomTo(v.scale * (e.deltaY < 0 ? 1.15 : 1/1.15), e.clientX - r.left, e.clientY - r.top); };
+    cv.addEventListener("wheel", onWheel, { passive: false });
+    return () => cv.removeEventListener("wheel", onWheel);
+  }, [minScale, maxScale]);
+
   const startPinch = () => {
-    const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
-    const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
-    // track the current finger distance + midpoint so we can pan (midpoint drift) and zoom (distance change) together
-    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, mx, my };
-    setDraft(null); setDrag(null); setPreview(null);
+    const cv = canvasRef.current, pts = [...gPointers.current.values()], rect = cv.getBoundingClientRect();
+    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, s0: (viewRef.current||fitView()).scale, mx: (pts[0].x+pts[1].x)/2 - rect.left, my: (pts[0].y+pts[1].y)/2 - rect.top };
+    setDraft(null); dragRef.current = null; setDrag(null); setPreview(null);
   };
   const onDown = (e) => {
     gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -2247,7 +2270,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
     moved.current = false;
     const p = toWorld(e);
-    if (tool === "place"){ const s = { id: uid(), type: stampType, x: p.x, y: p.y, size: 46, angle: 0 }; patchSheet({ stamps: [...(sheet.stamps||[]), s] }); setSel({ kind: "stamp", id: s.id }); return; }
+    if (tool === "place"){ const s = { id: uid(), type: stampType, x: p.x, y: p.y, size: Math.max(20, 46/SC()), angle: 0 }; patchSheet({ stamps: [...(sheet.stamps||[]), s] }); setSel({ kind: "stamp", id: s.id }); return; }
     if (tool === "note"){ const text = prompt("Note text:"); if (text != null && text.trim()){ patchSheet({ notes: [...(sheet.notes||[]), { id: uid(), x: p.x, y: p.y, text: text.trim() }] }); } return; }
     if (tool === "fence"){ if (!draft){ setDraft({ name: fenceName, color: fenceColor, style: fenceStyle, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
     const handle = hitStampHandle(p);
@@ -2255,37 +2278,36 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     const hit = hitTest(p);
     if (hit){ if (hit.kind === "stamp" || hit.kind === "note") setSel({ kind: hit.kind, id: hit.id }); else setSel(null);
       const base = hit.kind === "stamp" ? stamps.find(x => x.id === hit.id) : hit.kind === "note" ? notes.find(x => x.id === hit.id) : null;
-      startDrag({ ...hit, start: p, s0: base ? { ...base } : null, points0: hit.kind === "vertex" ? (lines.find(x=>x.id===hit.id).points.map(pt=>({...pt}))) : null });
+      startDrag({ ...hit, start: p, s0: base ? { ...base } : null });
     } else {
       // empty space in Move → one-finger drag pans the view (like a maps app)
-      setSel(null);
-      const wrap = wrapRef.current;
-      startDrag({ kind: "pan", sx: e.clientX, sy: e.clientY, l0: wrap ? wrap.scrollLeft : 0, t0: wrap ? wrap.scrollTop : 0 });
+      setSel(null); const v = viewRef.current || fitView();
+      startDrag({ kind: "pan", sx0: e.clientX, sy0: e.clientY, tx0: v.tx, ty0: v.ty });
     }
   };
   const onMove = (e) => {
     if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch.current && gPointers.current.size >= 2){
-      const pts = [...gPointers.current.values()]; const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
-      const wrap = wrapRef.current, rect = wrap.getBoundingClientRect();
+      const pts = [...gPointers.current.values()], d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+      const cv = canvasRef.current, rect = cv.getBoundingClientRect();
       const mx = (pts[0].x+pts[1].x)/2 - rect.left, my = (pts[0].y+pts[1].y)/2 - rect.top;
-      // PAN: move the scroll opposite to the two-finger midpoint drift (works even with no zoom change)
-      wrap.scrollLeft -= (mx - pinch.current.mx); wrap.scrollTop -= (my - pinch.current.my);
-      pinch.current.mx = mx; pinch.current.my = my;
-      // ZOOM: only when the pinch distance actually changes; anchor on the midpoint (uses the just-updated scroll)
-      if (Math.abs(d - (pinch.current.dPrev || pinch.current.d0)) > 0.5){ anchorAt(mx, my); setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.25, 8)); }
-      pinch.current.dPrev = d;
+      const v = viewRef.current; if (!v) return;
+      // pan by midpoint drift, then zoom about the current midpoint
+      let tx = v.tx + (mx - pinch.current.mx), ty = v.ty + (my - pinch.current.my);
+      const s0 = v.scale, s = clamp(pinch.current.s0 * d / pinch.current.d0, minScale, maxScale);
+      const wx = (mx - tx)/s0, wy = (my - ty)/s0; tx = mx - wx*s; ty = my - wy*s;
+      applyView({ scale: s, tx, ty }); pinch.current.mx = mx; pinch.current.my = my;
       return;
     }
-    const drag = dragRef.current;   // read from the ref so a fast drag isn't lost to stale state
-    if (drag && drag.kind === "pan"){ const wrap = wrapRef.current; if (wrap){ wrap.scrollLeft = drag.l0 - (e.clientX - drag.sx); wrap.scrollTop = drag.t0 - (e.clientY - drag.sy); } return; }
+    const drag = dragRef.current;
+    if (drag && drag.kind === "pan"){ const v = viewRef.current; applyView({ ...v, tx: drag.tx0 + (e.clientX - drag.sx0), ty: drag.ty0 + (e.clientY - drag.sy0) }); return; }
     const p = toWorld(e); moved.current = true;
     if (draft && tool === "fence"){ setDraft({ ...draft, preview: p }); return; }
     if (!drag) return;
     if (drag.kind === "stamp"){ setPreview({ stamps: stamps.map(s => s.id === drag.id ? { ...s, x: clamp(drag.s0.x + (p.x-drag.start.x),0,worldW), y: clamp(drag.s0.y + (p.y-drag.start.y),0,worldH) } : s) }); }
     else if (drag.kind === "note"){ setPreview({ notes: notes.map(n => n.id === drag.id ? { ...n, x: clamp(drag.s0.x + (p.x-drag.start.x),0,worldW), y: clamp(drag.s0.y + (p.y-drag.start.y),0,worldH) } : n) }); }
     else if (drag.kind === "vertex"){ setPreview({ lines: lines.map(l => l.id === drag.id ? { ...l, points: l.points.map((pt,i) => i === drag.idx ? { x: p.x, y: p.y } : pt) } : l) }); }
-    else if (drag.kind === "size"){ const s = drag.s0; const nd = Math.max(18, Math.hypot(p.x - s.x, p.y - s.y) * 1.42); setPreview({ stamps: stamps.map(x => x.id === drag.id ? { ...x, size: nd } : x) }); }
+    else if (drag.kind === "size"){ const s = drag.s0; const nd = Math.max(12, Math.hypot(p.x - s.x, p.y - s.y) * 1.42); setPreview({ stamps: stamps.map(x => x.id === drag.id ? { ...x, size: nd } : x) }); }
     else if (drag.kind === "rotate"){ const s = drag.s0; let ang = Math.atan2(p.y - s.y, p.x - s.x) * 180/Math.PI + 90; ang = Math.round(ang/5)*5; setPreview({ stamps: stamps.map(x => x.id === drag.id ? { ...x, angle: ((ang%360)+360)%360 } : x) }); }
   };
   const onUp = (e) => {
@@ -2296,44 +2318,50 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   };
 
   const finishLine = () => { if (draft && draft.points.length >= 2){ patchSheet({ lines: [...(sheet.lines||[]), { id: uid(), name: draft.name, color: draft.color, style: draft.style, points: draft.points }] }); } setDraft(null); };
+  const zoomPct = view ? Math.round(view.scale / fitScale * 100) : 100;
+
+  // ---- render the whole sheet (full world) to a data-URL for the report ----
+  const renderFull = () => {
+    const cap = 1800, sc = Math.min(1, cap / Math.max(worldW, worldH)), ow = Math.round(worldW*sc), oh = Math.round(worldH*sc);
+    const cv = document.createElement("canvas"); cv.width = ow; cv.height = oh; const ctx = cv.getContext("2d");
+    ctx.save(); ctx.scale(sc, sc);
+    if (bgImg.current){ ctx.imageSmoothingQuality = "high"; ctx.drawImage(bgImg.current, 0, 0, worldW, worldH); } else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0,0,worldW,worldH); }
+    paintMarkups(ctx, sc, false); ctx.restore();
+    return cv.toDataURL("image/jpeg", 0.9);
+  };
 
   // ---- sheets ----
-  const captureSnap = () => { const cv = canvasRef.current; return cv ? cv.toDataURL("image/jpeg", 0.9) : null; };
-  const switchSheet = (id) => { if (id === activeId) return; const snap = captureSnap(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s) }); };
-  const addSheet = () => { const snap = captureSnap(); const id = uid(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), stamps: [], lines: [], notes: [] }] }); };
+  const switchSheet = (id) => { if (id === activeId) return; const snap = (sheet.bg||sheet.stamps||sheet.lines||sheet.notes) ? renderFull() : sheet.snapshot; setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s) }); };
+  const addSheet = () => { const snap = renderFull(); const id = uid(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), stamps: [], lines: [], notes: [] }] }); };
   const delSheet = (id) => { if (sheets.length <= 1){ if (confirm("Clear this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined, stamps: [], lines: [], notes: [] }, id); return; } if (!confirm("Delete this sheet?")) return; const remaining = sheets.filter(s => s.id !== id); setDoc({ ...doc, sheets: remaining, active: (id === activeId ? remaining[0].id : activeId) }); };
   const renameSheet = (id, name) => setDoc({ ...doc, sheets: sheets.map(s => s.id === id ? { ...s, name } : s) });
 
-  // build one sheet from an image data-url + dims
-  const makeImgSheet = (bg, natW, natH, name) => ({ id: uid(), name: name || ("Sheet " + (sheets.length + 1)), bg, natW, natH, loc: null, stamps: [], lines: [], notes: [] });
-  const readImage = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const MAX = 2200, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX/Math.max(w,h)); let bg = r.result, nw = w, nh = h; if (sc < 1){ try { const cv = document.createElement("canvas"); nw = Math.round(w*sc); nh = Math.round(h*sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im,0,0,nw,nh); bg = cv.toDataURL("image/jpeg", 0.85); } catch(_){} } res({ bg, natW: nw, natH: nh, name: (file.name||"").replace(/\.[^.]+$/, "") }); }; im.onerror = () => rej(new Error("decode")); im.src = r.result; }; r.onerror = () => rej(new Error("read")); r.readAsDataURL(file); });
+  const readImage = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const MAX = 2600, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX/Math.max(w,h)); let bg = r.result, nw = w, nh = h; if (sc < 1){ try { const cv = document.createElement("canvas"); nw = Math.round(w*sc); nh = Math.round(h*sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im,0,0,nw,nh); bg = cv.toDataURL("image/jpeg", 0.9); } catch(_){} } res({ bg, natW: nw, natH: nh, name: (file.name||"").replace(/\.[^.]+$/, "") }); }; im.onerror = () => rej(new Error("decode")); im.src = r.result; }; r.onerror = () => rej(new Error("read")); r.readAsDataURL(file); });
   const onUpload = async (e) => {
     const files = [...e.target.files]; if (!files.length) return; setBusy("upload"); e.target.value = "";
     try {
-      const snap = captureSnap();
+      const cur = renderFull();
       const imgs = []; for (const f of files){ try { imgs.push(await readImage(f)); } catch(_){} }
       if (!imgs.length){ alert("Could not load those images. Use JPG or PNG."); setBusy(""); return; }
-      // first image fills the current sheet if it's empty; the rest become new sheets
-      let base = sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s);
+      let base = sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s);
       let newActive = activeId, i0 = 0;
-      if (sheetEmpty(sheet)){ const im = imgs[0]; base = base.map(s => s.id === activeId ? { ...s, bg: im.bg, natW: im.natW, natH: im.natH, loc: null, snapshot: undefined, name: s.name } : s); i0 = 1; }
-      const extra = imgs.slice(i0).map(im => makeImgSheet(im.bg, im.natW, im.natH, im.name));
+      if (sheetEmpty(sheet)){ const im = imgs[0]; base = base.map(s => s.id === activeId ? { ...s, bg: im.bg, natW: im.natW, natH: im.natH, loc: null, snapshot: undefined } : s); i0 = 1; }
+      const extra = imgs.slice(i0).map(im => ({ id: uid(), name: im.name || ("Sheet " + (sheets.length + 1)), bg: im.bg, natW: im.natW, natH: im.natH, loc: null, stamps: [], lines: [], notes: [] }));
       if (extra.length) newActive = i0 === 1 ? activeId : extra[0].id;
       setDoc({ ...doc, active: newActive, sheets: [...base, ...extra] });
       notify(imgs.length + (imgs.length === 1 ? " image added" : " images added as sheets"));
     } catch(err){ alert("Could not read those files."); }
     setBusy("");
   };
-  // set an aerial/background onto the active sheet if empty, else a new sheet
   const setBackground = (patch) => {
-    const snap = captureSnap();
     if (sheetEmpty(sheet)){ setDoc({ ...doc, sheets: sheets.map(s => s.id === activeId ? { ...s, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, snapshot: undefined } : s) }); }
-    else { const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
+    else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
   };
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon); setBackground({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const areaSpan = (AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[1])[2];
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaSpan); setBackground({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
-  const saveSnapshot = () => { const snap = captureSnap(); if (snap) patchSheet({ snapshot: snap }); notify("Saved for the report"); };
+  const saveSnapshot = () => { patchSheet({ snapshot: renderFull() }); notify("Saved for the report"); };
   const clearMarkups = () => { if ((stamps.length || lines.length || notes.length) && confirm("Clear all icons, fence lines and notes on this sheet? (Keeps the background.)")){ setSel(null); setDraft(null); patchSheet({ stamps: [], lines: [], notes: [], snapshot: undefined }); } };
   const removeBg = () => { if (confirm("Remove the background image on this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined }); };
 
@@ -2378,9 +2406,10 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         <div className="text-xs" style={{ color: "var(--muted)" }}>Select several files at once to add each as its own sheet.</div>
         {showLoc && <div className="flex gap-2 flex-wrap items-center p-2 rounded" style={{ background: "var(--bg)" }}>
           <input className="inp flex-1" style={{ minWidth: 200 }} placeholder="Search an address or suburb (e.g. 22 Percy St, West End QLD)" value={locQuery} onChange={e => setLocQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") searchLoc(); }} />
+          <label className="flex items-center gap-1 text-sm">Area <select className="inp !py-1 !w-auto" value={aerialArea} onChange={e => setAerialArea(e.target.value)}>{AERIAL_AREAS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <button className="btn btn-primary" disabled={busy === "aerial"} onClick={searchLoc}>{busy === "aerial" ? "…" : "Search"}</button>
           <button className="btn btn-ghost" disabled={busy === "aerial"} onClick={myLocation}>📍 Use my location</button>
-          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Grabs a satellite image (Esri World Imagery) and stores it in this job so it works offline afterwards. You need signal the first time.</div>
+          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>High-resolution satellite image (Esri World Imagery), stored in this job so it works offline afterwards. Pick a tighter <b>Area</b> for a sharper close-up to draw around buildings. You need signal the first time.</div>
         </div>}
         {sheet.loc && sheet.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {sheet.loc.name}</div>}
       </div>
@@ -2388,7 +2417,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
       {/* ---- tools ---- */}
       <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
-          {[["move","Move / edit"],["place","Place icon"],["fence","Fence / line"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
+          {[["move","Move / pan"],["place","Place icon"],["fence","Fence / line"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
         </div>
         <button className="btn btn-ghost !py-1 ml-auto" style={{ opacity: undoN ? 1 : 0.45 }} disabled={!undoN} onClick={undoPlan}>↶ Undo{undoN ? " (" + undoN + ")" : ""}</button>
         {(stamps.length || lines.length || notes.length) ? <button className="btn btn-ghost !py-1" onClick={clearMarkups}><IcTrash size={14} /> Clear markups</button> : null}
@@ -2396,7 +2425,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
       {tool === "place" && <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Icon:</span>
         <select className="inp !py-1.5 !w-auto" value={stampType} onChange={e => setStampType(e.target.value)}>{SITE_STAMPS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
-        <span className="text-sm" style={{ color: "var(--muted)" }}>Tap the plan to drop it. Switch to <b>Move / edit</b> to move, rotate, resize, lock or delete.</span>
+        <span className="text-sm" style={{ color: "var(--muted)" }}>Tap the plan to drop it. Switch to <b>Move / pan</b> to move, rotate, resize, lock or delete.</span>
       </div>}
       {tool === "fence" && <div className="flex gap-1.5 items-center flex-wrap card p-2">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Fence / line:</span>
@@ -2418,14 +2447,14 @@ function SitePlanEditor({ plan, onChange: rawChange }){
 
       <div className="flex items-center gap-2 flex-wrap text-sm">
         <span style={{ color: "var(--muted)" }}>Zoom</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => zoomBy(1/1.3)}>−</button>
-        <span style={{ minWidth: 42, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => zoomBy(1.3)}>+</button>
-        {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => { anchorAt(0,0); setZoom(1); }}>Fit</button>}
-        <span className="text-xs">· pinch or scroll to zoom · two fingers to pan</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => zoomTo(SC()/1.4, cw/2, ch/2)}>−</button>
+        <span style={{ minWidth: 46, textAlign: "center" }}>{zoomPct}%</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => zoomTo(SC()*1.4, cw/2, ch/2)}>+</button>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => applyView(fitView())}>Fit</button>
+        <span className="text-xs">· scroll or pinch to zoom in/out · drag empty space (or two fingers) to pan</span>
       </div>
-      <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "62vh" }}>
-        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", cursor: tool === "move" ? "default" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
+      <div ref={wrapRef} className="card overflow-hidden" style={{ lineHeight: 0 }}>
+        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", display: "block", cursor: tool === "move" ? "grab" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
 
       {sel && sel.kind === "stamp" && (() => { const s = stamps.find(x => x.id === sel.id); if (!s) return null; return (
@@ -4243,7 +4272,7 @@ function JobsScreen({ onOpen }){
                 {bits && <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{bits}</div>}
                 <div className="flex justify-between items-end mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
                   <span className="text-xs" style={{ color: "var(--muted)" }}>{fmtDate(p.date || p.createdAt)}</span>
-                  {kv.priced ? <span className="font-extrabold brand-text text-lg">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span> : <span className="text-xs font-semibold" style={{ color: kv.badge }}>Price request</span>}
+                  {kv.priced ? <span className="font-extrabold brand-text text-lg">{money(t.totalInc)}<span className="text-xs font-normal" style={{ color: "var(--muted)" }}> inc</span></span> : <span className="text-xs font-semibold" style={{ color: kv.badge }}>{jobKind(p) === "site" ? "Site plan" : "Price request"}</span>}
                 </div>
               </button>
             );
