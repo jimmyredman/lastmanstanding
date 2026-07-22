@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v71 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v72 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1348,34 +1348,37 @@ async function stitchTiles(lat, lon, d, z, urlFn){
   out.getContext("2d").drawImage(stitch, Math.round(cx0), Math.round(cy0), cw, chh, 0, 0, cw, chh);
   return out;
 }
+// Probe a single centre tile: returns its luminance variance, or throws ("cors" if it loaded but tainted).
+async function probeTile(urlFn, z, lat, lon){
+  const x = Math.floor(lon2tileF(lon, z)), y = Math.floor(lat2tileF(lat, z));
+  const im = await loadImg(urlFn(z, x, y));   // rejects on 404 / network / no-CORS-block
+  const c = document.createElement("canvas"); c.width = 40; c.height = 40; c.getContext("2d").drawImage(im, 0, 0, 40, 40);
+  try { return imgVariance(c); } catch(e){ throw new Error("cors"); }   // loaded but not readable → CORS-tainted
+}
 // Free aerial: the sharpest available satellite tiles for the spot, cached into the sheet → offline after.
-// Resilient: tries each source, records why any failed, and reports it so problems are visible on-device.
+// Probe each source (cheap) to find the deepest zoom that actually holds imagery, then stitch that.
 async function fetchAerialImage(lat, lon, span, zoom, only){
   const d = span || 0.0006, diag = [];
+  const short = (s) => s.name.replace(" imagery","").replace(" Government"," Gov");
   const sources = only ? AERIAL_SOURCES.filter(s => s.name === only) : AERIAL_SOURCES;
   for (const src of sources){
     if (!only && !src.inBounds(lat, lon)) continue;
-    const zTop = Math.min(zoom || 21, src.maxZ); let status = "no tiles reached";
-    for (let z = zTop; z >= zTop - 1 && z >= 16; z--){
+    const zTop = Math.min(zoom || 21, src.maxZ);
+    let useZ = null, why = "unreachable";
+    for (let z = zTop; z >= Math.max(15, zTop - 4); z--){
       try {
-        const cv = await stitchTiles(lat, lon, d, z, src.url);
-        let bg; try { bg = cv.toDataURL("image/jpeg", 0.92); } catch(e){ status = "blocked (no CORS)"; break; }   // tainted
-        let v = 99; try { v = imgVariance(cv); } catch(e){ v = 99; }
-        if (v < 7){ status = "blank at z" + z; continue; }                                                       // no imagery there
-        return { bg, natW: cv.width, natH: cv.height, lat, lon, span: d, source: src.name };
-      } catch(e){ status = "no tiles"; }
+        const v = await probeTile(src.url, z, lat, lon);
+        if (v < 3){ why = "blank"; continue; }   // uniform "no imagery here" placeholder → try a lower zoom
+        useZ = z; break;                          // real imagery at this zoom
+      } catch(e){ if (e && e.message === "cors"){ why = "blocked (no CORS)"; break; } why = "no tiles"; /* 404 at this z → try lower */ }
     }
-    diag.push(src.name.replace(" imagery","").replace(" Government"," Gov") + ": " + status);
+    if (useZ == null){ diag.push(short(src) + ": " + why); continue; }
+    try {
+      const cv = await stitchTiles(lat, lon, d, useZ, src.url);
+      return { bg: cv.toDataURL("image/jpeg", 0.92), natW: cv.width, natH: cv.height, lat, lon, span: d, source: src.name + " (z" + useZ + ")" };
+    } catch(e){ diag.push(short(src) + ": stitch failed"); }
   }
-  // last resort: Esri static export (always returns something, just softer)
-  try {
-    const dLat = d * Math.cos(lat * Math.PI / 180), W = 2048, H = Math.round(W * dLat / d);
-    const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
-    const im = await loadImg("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image");
-    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; cv.getContext("2d").drawImage(im, 0, 0, W, H);
-    return { bg: cv.toDataURL("image/jpeg", 0.9), natW: W, natH: H, lat, lon, span: d, source: "Esri (export)" };
-  } catch(e){ diag.push("Esri export: " + (e && e.message ? e.message : "failed")); }
-  throw new Error("No aerial loaded — " + (diag.join(" · ") || "no sources"));
+  throw new Error("No aerial loaded — " + (diag.join(" · ") || "no sources") + ". Try a different Source, or upload a drawing / photo.");
 }
 async function geocodeAU(query){
   const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(query), { headers: { "Accept": "application/json" } });
