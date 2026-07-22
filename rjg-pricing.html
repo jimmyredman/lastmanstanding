@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v72 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v73 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2237,7 +2237,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const cw = Math.max(200, wrapW);
   const ch = clamp(Math.round(wrapW * 0.72), 300, 620);
   const fitScale = Math.min(cw / worldW, ch / worldH) || 1;
-  const minScale = fitScale * 0.5, maxScale = Math.max(fitScale * 60, 16);
+  const minScale = fitScale * 0.2, maxScale = Math.max(fitScale * 60, 16);
   const fitView = () => { const sc = Math.min(cw / worldW, ch / worldH); return { scale: sc, tx: (cw - worldW*sc)/2, ty: (ch - worldH*sc)/2 }; };
   // refit when the sheet/background or the canvas size changes
   const fitKey = activeId + ":" + worldW + "x" + worldH + "@" + cw + "x" + ch;
@@ -2469,7 +2469,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
           <label className="flex items-center gap-1 text-sm">Source <select className="inp !py-1 !w-auto" value={aerialSrc} onChange={e => setAerialSrc(e.target.value)}><option value="">Auto (best)</option>{AERIAL_SOURCES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></label>
           <button className="btn btn-primary" disabled={busy === "aerial"} onClick={searchLoc}>{busy === "aerial" ? "…" : "Search"}</button>
           <button className="btn btn-ghost" disabled={busy === "aerial"} onClick={myLocation}>📍 Use my location</button>
-          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Pulls the sharpest free imagery for the spot — <b>Queensland Government aerial</b> in QLD, else Esri Clarity/Esri. Pick a tighter <b>Area</b> for a sharper close-up, or force a <b>Source</b> if one looks clearer. Stored in the job for offline use — you need signal the first time. For crisper-than-satellite detail, upload a survey/site plan or photo as a sheet.</div>
+          <div className="text-xs w-full p-2 rounded" style={{ background: "rgba(2,34,75,.06)", color: "var(--ink)" }}><b>Tip — for the clearest image, upload an aerial manually.</b> Open the map app you prefer (Google Maps / Earth, Nearmap, QImagery, etc.), screenshot the area, then use <b>Upload drawing(s)</b> above — it stays pin-sharp at any zoom. The free satellite below is best for overall site context.</div>
+          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Free imagery source: Esri (QLD Gov / Clarity where reachable). Pick a tighter <b>Area</b> for a sharper close-up, or force a <b>Source</b>. Stored in the job for offline use — you need signal the first time.</div>
         </div>}
         {sheet.loc && sheet.loc.name && <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: "var(--muted)" }}><span>📍 {sheet.loc.name}{sheet.loc.source ? " · " + sheet.loc.source : ""}</span><button className="btn btn-ghost !py-0.5 !px-2" disabled={busy === "aerial"} onClick={recaptureAerial}>{busy === "aerial" ? "…" : "↻ Re-capture sharper (current Area/Source)"}</button></div>}
       </div>
