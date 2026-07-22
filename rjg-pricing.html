@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v69 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v70 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1309,13 +1309,13 @@ function drawSiteStamp(ctx, s){
 }
 function loadImg(src){ return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("image load failed")); im.src = src; }); }
 // Aerial capture area presets — [key, label, half-width° lon, target tile zoom]. Smaller area + higher zoom = sharper.
-const AERIAL_AREAS = [["close", "Close — sharpest (~130 m)", 0.0006, 21], ["site", "Site (~270 m)", 0.0013, 20], ["wide", "Wide (~630 m)", 0.003, 19]];
-// Imagery sources, best-first. Each is a CORS-enabled XYZ tile service; we use the first that returns real
-// (non-blank, non-tainted) tiles for the spot. QLD Government imagery is far sharper than the generic Esri layer.
+const AERIAL_AREAS = [["building", "Building — max detail (~70 m)", 0.00033, 22], ["close", "Close (~130 m)", 0.0006, 21], ["site", "Site (~270 m)", 0.0013, 20], ["wide", "Wide (~630 m)", 0.003, 19]];
+// Imagery sources. Each is a CORS-enabled XYZ tile service; "Auto" tries them best-first and uses the first that
+// returns real (non-blank, non-tainted) tiles. QLD Government imagery is far sharper than the generic Esri layer.
 const AERIAL_SOURCES = [
   { name: "QLD Government imagery", maxZ: 21, inBounds: (lat, lon) => lat <= -9 && lat >= -29.5 && lon >= 137.9 && lon <= 154.5,
     url: (z, x, y) => "https://spatial-img.information.qld.gov.au/arcgis/rest/services/Basemaps/LatestStateProgram_AllUsers/MapServer/tile/" + z + "/" + y + "/" + x },
-  { name: "Esri Clarity", maxZ: 22, inBounds: () => true,
+  { name: "Esri Clarity", maxZ: 23, inBounds: () => true,
     url: (z, x, y) => "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x },
   { name: "Esri World Imagery", maxZ: 21, inBounds: () => true,
     url: (z, x, y) => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x },
@@ -1349,10 +1349,11 @@ async function stitchTiles(lat, lon, d, z, urlFn){
   return out;
 }
 // Free aerial: geocode (Nominatim) then the sharpest available satellite tiles, cached into the sheet → offline after.
-async function fetchAerialImage(lat, lon, span, zoom){
+async function fetchAerialImage(lat, lon, span, zoom, only){
   const d = span || 0.0006;
-  for (const src of AERIAL_SOURCES){
-    if (!src.inBounds(lat, lon)) continue;
+  const sources = only ? AERIAL_SOURCES.filter(s => s.name === only) : AERIAL_SOURCES;
+  for (const src of sources){
+    if (!only && !src.inBounds(lat, lon)) continue;
     const zTop = Math.min(zoom || 21, src.maxZ);
     // try the target zoom, then one level down (some areas aren't tiled at the very top zoom)
     for (let z = zTop; z >= zTop - 1 && z >= 16; z--){
@@ -2204,6 +2205,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const [showLoc, setShowLoc] = useState(false);
   const [locQuery, setLocQuery] = useState("");
   const [aerialArea, setAerialArea] = useState("close");
+  const [aerialSrc, setAerialSrc] = useState("");   // "" = Auto (best available); else force a named source
   const bgImg = useRef(null);
   const [bgRev, setBgRev] = useState(0);
   const gPointers = useRef(new Map()), pinch = useRef(null), moved = useRef(false);
@@ -2406,7 +2408,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
   };
   const areaPreset = AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[0];
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3]); setBackground({ ...res, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3], aerialSrc || undefined); setBackground({ ...res, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const recaptureAerial = () => { if (sheet.loc && sheet.loc.lat != null) aerialFrom(sheet.loc.lat, sheet.loc.lon, sheet.loc.name); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
   const saveSnapshot = () => { patchSheet({ snapshot: renderFull() }); notify("Saved for the report"); };
@@ -2455,11 +2458,12 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         {showLoc && <div className="flex gap-2 flex-wrap items-center p-2 rounded" style={{ background: "var(--bg)" }}>
           <input className="inp flex-1" style={{ minWidth: 200 }} placeholder="Search an address or suburb (e.g. 22 Percy St, West End QLD)" value={locQuery} onChange={e => setLocQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") searchLoc(); }} />
           <label className="flex items-center gap-1 text-sm">Area <select className="inp !py-1 !w-auto" value={aerialArea} onChange={e => setAerialArea(e.target.value)}>{AERIAL_AREAS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+          <label className="flex items-center gap-1 text-sm">Source <select className="inp !py-1 !w-auto" value={aerialSrc} onChange={e => setAerialSrc(e.target.value)}><option value="">Auto (best)</option>{AERIAL_SOURCES.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}</select></label>
           <button className="btn btn-primary" disabled={busy === "aerial"} onClick={searchLoc}>{busy === "aerial" ? "…" : "Search"}</button>
           <button className="btn btn-ghost" disabled={busy === "aerial"} onClick={myLocation}>📍 Use my location</button>
-          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Uses the sharpest free imagery for the spot — <b>Queensland Government aerial</b> in QLD, else Esri — stored in this job so it works offline afterwards. Pick a tighter <b>Area</b> for a sharper close-up. You need signal the first time.</div>
+          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Pulls the sharpest free imagery for the spot — <b>Queensland Government aerial</b> in QLD, else Esri Clarity/Esri. Pick a tighter <b>Area</b> for a sharper close-up, or force a <b>Source</b> if one looks clearer. Stored in the job for offline use — you need signal the first time. For crisper-than-satellite detail, upload a survey/site plan or photo as a sheet.</div>
         </div>}
-        {sheet.loc && sheet.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {sheet.loc.name}{sheet.loc.source ? " · " + sheet.loc.source : ""}</div>}
+        {sheet.loc && sheet.loc.name && <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: "var(--muted)" }}><span>📍 {sheet.loc.name}{sheet.loc.source ? " · " + sheet.loc.source : ""}</span><button className="btn btn-ghost !py-0.5 !px-2" disabled={busy === "aerial"} onClick={recaptureAerial}>{busy === "aerial" ? "…" : "↻ Re-capture sharper (current Area/Source)"}</button></div>}
       </div>
 
       {/* ---- tools ---- */}
