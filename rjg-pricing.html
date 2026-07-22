@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v70 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v71 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1348,29 +1348,34 @@ async function stitchTiles(lat, lon, d, z, urlFn){
   out.getContext("2d").drawImage(stitch, Math.round(cx0), Math.round(cy0), cw, chh, 0, 0, cw, chh);
   return out;
 }
-// Free aerial: geocode (Nominatim) then the sharpest available satellite tiles, cached into the sheet → offline after.
+// Free aerial: the sharpest available satellite tiles for the spot, cached into the sheet → offline after.
+// Resilient: tries each source, records why any failed, and reports it so problems are visible on-device.
 async function fetchAerialImage(lat, lon, span, zoom, only){
-  const d = span || 0.0006;
+  const d = span || 0.0006, diag = [];
   const sources = only ? AERIAL_SOURCES.filter(s => s.name === only) : AERIAL_SOURCES;
   for (const src of sources){
     if (!only && !src.inBounds(lat, lon)) continue;
-    const zTop = Math.min(zoom || 21, src.maxZ);
-    // try the target zoom, then one level down (some areas aren't tiled at the very top zoom)
+    const zTop = Math.min(zoom || 21, src.maxZ); let status = "no tiles reached";
     for (let z = zTop; z >= zTop - 1 && z >= 16; z--){
       try {
         const cv = await stitchTiles(lat, lon, d, z, src.url);
-        let v; try { v = imgVariance(cv); } catch(e){ break; }     // tainted (no CORS) → whole source unusable
-        if (v < 7) continue;                                       // blank placeholder → try a lower zoom / next source
-        return { bg: cv.toDataURL("image/jpeg", 0.92), natW: cv.width, natH: cv.height, lat, lon, span: d, source: src.name };
-      } catch(e){ /* tiles failed at this zoom — try lower */ }
+        let bg; try { bg = cv.toDataURL("image/jpeg", 0.92); } catch(e){ status = "blocked (no CORS)"; break; }   // tainted
+        let v = 99; try { v = imgVariance(cv); } catch(e){ v = 99; }
+        if (v < 7){ status = "blank at z" + z; continue; }                                                       // no imagery there
+        return { bg, natW: cv.width, natH: cv.height, lat, lon, span: d, source: src.name };
+      } catch(e){ status = "no tiles"; }
     }
+    diag.push(src.name.replace(" imagery","").replace(" Government"," Gov") + ": " + status);
   }
   // last resort: Esri static export (always returns something, just softer)
-  const dLat = d * Math.cos(lat * Math.PI / 180), W = 2048, H = Math.round(W * dLat / d);
-  const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
-  const im = await loadImg("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image");
-  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; cv.getContext("2d").drawImage(im, 0, 0, W, H);
-  return { bg: cv.toDataURL("image/jpeg", 0.9), natW: W, natH: H, lat, lon, span: d, source: "Esri (export)" };
+  try {
+    const dLat = d * Math.cos(lat * Math.PI / 180), W = 2048, H = Math.round(W * dLat / d);
+    const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
+    const im = await loadImg("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image");
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; cv.getContext("2d").drawImage(im, 0, 0, W, H);
+    return { bg: cv.toDataURL("image/jpeg", 0.9), natW: W, natH: H, lat, lon, span: d, source: "Esri (export)" };
+  } catch(e){ diag.push("Esri export: " + (e && e.message ? e.message : "failed")); }
+  throw new Error("No aerial loaded — " + (diag.join(" · ") || "no sources"));
 }
 async function geocodeAU(query){
   const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(query), { headers: { "Accept": "application/json" } });
@@ -2408,7 +2413,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
   };
   const areaPreset = AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[0];
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3], aerialSrc || undefined); setBackground({ ...res, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3], aerialSrc || undefined); setBackground({ ...res, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — now offline in this job"); } catch(e){ alert((e && e.message ? e.message : "Couldn't fetch the aerial image.") + "\n\nBe online the first time. Or upload a drawing / take a photo instead."); } setBusy(""); setShowLoc(false); };
   const recaptureAerial = () => { if (sheet.loc && sheet.loc.lat != null) aerialFrom(sheet.loc.lat, sheet.loc.lon, sheet.loc.name); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };

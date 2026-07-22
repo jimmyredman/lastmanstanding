@@ -1,7 +1,7 @@
 /* RJG Pricing — offline service worker.
    Network-first for same-origin requests so updates always arrive when there is
    signal; falls back to the cache when offline so the app still works on-site. */
-const CACHE = "rjg-pricing-v70";
+const CACHE = "rjg-pricing-v71";
 const PRECACHE = [
   "./index.html",
   "./rjg-pricing.html",
@@ -56,6 +56,16 @@ self.addEventListener("fetch", (e) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
+
+  // Live map imagery / geocoding: always go straight to the network and never touch the cache.
+  // Caching these would bloat storage with hundreds of tiles and can hand back opaque responses
+  // that taint the canvas (breaking the aerial capture). The captured image itself is stored in
+  // the job (IndexedDB) as a data URL, so offline still works without caching tiles here.
+  const IMAGERY_HOSTS = ["arcgisonline.com", "maptiles.arcgis.com", "information.qld.gov.au", "openstreetmap.org"];
+  if (!sameOrigin && IMAGERY_HOSTS.some((h) => url.hostname === h || url.hostname.endsWith("." + h))) {
+    e.respondWith(fetch(req));
+    return;
+  }
 
   if (sameOrigin) {
     // Network-first: always try the network, cache the fresh copy, fall back to cache offline.
