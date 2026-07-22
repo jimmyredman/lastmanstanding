@@ -24,7 +24,14 @@
     scheme: "Townsville City Plan",
     schemeVersion: "Illustrative v0 — VERIFY against adopted City Plan",
     encodedOn: "2026-07-22",
-    freeboard_m: 0.3, // QLD standard freeboard added to Defined Flood Level
+    verified: false, // zone numbers below are placeholders pending verification
+    freeboard_m: 0.3, // CONFIRMED: City Plan flood hazard overlay = 300mm above 1% AEP
+    // Authoritative sources to verify/populate the zone controls below:
+    sources: {
+      ldrZoneCode: "https://tccplanningscheme.z8.web.core.windows.net/2015_01/6.2.1%20Low%20density%20residential%20zone%20code.pdf",
+      floodOverlayCode: "https://tccplanningscheme.z8.web.core.windows.net/2017_02/8.2.6%20Flood%20hazard%20overlay%20code.pdf",
+      floodPolicy: "https://tccplanningscheme.z8.web.core.windows.net/current/SC6.7%20Flood%20hazard%20planning%20scheme%20policy.pdf",
+    },
 
     // Standard QPP residential zones. Only the zones needed for the MVP dev
     // types are fully populated; others are stubs ready to complete.
