@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v64 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v65 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1256,13 +1256,36 @@ const SITE_STAMPS = [
   ["banner", "Banner / sign"], ["access", "Access (Enter / Exit)"],
 ];
 const SITE_STAMP_LABEL = Object.fromEntries(SITE_STAMPS);
-const SITE_LINE_STYLES = {
-  fence_stage1:  { label: "Stage 1 site fence",  color: "#e11d2e", dash: [13, 8], w: 3 },
-  fence_stage2:  { label: "Stage 2 site fence",  color: "#1f9d55", dash: [13, 8], w: 3 },
-  fence_existing:{ label: "Existing fence",       color: "#e0b400", dash: [15, 9], w: 3 },
-  pedestrian:    { label: "Pedestrian access",    color: "#1f5fbf", dash: [2, 8],  w: 3 },
+// Fence / access lines carry their own colour + name + style, so each job can define
+// whatever fence types it needs and they show up in the legend by name.
+const SITE_LINE_DASH = { solid: [], dashed: [13, 8], dotted: [2, 8] };
+const SITE_LINE_STYLE_OPTS = [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]];
+const SITE_FENCE_PRESETS = [   // quick-fill colour + name (fully editable after)
+  ["New site fence", "#e11d2e", "dashed"], ["Existing fence", "#e0b400", "dashed"],
+  ["Pedestrian access", "#1f5fbf", "dotted"], ["Hoarding / gate", "#7c3aed", "solid"],
+];
+// legacy lines (v64) stored a fixed `kind` — map so old plans still render/label correctly
+const SITE_LINE_LEGACY = {
+  fence_stage1:  { name: "Site fence",        color: "#e11d2e", style: "dashed" },
+  fence_stage2:  { name: "Site fence 2",      color: "#1f9d55", style: "dashed" },
+  fence_existing:{ name: "Existing fence",     color: "#e0b400", style: "dashed" },
+  pedestrian:    { name: "Pedestrian access",  color: "#1f5fbf", style: "dotted" },
 };
-const SITE_LINES = Object.keys(SITE_LINE_STYLES);
+// normalise a line to { name, color, style } whether it's new-shape or legacy
+function lineProps(l){
+  if (l && l.color) return { name: l.name || "Fence", color: l.color, style: l.style || "solid" };
+  if (l && l.kind && SITE_LINE_LEGACY[l.kind]) return SITE_LINE_LEGACY[l.kind];
+  return { name: (l && l.name) || "Fence", color: "#e11d2e", style: "dashed" };
+}
+const lineKey = (lp) => lp.name + "|" + lp.color + "|" + lp.style;
+// migrate project.sitePlan to the multi-sheet shape (deterministic — safe to call every render)
+function normalizeSite(sp){
+  sp = sp || {};
+  if (Array.isArray(sp.sheets) && sp.sheets.length) return sp;
+  const sheet = { id: "s1", name: "Sheet 1", bg: sp.bg, natW: sp.natW, natH: sp.natH, loc: sp.loc || null, stamps: sp.stamps || [], lines: sp.lines || [], notes: sp.notes || [], snapshot: sp.snapshot };
+  return { sheets: [sheet], active: "s1" };
+}
+const sheetEmpty = (s) => !s.bg && !(s.stamps||[]).length && !(s.lines||[]).length && !(s.notes||[]).length;
 // draw one site icon centred at s.x,s.y (px), size s.size, rotated s.angle
 function drawSiteStamp(ctx, s){
   const w = s.size || 46, h = w; ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((s.angle || 0) * Math.PI / 180);
@@ -2101,17 +2124,26 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
    ========================================================================= */
 function SitePlanEditor({ plan, onChange: rawChange }){
   const { notify } = useStore();
+  const doc = normalizeSite(plan);
+  const sheets = doc.sheets;
+  const activeId = (doc.active && sheets.some(s => s.id === doc.active)) ? doc.active : sheets[0].id;
+  const sheet = sheets.find(s => s.id === activeId) || sheets[0];
+
   const undoRef = useRef([]);
   const [undoN, setUndoN] = useState(0);
-  const onChange = (next) => { undoRef.current.push(plan); if (undoRef.current.length > 80) undoRef.current.shift(); setUndoN(undoRef.current.length); rawChange(next); };
+  const setDoc = (next) => { undoRef.current.push(doc); if (undoRef.current.length > 80) undoRef.current.shift(); setUndoN(undoRef.current.length); rawChange(next); };
   const undoPlan = () => { const prev = undoRef.current.pop(); if (!prev) return; setUndoN(undoRef.current.length); setDraft(null); setSel(null); rawChange(prev); };
+  // change the active sheet (writes back into the sheets array)
+  const patchSheet = (patch, id) => { const sid = id || activeId; setDoc({ ...doc, sheets: sheets.map(s => s.id === sid ? { ...s, ...patch } : s) }); };
 
   const canvasRef = useRef(null), wrapRef = useRef(null);
   const [wrapW, setWrapW] = useState(360);
   const [tool, setTool] = useState("move");       // move | place | fence | note
   const [stampType, setStampType] = useState("bin");
-  const [lineKind, setLineKind] = useState("fence_stage1");
-  const [draft, setDraft] = useState(null);         // building a fence line { kind, points:[] }
+  const [fenceName, setFenceName] = useState("New site fence");
+  const [fenceColor, setFenceColor] = useState("#e11d2e");
+  const [fenceStyle, setFenceStyle] = useState("dashed");
+  const [draft, setDraft] = useState(null);         // building a fence line { name, color, style, points:[] }
   const [sel, setSel] = useState(null);             // selected item { kind:'stamp'|'note', id }
   const [drag, setDrag] = useState(null);
   const [preview, setPreview] = useState(null);     // live { stamps, notes, lines } during a drag
@@ -2123,28 +2155,30 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const [bgRev, setBgRev] = useState(0);
   const gPointers = useRef(new Map()), pinch = useRef(null), zoomAnchor = useRef(null), moved = useRef(false);
 
-  const stamps = (preview && preview.stamps) || plan.stamps || [];
-  const notes = (preview && preview.notes) || plan.notes || [];
-  const lines = (preview && preview.lines) || plan.lines || [];
-  const worldW = plan.bg ? (plan.natW || 1200) : 1200;
-  const worldH = plan.bg ? (plan.natH || 900) : 900;
+  const stamps = (preview && preview.stamps) || sheet.stamps || [];
+  const notes = (preview && preview.notes) || sheet.notes || [];
+  const lines = (preview && preview.lines) || sheet.lines || [];
+  const worldW = sheet.bg ? (sheet.natW || 1200) : 1200;
+  const worldH = sheet.bg ? (sheet.natH || 900) : 900;
 
   useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
-  // load the background image whenever it changes so we can paint it under the markups
-  useEffect(() => { if (!plan.bg){ bgImg.current = null; setBgRev(r => r + 1); return; } let live = true; loadImg(plan.bg).then(im => { if (live){ bgImg.current = im; setBgRev(r => r + 1); } }).catch(() => {}); return () => { live = false; }; }, [plan.bg]);
+  // load the active sheet's background whenever it changes
+  useEffect(() => { if (!sheet.bg){ bgImg.current = null; setBgRev(r => r + 1); return; } let live = true; loadImg(sheet.bg).then(im => { if (live){ bgImg.current = im; setBgRev(r => r + 1); } }).catch(() => {}); return () => { live = false; }; }, [sheet.bg]);
 
   const S = Math.min(1, wrapW / worldW) * zoom;
   const cssW = worldW * S, cssH = worldH * S;
+  // anchor the scroll so a chosen content point stays put across a zoom change
+  const anchorAt = (sx, sy) => { const wrap = wrapRef.current; if (!wrap) return; zoomAnchor.current = { fx: (wrap.scrollLeft + sx) / (wrap.scrollWidth || 1), fy: (wrap.scrollTop + sy) / (wrap.scrollHeight || 1), sx, sy }; };
+  const zoomBy = (f) => { const wrap = wrapRef.current; if (wrap) anchorAt(wrap.clientWidth/2, wrap.clientHeight/2); setZoom(z => clamp(z * f, 0.25, 8)); };
   useEffect(() => {
     const wrap = wrapRef.current; if (!wrap) return;
-    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.2, 6)); };
+    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); anchorAt(e.clientX-rect.left, e.clientY-rect.top); setZoom(z => clamp(z * (e.deltaY < 0 ? 1.15 : 1/1.15), 0.25, 8)); };
     wrap.addEventListener("wheel", onWheel, { passive: false });
     return () => wrap.removeEventListener("wheel", onWheel);
   }, []);
   useLayoutEffect(() => { const wrap = wrapRef.current, a = zoomAnchor.current; if (!wrap || !a) return; wrap.scrollLeft = a.fx * wrap.scrollWidth - a.sx; wrap.scrollTop = a.fy * wrap.scrollHeight - a.sy; zoomAnchor.current = null; }, [zoom]);
   const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: clamp((e.clientX - r.left) / S, 0, worldW), y: clamp((e.clientY - r.top) / S, 0, worldH) }; };
 
-  // rotate / resize / delete handle positions for a selected stamp (world coords)
   const stampHandles = (s) => {
     const a = (s.angle || 0) * Math.PI / 180, w = s.size || 46, gap = 14 / S;
     const rot = (lx, ly) => ({ x: s.x + lx*Math.cos(a) - ly*Math.sin(a), y: s.y + lx*Math.sin(a) + ly*Math.cos(a) });
@@ -2159,21 +2193,17 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     ctx.clearRect(0, 0, worldW, worldH);
     if (bgImg.current){ ctx.drawImage(bgImg.current, 0, 0, worldW, worldH); }
     else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, worldW, worldH); ctx.fillStyle = "#aab3bf"; ctx.font = "600 22px system-ui"; ctx.textAlign = "center"; ctx.fillText("Add a background — upload a drawing, take a photo,", worldW/2, worldH/2 - 16); ctx.fillText("or drop an aerial from a searched location.", worldW/2, worldH/2 + 16); }
-    // fence / access lines
-    const drawLine = (l, sel2) => {
-      const st = SITE_LINE_STYLES[l.kind] || SITE_LINE_STYLES.fence_stage1, pts = l.points; if (pts.length < 1) return;
-      ctx.save(); ctx.strokeStyle = st.color; ctx.lineWidth = st.w; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(st.dash.map(d => d));
+    const drawLine = (l) => {
+      const lp = lineProps(l), pts = l.points; if (pts.length < 1) return;
+      ctx.save(); ctx.strokeStyle = lp.color; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(SITE_LINE_DASH[lp.style] || []);
       ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]);
-      if (sel2 || tool === "move"){ ctx.fillStyle = st.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); }
+      if (tool === "move"){ ctx.fillStyle = lp.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); }
       ctx.restore();
     };
     lines.forEach(l => drawLine(l));
     stamps.forEach(s => drawSiteStamp(ctx, s));
-    // text notes
     notes.forEach(n => { ctx.save(); ctx.font = "700 15px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top"; const tw = ctx.measureText(n.text || "").width; ctx.fillStyle = "rgba(255,255,255,.86)"; rrect(ctx, n.x - 4, n.y - 3, tw + 8, 20, 3); ctx.fill(); ctx.fillStyle = "#c01722"; ctx.fillText(n.text || "", n.x, n.y); ctx.restore(); });
-    // live fence draft
-    if (draft && draft.points.length){ const st = SITE_LINE_STYLES[draft.kind]; const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; ctx.save(); ctx.strokeStyle = st.color; ctx.lineWidth = st.w; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(st.dash); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = st.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); ctx.restore(); }
-    // selected stamp handles
+    if (draft && draft.points.length){ const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; ctx.save(); ctx.strokeStyle = draft.color; ctx.lineWidth = 3; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(SITE_LINE_DASH[draft.style] || []); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = draft.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); ctx.restore(); }
     if (tool === "move" && sel && sel.kind === "stamp"){
       const s = stamps.find(x => x.id === sel.id);
       if (s){ const h = stampHandles(s), w0 = s.size || 46, a = (s.angle||0)*Math.PI/180, hs = 1/S, knob = 12*hs;
@@ -2185,9 +2215,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, knob, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*hs; const cx = knob*0.4; ctx.beginPath(); ctx.moveTo(h.del.x-cx,h.del.y-cx); ctx.lineTo(h.del.x+cx,h.del.y+cx); ctx.moveTo(h.del.x+cx,h.del.y-cx); ctx.lineTo(h.del.x-cx,h.del.y+cx); ctx.stroke();
       }
     }
-    // north arrow
     (() => { const nx = worldW - 40, ny = 44; ctx.save(); ctx.translate(nx, ny); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0,0,22,0,7); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#c01722"; ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(6,4); ctx.lineTo(0,0); ctx.lineTo(-6,4); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#111"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("N", 0, 12); ctx.restore(); })();
-  }, [stamps, notes, lines, draft, tool, sel, cssW, cssH, S, worldW, worldH, bgRev]);
+  }, [stamps, notes, lines, draft, tool, sel, cssW, cssH, S, worldW, worldH, bgRev, activeId]);
 
   const hitStampHandle = (p) => {
     if (!(sel && sel.kind === "stamp")) return null;
@@ -2206,7 +2235,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const startPinch = () => {
     const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
     const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
-    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, fx: (wrap.scrollLeft + mx)/(wrap.scrollWidth || 1), fy: (wrap.scrollTop + my)/(wrap.scrollHeight || 1) };
+    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, sx: mx, sy: my };
     setDraft(null); setDrag(null); setPreview(null);
   };
   const onDown = (e) => {
@@ -2215,10 +2244,9 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
     moved.current = false;
     const p = toWorld(e);
-    if (tool === "place"){ const s = { id: uid(), type: stampType, x: p.x, y: p.y, size: 46, angle: 0 }; onChange({ ...plan, stamps: [...(plan.stamps||[]), s] }); setSel({ kind: "stamp", id: s.id }); return; }
-    if (tool === "note"){ const text = prompt("Note text:"); if (text != null && text.trim()){ onChange({ ...plan, notes: [...(plan.notes||[]), { id: uid(), x: p.x, y: p.y, text: text.trim() }] }); } return; }
-    if (tool === "fence"){ if (!draft || draft.kind !== lineKind){ setDraft({ kind: lineKind, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
-    // move / edit
+    if (tool === "place"){ const s = { id: uid(), type: stampType, x: p.x, y: p.y, size: 46, angle: 0 }; patchSheet({ stamps: [...(sheet.stamps||[]), s] }); setSel({ kind: "stamp", id: s.id }); return; }
+    if (tool === "note"){ const text = prompt("Note text:"); if (text != null && text.trim()){ patchSheet({ notes: [...(sheet.notes||[]), { id: uid(), x: p.x, y: p.y, text: text.trim() }] }); } return; }
+    if (tool === "fence"){ if (!draft){ setDraft({ name: fenceName, color: fenceColor, style: fenceStyle, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
     const handle = hitStampHandle(p);
     if (handle){ const s = stamps.find(x => x.id === sel.id); setDrag({ kind: handle, id: s.id, start: p, s0: { ...s } }); return; }
     const hit = hitTest(p);
@@ -2229,7 +2257,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   };
   const onMove = (e) => {
     if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch.current && gPointers.current.size >= 2){ const pts = [...gPointers.current.values()]; const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1; setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.2, 6)); return; }
+    if (pinch.current && gPointers.current.size >= 2){ const pts = [...gPointers.current.values()]; const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1; const wrap = wrapRef.current, rect = wrap.getBoundingClientRect(); const mx = (pts[0].x+pts[1].x)/2 - rect.left, my = (pts[0].y+pts[1].y)/2 - rect.top; anchorAt(mx, my); setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.25, 8)); return; }
     const p = toWorld(e); moved.current = true;
     if (draft && tool === "fence"){ setDraft({ ...draft, preview: p }); return; }
     if (!drag) return;
@@ -2242,55 +2270,104 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const onUp = (e) => {
     gPointers.current.delete(e.pointerId);
     if (gPointers.current.size < 2) pinch.current = null;
-    if (preview){ onChange({ ...plan, ...preview }); setPreview(null); }
+    if (preview){ patchSheet(preview); setPreview(null); }
     setDrag(null);
   };
 
-  const finishLine = () => { if (draft && draft.points.length >= 2){ onChange({ ...plan, lines: [...(plan.lines||[]), { id: uid(), kind: draft.kind, points: draft.points }] }); } setDraft(null); };
-  const setBg = (patch) => { undoRef.current = []; setUndoN(0); onChange({ ...plan, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, snapshot: undefined, stamps: plan.stamps || [], notes: plan.notes || [], lines: plan.lines || [] }); };
-  const onUpload = (e) => {
-    const file = e.target.files[0]; if (!file) return; setBusy("upload");
-    const r = new FileReader();
-    r.onload = () => { const im = new Image(); im.onload = () => { const MAX = 2200, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX/Math.max(w,h)); let bg = r.result, nw = w, nh = h; if (sc < 1){ try { const cv = document.createElement("canvas"); nw = Math.round(w*sc); nh = Math.round(h*sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im,0,0,nw,nh); bg = cv.toDataURL("image/jpeg", 0.85); } catch(_){} } setBg({ bg, natW: nw, natH: nh }); setBusy(""); }; im.onerror = () => { alert("Could not load that image. Use a JPG or PNG."); setBusy(""); }; im.src = r.result; };
-    r.onerror = () => { alert("Could not read that file."); setBusy(""); };
-    r.readAsDataURL(file); e.target.value = "";
+  const finishLine = () => { if (draft && draft.points.length >= 2){ patchSheet({ lines: [...(sheet.lines||[]), { id: uid(), name: draft.name, color: draft.color, style: draft.style, points: draft.points }] }); } setDraft(null); };
+
+  // ---- sheets ----
+  const captureSnap = () => { const cv = canvasRef.current; return cv ? cv.toDataURL("image/jpeg", 0.9) : null; };
+  const switchSheet = (id) => { if (id === activeId) return; const snap = captureSnap(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s) }); };
+  const addSheet = () => { const snap = captureSnap(); const id = uid(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), stamps: [], lines: [], notes: [] }] }); };
+  const delSheet = (id) => { if (sheets.length <= 1){ if (confirm("Clear this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined, stamps: [], lines: [], notes: [] }, id); return; } if (!confirm("Delete this sheet?")) return; const remaining = sheets.filter(s => s.id !== id); setDoc({ ...doc, sheets: remaining, active: (id === activeId ? remaining[0].id : activeId) }); };
+  const renameSheet = (id, name) => setDoc({ ...doc, sheets: sheets.map(s => s.id === id ? { ...s, name } : s) });
+
+  // build one sheet from an image data-url + dims
+  const makeImgSheet = (bg, natW, natH, name) => ({ id: uid(), name: name || ("Sheet " + (sheets.length + 1)), bg, natW, natH, loc: null, stamps: [], lines: [], notes: [] });
+  const readImage = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const MAX = 2200, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX/Math.max(w,h)); let bg = r.result, nw = w, nh = h; if (sc < 1){ try { const cv = document.createElement("canvas"); nw = Math.round(w*sc); nh = Math.round(h*sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im,0,0,nw,nh); bg = cv.toDataURL("image/jpeg", 0.85); } catch(_){} } res({ bg, natW: nw, natH: nh, name: (file.name||"").replace(/\.[^.]+$/, "") }); }; im.onerror = () => rej(new Error("decode")); im.src = r.result; }; r.onerror = () => rej(new Error("read")); r.readAsDataURL(file); });
+  const onUpload = async (e) => {
+    const files = [...e.target.files]; if (!files.length) return; setBusy("upload"); e.target.value = "";
+    try {
+      const snap = captureSnap();
+      const imgs = []; for (const f of files){ try { imgs.push(await readImage(f)); } catch(_){} }
+      if (!imgs.length){ alert("Could not load those images. Use JPG or PNG."); setBusy(""); return; }
+      // first image fills the current sheet if it's empty; the rest become new sheets
+      let base = sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s);
+      let newActive = activeId, i0 = 0;
+      if (sheetEmpty(sheet)){ const im = imgs[0]; base = base.map(s => s.id === activeId ? { ...s, bg: im.bg, natW: im.natW, natH: im.natH, loc: null, snapshot: undefined, name: s.name } : s); i0 = 1; }
+      const extra = imgs.slice(i0).map(im => makeImgSheet(im.bg, im.natW, im.natH, im.name));
+      if (extra.length) newActive = i0 === 1 ? activeId : extra[0].id;
+      setDoc({ ...doc, active: newActive, sheets: [...base, ...extra] });
+      notify(imgs.length + (imgs.length === 1 ? " image added" : " images added as sheets"));
+    } catch(err){ alert("Could not read those files."); }
+    setBusy("");
   };
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon); setBg({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  // set an aerial/background onto the active sheet if empty, else a new sheet
+  const setBackground = (patch) => {
+    const snap = captureSnap();
+    if (sheetEmpty(sheet)){ setDoc({ ...doc, sheets: sheets.map(s => s.id === activeId ? { ...s, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, snapshot: undefined } : s) }); }
+    else { const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
+  };
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon); setBackground({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
-  const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.9) }); notify("Saved for the report"); };
-  const clearMarkups = () => { if ((stamps.length || lines.length || notes.length) && confirm("Clear all icons, fence lines and notes? (Keeps the background.)")){ setSel(null); setDraft(null); onChange({ ...plan, stamps: [], lines: [], notes: [], snapshot: undefined }); } };
-  const removeBg = () => { if (confirm("Remove the background image?")){ onChange({ ...plan, bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined }); } };
+  const saveSnapshot = () => { const snap = captureSnap(); if (snap) patchSheet({ snapshot: snap }); notify("Saved for the report"); };
+  const clearMarkups = () => { if ((stamps.length || lines.length || notes.length) && confirm("Clear all icons, fence lines and notes on this sheet? (Keeps the background.)")){ setSel(null); setDraft(null); patchSheet({ stamps: [], lines: [], notes: [], snapshot: undefined }); } };
+  const removeBg = () => { if (confirm("Remove the background image on this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined }); };
 
   const usedTypes = [...new Set(stamps.map(s => s.type))];
-  const usedLines = [...new Set(lines.map(l => l.kind))];
-  const toggleLock = (kind, id) => { if (kind === "stamp") onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) }); else if (kind === "line") onChange({ ...plan, lines: lines.map(l => l.id === id ? { ...l, locked: !l.locked } : l) }); else onChange({ ...plan, notes: notes.map(n => n.id === id ? { ...n, locked: !n.locked } : n) }); };
-  const delItem = (kind, id) => { if (kind === "stamp") onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) }); else if (kind === "line") onChange({ ...plan, lines: lines.filter(l => l.id !== id) }); else onChange({ ...plan, notes: notes.filter(n => n.id !== id) }); setSel(null); };
+  const usedLineKeys = {}; lines.forEach(l => { const lp = lineProps(l); usedLineKeys[lineKey(lp)] = lp; });
+  const legendLines = Object.values(usedLineKeys);
+  const toggleLock = (kind, id) => { if (kind === "stamp") patchSheet({ stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) }); else if (kind === "line") patchSheet({ lines: lines.map(l => l.id === id ? { ...l, locked: !l.locked } : l) }); else patchSheet({ notes: notes.map(n => n.id === id ? { ...n, locked: !n.locked } : n) }); };
+  const delItem = (kind, id) => { if (kind === "stamp") patchSheet({ stamps: stamps.filter(s => s.id !== id) }); else if (kind === "line") patchSheet({ lines: lines.filter(l => l.id !== id) }); else patchSheet({ notes: notes.filter(n => n.id !== id) }); setSel(null); };
+  const setLineProp = (id, patch) => patchSheet({ lines: lines.map(l => l.id === id ? { ...l, ...patch, kind: undefined } : l) });
 
   return (
     <div className="space-y-3">
+      {/* ---- sheet selector ---- */}
+      <div className="card p-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold uppercase" style={{ color: "var(--muted)" }}>Sheets</span>
+          <div className="scroll-x flex gap-1.5 flex-1">
+            {sheets.map(s => (
+              <button key={s.id} className={"shrink-0 rounded overflow-hidden border-2 " + (s.id === activeId ? "" : "opacity-60")} style={{ borderColor: s.id === activeId ? "var(--brand)" : "transparent", width: 74 }} onClick={() => switchSheet(s.id)} title={s.name}>
+                {s.snapshot || s.bg ? <img src={s.snapshot || s.bg} className="h-12 w-full object-cover block" /> : <div className="h-12 flex items-center justify-center text-xs" style={{ background: "var(--bg)", color: "var(--muted)" }}>blank</div>}
+                <div className="text-[10px] truncate px-1 py-0.5" style={{ background: s.id === activeId ? "var(--brand)" : "var(--bg)", color: s.id === activeId ? "#fff" : "var(--muted)" }}>{s.name}</div>
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-ghost !py-1" onClick={addSheet}><IcPlus size={14} /> Add sheet</button>
+        </div>
+        <div className="flex items-center gap-2 mt-2">
+          <input className="inp !py-1 flex-1" value={sheet.name || ""} onChange={e => renameSheet(activeId, e.target.value)} placeholder="Sheet name" />
+          <button className="btn btn-ghost !py-1" style={{ color: "#dc2626" }} onClick={() => delSheet(activeId)}><IcTrash size={14} /> {sheets.length > 1 ? "Delete sheet" : "Clear sheet"}</button>
+        </div>
+      </div>
+
       {/* ---- background source ---- */}
       <div className="card p-3 space-y-2">
-        <div className="font-semibold text-sm brand-text">Background</div>
+        <div className="font-semibold text-sm brand-text">Background for this sheet</div>
         <div className="flex gap-2 flex-wrap">
-          <label className="btn btn-primary cursor-pointer">{busy === "upload" ? "…" : <><IcUpload size={15} /> Upload drawing</>}<input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={!!busy} /></label>
+          <label className="btn btn-primary cursor-pointer">{busy === "upload" ? "…" : <><IcUpload size={15} /> Upload drawing(s)</>}<input type="file" accept="image/*" multiple className="hidden" onChange={onUpload} disabled={!!busy} /></label>
           <label className="btn btn-ghost cursor-pointer"><IcCamera size={15} /> Take photo<input type="file" accept="image/*" capture="environment" className="hidden" onChange={onUpload} disabled={!!busy} /></label>
           <button className="btn btn-ghost" disabled={!!busy} onClick={() => setShowLoc(v => !v)}>🛰 Aerial from location</button>
-          {plan.bg && <button className="btn btn-ghost" style={{ marginLeft: "auto", color: "#dc2626" }} onClick={removeBg}><IcTrash size={14} /> Remove background</button>}
+          {sheet.bg && <button className="btn btn-ghost" style={{ marginLeft: "auto", color: "#dc2626" }} onClick={removeBg}><IcTrash size={14} /> Remove background</button>}
         </div>
+        <div className="text-xs" style={{ color: "var(--muted)" }}>Select several files at once to add each as its own sheet.</div>
         {showLoc && <div className="flex gap-2 flex-wrap items-center p-2 rounded" style={{ background: "var(--bg)" }}>
           <input className="inp flex-1" style={{ minWidth: 200 }} placeholder="Search an address or suburb (e.g. 22 Percy St, West End QLD)" value={locQuery} onChange={e => setLocQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") searchLoc(); }} />
           <button className="btn btn-primary" disabled={busy === "aerial"} onClick={searchLoc}>{busy === "aerial" ? "…" : "Search"}</button>
           <button className="btn btn-ghost" disabled={busy === "aerial"} onClick={myLocation}>📍 Use my location</button>
           <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Grabs a satellite image (Esri World Imagery) and stores it in this job so it works offline afterwards. You need signal the first time.</div>
         </div>}
-        {plan.loc && plan.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {plan.loc.name}</div>}
+        {sheet.loc && sheet.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {sheet.loc.name}</div>}
       </div>
 
       {/* ---- tools ---- */}
       <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
-          {[["move","Move / edit"],["place","Place icon"],["fence","Fence / access line"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
+          {[["move","Move / edit"],["place","Place icon"],["fence","Fence / line"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
         </div>
         <button className="btn btn-ghost !py-1 ml-auto" style={{ opacity: undoN ? 1 : 0.45 }} disabled={!undoN} onClick={undoPlan}>↶ Undo{undoN ? " (" + undoN + ")" : ""}</button>
         {(stamps.length || lines.length || notes.length) ? <button className="btn btn-ghost !py-1" onClick={clearMarkups}><IcTrash size={14} /> Clear markups</button> : null}
@@ -2300,36 +2377,41 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         <select className="inp !py-1.5 !w-auto" value={stampType} onChange={e => setStampType(e.target.value)}>{SITE_STAMPS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
         <span className="text-sm" style={{ color: "var(--muted)" }}>Tap the plan to drop it. Switch to <b>Move / edit</b> to move, rotate, resize, lock or delete.</span>
       </div>}
-      {tool === "fence" && <div className="flex gap-1.5 items-center flex-wrap">
-        <span className="text-xs" style={{ color: "var(--muted)" }}>Line:</span>
-        <select className="inp !py-1.5 !w-auto" value={lineKind} onChange={e => { setLineKind(e.target.value); setDraft(null); }}>{SITE_LINES.map(k => <option key={k} value={k}>{SITE_LINE_STYLES[k].label}</option>)}</select>
-        {draft && draft.points.length > 0 && <>
+      {tool === "fence" && <div className="flex gap-1.5 items-center flex-wrap card p-2">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Fence / line:</span>
+        <input className="inp !py-1" style={{ width: 150 }} placeholder="Name (e.g. Existing fence)" value={fenceName} onChange={e => { setFenceName(e.target.value); if (draft) setDraft({ ...draft, name: e.target.value }); }} />
+        <input type="color" value={fenceColor} onChange={e => { setFenceColor(e.target.value); if (draft) setDraft({ ...draft, color: e.target.value }); }} className="h-8 w-9 rounded border" title="Line colour" style={{ borderColor: "var(--line)" }} />
+        <select className="inp !py-1 !w-auto" value={fenceStyle} onChange={e => { setFenceStyle(e.target.value); if (draft) setDraft({ ...draft, style: e.target.value }); }}>{SITE_LINE_STYLE_OPTS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
+        <div className="flex gap-1 w-full flex-wrap mt-1">
+          <span className="text-xs" style={{ color: "var(--muted)" }}>Quick:</span>
+          {SITE_FENCE_PRESETS.map(([nm,col,st]) => <button key={nm} className="chip" style={{ background: col, color: "#fff" }} onClick={() => { setFenceName(nm); setFenceColor(col); setFenceStyle(st); if (draft) setDraft({ ...draft, name: nm, color: col, style: st }); }}>{nm}</button>)}
+        </div>
+        {draft && draft.points.length > 0 ? <div className="flex gap-1.5 items-center w-full mt-1">
           <span className="text-sm" style={{ color: "var(--muted)" }}>{draft.points.length} point{draft.points.length === 1 ? "" : "s"}</span>
           <button className="btn btn-ghost !py-1" onClick={() => setDraft({ ...draft, points: draft.points.slice(0, -1), preview: null })}>Undo point</button>
           <button className="btn btn-accent !py-1" disabled={draft.points.length < 2} onClick={finishLine}><IcCheck size={14} /> Finish line</button>
           <button className="btn btn-ghost !py-1" onClick={() => setDraft(null)}>Cancel</button>
-        </>}
-        {(!draft || !draft.points.length) && <span className="text-sm" style={{ color: "var(--muted)" }}>Tap to drop each corner, then Finish line.</span>}
+        </div> : <div className="text-sm w-full" style={{ color: "var(--muted)" }}>Tap to drop each corner, then Finish line. Each named/coloured line shows in the legend.</div>}
       </div>}
       {tool === "note" && <div className="text-sm" style={{ color: "var(--muted)" }}>Tap where you want a note, then type it.</div>}
 
       <div className="flex items-center gap-2 flex-wrap text-sm">
         <span style={{ color: "var(--muted)" }}>Zoom</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 0.2, 6))}>−</button>
-        <span style={{ minWidth: 38, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
-        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 0.2, 6))}>+</button>
-        {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(1)}>Fit</button>}
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => zoomBy(1/1.3)}>−</button>
+        <span style={{ minWidth: 42, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => zoomBy(1.3)}>+</button>
+        {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => { anchorAt(0,0); setZoom(1); }}>Fit</button>}
         <span className="text-xs">· pinch or scroll to zoom · two fingers to pan</span>
       </div>
-      <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
+      <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "62vh" }}>
         <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", cursor: tool === "move" ? "default" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
       </div>
 
       {sel && sel.kind === "stamp" && (() => { const s = stamps.find(x => x.id === sel.id); if (!s) return null; return (
         <div className="flex items-center gap-2 flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
           <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>{SITE_STAMP_LABEL[s.type] || s.type}</span>
-          <button className="btn btn-ghost !py-1 !px-2" onClick={() => onChange({ ...plan, stamps: stamps.map(x => x.id === s.id ? { ...x, angle: (((s.angle||0)-15)%360+360)%360 } : x) })}>↺</button>
-          <button className="btn btn-ghost !py-1 !px-2" onClick={() => onChange({ ...plan, stamps: stamps.map(x => x.id === s.id ? { ...x, angle: (((s.angle||0)+15)%360)%360 } : x) })}>↻</button>
+          <button className="btn btn-ghost !py-1 !px-2" onClick={() => patchSheet({ stamps: stamps.map(x => x.id === s.id ? { ...x, angle: (((s.angle||0)-15)%360+360)%360 } : x) })}>↺</button>
+          <button className="btn btn-ghost !py-1 !px-2" onClick={() => patchSheet({ stamps: stamps.map(x => x.id === s.id ? { ...x, angle: (((s.angle||0)+15)%360)%360 } : x) })}>↻</button>
           <button className="btn btn-ghost !py-1" onClick={() => toggleLock("stamp", s.id)}>{s.locked ? "🔒 Locked" : "🔓 Lock"}</button>
           <span className="text-xs" style={{ color: "var(--muted)" }}>drag to move · orange knob rotates · square resizes</span>
           <button className="btn btn-ghost !py-1 ml-auto" style={{ color: "#dc2626" }} onClick={() => delItem("stamp", s.id)}><IcTrash size={15} /> Delete</button>
@@ -2337,13 +2419,23 @@ function SitePlanEditor({ plan, onChange: rawChange }){
       ); })()}
 
       <div className="flex gap-2">
-        <button className="btn btn-primary flex-1" onClick={saveSnapshot}><IcCheck size={16} /> Save for report</button>
+        <button className="btn btn-primary flex-1" onClick={saveSnapshot}><IcCheck size={16} /> Save this sheet for report</button>
       </div>
 
       {/* ---- item list ---- */}
       {(stamps.length > 0 || lines.length > 0 || notes.length > 0) && (
         <div className="card p-3 space-y-1.5">
-          <div className="font-semibold text-sm brand-text">On this plan</div>
+          <div className="font-semibold text-sm brand-text">On this sheet</div>
+          {lines.map(l => { const lp = lineProps(l); return (
+            <div key={l.id} className="flex items-center gap-2 text-sm" style={{ opacity: l.locked ? 0.6 : 1 }}>
+              <span className="inline-block rounded" style={{ width: 18, height: 4, background: lp.color }} />
+              <input className="inp !py-1" style={{ flex: "1 1 90px" }} value={l.name != null ? l.name : lp.name} onChange={e => setLineProp(l.id, { name: e.target.value })} disabled={l.locked} />
+              <input type="color" value={l.color || lp.color} onChange={e => setLineProp(l.id, { color: e.target.value })} className="h-7 w-8 rounded border" style={{ borderColor: "var(--line)" }} disabled={l.locked} />
+              <select className="inp !py-1 !w-auto" value={l.style || lp.style} onChange={e => setLineProp(l.id, { style: e.target.value })} disabled={l.locked}>{SITE_LINE_STYLE_OPTS.map(([v,ll]) => <option key={v} value={v}>{ll}</option>)}</select>
+              <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("line", l.id)}>{l.locked ? "🔒" : "🔓"}</button>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delItem("line", l.id)}><IcTrash size={14} /></button>
+            </div>
+          ); })}
           {stamps.map(s => (
             <div key={s.id} className="flex items-center gap-2 text-sm" style={{ opacity: s.locked ? 0.6 : 1 }}>
               <span className="chip">Icon</span><span className="flex-1 truncate">{SITE_STAMP_LABEL[s.type] || s.type}</span>
@@ -2351,16 +2443,9 @@ function SitePlanEditor({ plan, onChange: rawChange }){
               <button className="btn btn-ghost !p-1.5" onClick={() => delItem("stamp", s.id)}><IcTrash size={14} /></button>
             </div>
           ))}
-          {lines.map(l => (
-            <div key={l.id} className="flex items-center gap-2 text-sm" style={{ opacity: l.locked ? 0.6 : 1 }}>
-              <span className="inline-block rounded" style={{ width: 18, height: 4, background: (SITE_LINE_STYLES[l.kind]||{}).color }} /><span className="flex-1 truncate">{(SITE_LINE_STYLES[l.kind]||{}).label}</span>
-              <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("line", l.id)}>{l.locked ? "🔒" : "🔓"}</button>
-              <button className="btn btn-ghost !p-1.5" onClick={() => delItem("line", l.id)}><IcTrash size={14} /></button>
-            </div>
-          ))}
           {notes.map(n => (
             <div key={n.id} className="flex items-center gap-2 text-sm" style={{ opacity: n.locked ? 0.6 : 1 }}>
-              <span className="chip">Note</span><input className="inp !py-1 flex-1" value={n.text || ""} onChange={e => onChange({ ...plan, notes: notes.map(x => x.id === n.id ? { ...x, text: e.target.value } : x) })} />
+              <span className="chip">Note</span><input className="inp !py-1 flex-1" value={n.text || ""} onChange={e => patchSheet({ notes: notes.map(x => x.id === n.id ? { ...x, text: e.target.value } : x) })} />
               <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("note", n.id)}>{n.locked ? "🔒" : "🔓"}</button>
               <button className="btn btn-ghost !p-1.5" onClick={() => delItem("note", n.id)}><IcTrash size={14} /></button>
             </div>
@@ -2368,14 +2453,15 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         </div>
       )}
 
-      {/* ---- legend preview (auto from used icons / lines — matches the SMP form) ---- */}
-      {(usedTypes.length > 0 || usedLines.length > 0) && (
+      {/* ---- legend preview (auto — this sheet) ---- */}
+      {(usedTypes.length > 0 || legendLines.length > 0) && (
         <div className="card p-3">
-          <div className="font-semibold text-sm brand-text mb-2">Legend (auto — shows on the report)</div>
+          <div className="font-semibold text-sm brand-text mb-2">Legend (auto — this sheet)</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-            {usedLines.map(k => <div key={k} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 22, height: 4, background: SITE_LINE_STYLES[k].color }} /> {SITE_LINE_STYLES[k].label}</div>)}
+            {legendLines.map(lp => <div key={lineKey(lp)} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 22, height: 4, background: lp.color }} /> {lp.name}</div>)}
             {usedTypes.map(tp => <div key={tp} className="flex items-center gap-2"><SiteStampChip type={tp} /> {SITE_STAMP_LABEL[tp]}</div>)}
           </div>
+          <div className="text-xs mt-2" style={{ color: "var(--muted)" }}>The report combines the legend across all sheets.</div>
         </div>
       )}
     </div>
@@ -3383,14 +3469,16 @@ function buildWordHtml(project, settings, t, logo, attachments){
 
   // ===== SITE MANAGEMENT PLAN (RJG CON37-FORM-01) =====
   if (kind === "site") {
-    const sp = project.sitePlan || {};
+    const sheets = normalizeSite(project.sitePlan).sheets;
     const wPlanImg = rShow.planimg !== false, wLegend = rShow.legend !== false, wNotes = rShow.notes !== false;
-    const lineKinds = [...new Set((sp.lines || []).map(l => l.kind))];
-    const stampTypes = [...new Set((sp.stamps || []).map(s => s.type))];
-    const legendRows = lineKinds.map(k => `<tr><td width="34" style="padding:3px 6px"><div style="width:26px;height:4px;background:${SITE_LINE_STYLES[k].color}"></div></td><td style="padding:3px 6px">${esc(SITE_LINE_STYLES[k].label)}</td></tr>`).join("")
+    const drawn = sheets.filter(sh => sh.snapshot || sh.bg);
+    const legMap = {}; sheets.forEach(sh => (sh.lines || []).forEach(l => { const lp = lineProps(l); legMap[lineKey(lp)] = lp; }));
+    const legLines = Object.values(legMap);
+    const stampTypes = [...new Set(sheets.flatMap(sh => (sh.stamps || []).map(s => s.type)))];
+    const legendRows = legLines.map(lp => `<tr><td width="34" style="padding:3px 6px"><div style="width:26px;height:4px;background:${lp.color}"></div></td><td style="padding:3px 6px">${esc(lp.name)}</td></tr>`).join("")
       + stampTypes.map(tp => `<tr><td width="34" style="padding:3px 6px;text-align:center">&#9632;</td><td style="padding:3px 6px">${esc(SITE_STAMP_LABEL[tp] || tp)}</td></tr>`).join("");
-    const legend = (wLegend && (lineKinds.length || stampTypes.length)) ? `<div style="font-weight:bold;text-transform:uppercase;font-size:11px;color:#5b6472;margin-bottom:4px">Legend</div><table style="border-collapse:collapse;margin-bottom:12px">${legendRows}</table>` : "";
-    const planImg = wPlanImg && sp.snapshot ? `<div style="margin-bottom:12px"><img src="${sp.snapshot}" style="max-width:640px;border:1px solid #e4e7ec"/></div>` : "";
+    const legend = (wLegend && (legLines.length || stampTypes.length)) ? `<div style="font-weight:bold;text-transform:uppercase;font-size:11px;color:#5b6472;margin-bottom:4px">Legend</div><table style="border-collapse:collapse;margin-bottom:12px">${legendRows}</table>` : "";
+    const planImg = wPlanImg ? drawn.map((sh, i) => `<div style="margin-bottom:12px">${drawn.length>1?`<div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472;margin-bottom:2px">${esc(sh.name || ("Sheet "+(i+1)))}</div>`:""}<img src="${sh.snapshot || sh.bg}" style="max-width:640px;border:1px solid #e4e7ec"/></div>`).join("") : "";
     return wrap("SITE MANAGEMENT PLAN", `
     <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:12px"><tr>
       <td style="font-size:24px;font-weight:bold;color:${b}">SITE MANAGEMENT PLAN</td>
@@ -3491,10 +3579,12 @@ function ReportView({ project, onChange }){
   const setRShow = (k, v) => onChange({ ...project, reportShow: { ...rShow, [k]: v } });
   const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : kind === "site" ? "SITE MANAGEMENT PLAN" : "QUOTATION";
   const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : kind === "site" ? "Plan #" : "Quote #";
-  // Site Management Plan: pull the drawn plan + auto-build the legend from what's used
-  const sp = project.sitePlan || {};
-  const spStampTypes = [...new Set((sp.stamps || []).map(s => s.type))];
-  const spLineKinds = [...new Set((sp.lines || []).map(l => l.kind))];
+  // Site Management Plan: pull every sheet + auto-build the combined legend from what's used
+  const spSheets = normalizeSite(project.sitePlan).sheets;
+  const spStampTypes = [...new Set(spSheets.flatMap(sh => (sh.stamps || []).map(s => s.type)))];
+  const spLegend = {}; spSheets.forEach(sh => (sh.lines || []).forEach(l => { const lp = lineProps(l); spLegend[lineKey(lp)] = lp; }));
+  const spLegendLines = Object.values(spLegend);
+  const spDrawn = spSheets.filter(sh => sh.snapshot || sh.bg);
   const sheetRef = useRef(null);
   const [busy, setBusy] = useState("");
   const inc = (x) => x.include !== false;
@@ -3518,7 +3608,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption), pb: project.preparedBy, spI: sp.snapshot ? sp.snapshot.length : 0, spL: [spStampTypes.join(","), spLineKinds.join(",")] });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption), pb: project.preparedBy, spI: spDrawn.map(sh => (sh.snapshot||sh.bg||"").length + ":" + (sh.name||"")).join("|"), spL: [spStampTypes.join(","), spLegendLines.map(lineKey).join(",")] });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
@@ -3597,7 +3687,7 @@ function ReportView({ project, onChange }){
             <label className="flex items-center gap-2"><input type="checkbox" checked={showAtt} onChange={(e) => setRShow("attachments", e.target.checked)} /> Attachments</label>
             </>)}
           </div>
-          {kind === "site" && !sp.snapshot && <div className="text-xs mt-2" style={{ color: "#b45309" }}>Tip: on the <b>Site plan</b> tab, tap <b>Save for report</b> so the drawing appears here.</div>}
+          {kind === "site" && !spDrawn.length && <div className="text-xs mt-2" style={{ color: "#b45309" }}>Tip: on the <b>Site plan</b> tab, add a background and tap <b>Save this sheet for report</b> so the drawing appears here.</div>}
         </div>
       </div>
 
@@ -3626,14 +3716,14 @@ function ReportView({ project, onChange }){
             <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Project</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
             <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Client / prepared by</div><div className="font-semibold">{project.client || "—"}</div><div>{project.preparedBy ? "Prepared by " + project.preparedBy : ""}</div></div>
           </div>
-          {showPlanImg && (sp.snapshot
-            ? <div className="mb-4" style={{ pageBreakInside: "avoid" }}><img src={sp.snapshot} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /></div>
-            : <div className="mb-4 text-sm p-6 text-center rounded" style={{ background: "rgba(2,34,75,.05)", color: "var(--muted)" }}>No site plan drawn yet — draw it on the <b>Site plan</b> tab and tap <b>Save for report</b>.</div>)}
-          {showLegend && (spLineKinds.length > 0 || spStampTypes.length > 0) && (
+          {showPlanImg && (spDrawn.length
+            ? spDrawn.map((sh, i) => <div key={sh.id} className="mb-4" style={{ pageBreakInside: "avoid" }}>{spDrawn.length > 1 && <div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>{sh.name || ("Sheet " + (i+1))}</div>}<img src={sh.snapshot || sh.bg} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /></div>)
+            : <div className="mb-4 text-sm p-6 text-center rounded" style={{ background: "rgba(2,34,75,.05)", color: "var(--muted)" }}>No site plan drawn yet — draw it on the <b>Site plan</b> tab and tap <b>Save this sheet for report</b>.</div>)}
+          {showLegend && (spLegendLines.length > 0 || spStampTypes.length > 0) && (
             <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
               <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Legend</div>
               <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
-                {spLineKinds.map(k => <div key={k} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 26, height: 4, background: SITE_LINE_STYLES[k].color }} /> {SITE_LINE_STYLES[k].label}</div>)}
+                {spLegendLines.map(lp => <div key={lineKey(lp)} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 26, height: 4, background: lp.color }} /> {lp.name}</div>)}
                 {spStampTypes.map(tp => <div key={tp} className="flex items-center gap-2"><SiteStampChip type={tp} /> {SITE_STAMP_LABEL[tp]}</div>)}
               </div>
             </div>
