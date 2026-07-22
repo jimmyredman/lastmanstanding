@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v68 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v69 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1308,14 +1308,25 @@ function drawSiteStamp(ctx, s){
   ctx.restore();
 }
 function loadImg(src){ return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("image load failed")); im.src = src; }); }
-// Aerial capture area presets — [key, label, half-width° lon, tile zoom]. Smaller area + higher zoom = sharper.
-const AERIAL_AREAS = [["close", "Close — sharpest (~170 m)", 0.0008, 20], ["site", "Site (~340 m)", 0.0016, 20], ["wide", "Wide (~700 m)", 0.0034, 19]];
+// Aerial capture area presets — [key, label, half-width° lon, target tile zoom]. Smaller area + higher zoom = sharper.
+const AERIAL_AREAS = [["close", "Close — sharpest (~130 m)", 0.0006, 21], ["site", "Site (~270 m)", 0.0013, 20], ["wide", "Wide (~630 m)", 0.003, 19]];
+// Imagery sources, best-first. Each is a CORS-enabled XYZ tile service; we use the first that returns real
+// (non-blank, non-tainted) tiles for the spot. QLD Government imagery is far sharper than the generic Esri layer.
+const AERIAL_SOURCES = [
+  { name: "QLD Government imagery", maxZ: 21, inBounds: (lat, lon) => lat <= -9 && lat >= -29.5 && lon >= 137.9 && lon <= 154.5,
+    url: (z, x, y) => "https://spatial-img.information.qld.gov.au/arcgis/rest/services/Basemaps/LatestStateProgram_AllUsers/MapServer/tile/" + z + "/" + y + "/" + x },
+  { name: "Esri Clarity", maxZ: 22, inBounds: () => true,
+    url: (z, x, y) => "https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x },
+  { name: "Esri World Imagery", maxZ: 21, inBounds: () => true,
+    url: (z, x, y) => "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + y + "/" + x },
+];
 // Web-Mercator tile helpers (fractional tile coords)
 const lon2tileF = (lon, z) => (lon + 180) / 360 * Math.pow(2, z);
 const lat2tileF = (lat, z) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z); };
-// Pull native Esri World Imagery tiles at high zoom and stitch them — this gives the sharpest imagery the free
-// source actually holds (the /export endpoint resamples and looks soft when you zoom right in to a house).
-async function fetchAerialTiles(lat, lon, d, z){
+// luminance std-dev of a canvas (downsampled) — near-zero means a blank "no imagery" placeholder; throws if tainted
+function imgVariance(cv){ const s = 48, t = document.createElement("canvas"); t.width = s; t.height = s; const c = t.getContext("2d"); c.drawImage(cv, 0, 0, s, s); const d = c.getImageData(0, 0, s, s).data; let sum = 0, sum2 = 0, n = s*s; for (let i = 0; i < d.length; i += 4){ const l = (d[i]+d[i+1]+d[i+2])/3; sum += l; sum2 += l*l; } const mean = sum/n; return Math.sqrt(Math.max(0, sum2/n - mean*mean)); }
+// stitch native tiles from one source at zoom z and crop to the bbox → returns a canvas (or throws)
+async function stitchTiles(lat, lon, d, z, urlFn){
   const dLat = d * Math.cos(lat * Math.PI / 180);
   const lonMin = lon - d, lonMax = lon + d, latMin = lat - dLat, latMax = lat + dLat;
   while (z > 16 && (Math.floor(lon2tileF(lonMax,z)) - Math.floor(lon2tileF(lonMin,z)) + 1) * (Math.floor(lat2tileF(latMin,z)) - Math.floor(lat2tileF(latMax,z)) + 1) > 144) z--;
@@ -1326,29 +1337,39 @@ async function fetchAerialTiles(lat, lon, d, z){
   const sctx = stitch.getContext("2d"); let ok = 0;
   const jobs = [];
   for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++){
-    jobs.push(loadImg("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + ty + "/" + tx).then(im => { sctx.drawImage(im, (tx-x0)*256, (ty-y0)*256); ok++; }).catch(() => {}));
+    jobs.push(loadImg(urlFn(z, tx, ty)).then(im => { sctx.drawImage(im, (tx-x0)*256, (ty-y0)*256); ok++; }).catch(() => {}));
   }
   await Promise.all(jobs);
-  if (!ok) throw new Error("no tiles");
-  // crop the stitched grid to the exact bbox
-  const cx0 = (lon2tileF(lonMin,z) - x0) * 256, cx1 = (lon2tileF(lonMax,z) - x0) * 256;
-  const cy0 = (lat2tileF(latMax,z) - y0) * 256, cy1 = (lat2tileF(latMin,z) - y0) * 256;
-  const cw = Math.max(1, Math.round(cx1 - cx0)), chh = Math.max(1, Math.round(cy1 - cy0));
+  if (ok < Math.max(1, nx*ny*0.5)) throw new Error("tiles failed");   // most tiles must load
+  const cx0 = (lon2tileF(lonMin,z) - x0) * 256, cy0 = (lat2tileF(latMax,z) - y0) * 256;
+  const cw = Math.max(1, Math.round((lon2tileF(lonMax,z) - lon2tileF(lonMin,z)) * 256));
+  const chh = Math.max(1, Math.round((lat2tileF(latMin,z) - lat2tileF(latMax,z)) * 256));
   const out = document.createElement("canvas"); out.width = cw; out.height = chh;
   out.getContext("2d").drawImage(stitch, Math.round(cx0), Math.round(cy0), cw, chh, 0, 0, cw, chh);
-  return { bg: out.toDataURL("image/jpeg", 0.92), natW: cw, natH: chh, lat, lon, span: d };
+  return out;
 }
-// Free aerial: geocode (Nominatim) then satellite imagery (Esri World Imagery), cached into the sheet → offline after.
+// Free aerial: geocode (Nominatim) then the sharpest available satellite tiles, cached into the sheet → offline after.
 async function fetchAerialImage(lat, lon, span, zoom){
-  const d = span || 0.0016, z = zoom || 20;
-  try { const r = await fetchAerialTiles(lat, lon, d, z); if (r.natW >= 256) return r; } catch(e){}
-  // fallback: single static export request
+  const d = span || 0.0006;
+  for (const src of AERIAL_SOURCES){
+    if (!src.inBounds(lat, lon)) continue;
+    const zTop = Math.min(zoom || 21, src.maxZ);
+    // try the target zoom, then one level down (some areas aren't tiled at the very top zoom)
+    for (let z = zTop; z >= zTop - 1 && z >= 16; z--){
+      try {
+        const cv = await stitchTiles(lat, lon, d, z, src.url);
+        let v; try { v = imgVariance(cv); } catch(e){ break; }     // tainted (no CORS) → whole source unusable
+        if (v < 7) continue;                                       // blank placeholder → try a lower zoom / next source
+        return { bg: cv.toDataURL("image/jpeg", 0.92), natW: cv.width, natH: cv.height, lat, lon, span: d, source: src.name };
+      } catch(e){ /* tiles failed at this zoom — try lower */ }
+    }
+  }
+  // last resort: Esri static export (always returns something, just softer)
   const dLat = d * Math.cos(lat * Math.PI / 180), W = 2048, H = Math.round(W * dLat / d);
   const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
-  const url = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image";
-  const im = await loadImg(url);
+  const im = await loadImg("https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image");
   const cv = document.createElement("canvas"); cv.width = W; cv.height = H; cv.getContext("2d").drawImage(im, 0, 0, W, H);
-  return { bg: cv.toDataURL("image/jpeg", 0.9), natW: W, natH: H, lat, lon, span: d };
+  return { bg: cv.toDataURL("image/jpeg", 0.9), natW: W, natH: H, lat, lon, span: d, source: "Esri (export)" };
 }
 async function geocodeAU(query){
   const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(query), { headers: { "Accept": "application/json" } });
@@ -2385,7 +2406,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
   };
   const areaPreset = AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[0];
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3]); setBackground({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3]); setBackground({ ...res, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
   const saveSnapshot = () => { patchSheet({ snapshot: renderFull() }); notify("Saved for the report"); };
@@ -2436,9 +2457,9 @@ function SitePlanEditor({ plan, onChange: rawChange }){
           <label className="flex items-center gap-1 text-sm">Area <select className="inp !py-1 !w-auto" value={aerialArea} onChange={e => setAerialArea(e.target.value)}>{AERIAL_AREAS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           <button className="btn btn-primary" disabled={busy === "aerial"} onClick={searchLoc}>{busy === "aerial" ? "…" : "Search"}</button>
           <button className="btn btn-ghost" disabled={busy === "aerial"} onClick={myLocation}>📍 Use my location</button>
-          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>High-resolution satellite image (Esri World Imagery), stored in this job so it works offline afterwards. Pick a tighter <b>Area</b> for a sharper close-up to draw around buildings. You need signal the first time.</div>
+          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Uses the sharpest free imagery for the spot — <b>Queensland Government aerial</b> in QLD, else Esri — stored in this job so it works offline afterwards. Pick a tighter <b>Area</b> for a sharper close-up. You need signal the first time.</div>
         </div>}
-        {sheet.loc && sheet.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {sheet.loc.name}</div>}
+        {sheet.loc && sheet.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {sheet.loc.name}{sheet.loc.source ? " · " + sheet.loc.source : ""}</div>}
       </div>
 
       {/* ---- tools ---- */}
