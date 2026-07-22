@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v65 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v66 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2154,6 +2154,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const bgImg = useRef(null);
   const [bgRev, setBgRev] = useState(0);
   const gPointers = useRef(new Map()), pinch = useRef(null), zoomAnchor = useRef(null), moved = useRef(false);
+  const dragRef = useRef(null);   // active drag lives in a ref so pointermove reads it synchronously (no stale state during a fast drag)
+  const startDrag = (d) => { dragRef.current = d; setDrag(d); };
 
   const stamps = (preview && preview.stamps) || sheet.stamps || [];
   const notes = (preview && preview.notes) || sheet.notes || [];
@@ -2235,7 +2237,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const startPinch = () => {
     const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
     const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
-    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, sx: mx, sy: my };
+    // track the current finger distance + midpoint so we can pan (midpoint drift) and zoom (distance change) together
+    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, mx, my };
     setDraft(null); setDrag(null); setPreview(null);
   };
   const onDown = (e) => {
@@ -2248,16 +2251,34 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     if (tool === "note"){ const text = prompt("Note text:"); if (text != null && text.trim()){ patchSheet({ notes: [...(sheet.notes||[]), { id: uid(), x: p.x, y: p.y, text: text.trim() }] }); } return; }
     if (tool === "fence"){ if (!draft){ setDraft({ name: fenceName, color: fenceColor, style: fenceStyle, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
     const handle = hitStampHandle(p);
-    if (handle){ const s = stamps.find(x => x.id === sel.id); setDrag({ kind: handle, id: s.id, start: p, s0: { ...s } }); return; }
+    if (handle){ const s = stamps.find(x => x.id === sel.id); startDrag({ kind: handle, id: s.id, start: p, s0: { ...s } }); return; }
     const hit = hitTest(p);
     if (hit){ if (hit.kind === "stamp" || hit.kind === "note") setSel({ kind: hit.kind, id: hit.id }); else setSel(null);
       const base = hit.kind === "stamp" ? stamps.find(x => x.id === hit.id) : hit.kind === "note" ? notes.find(x => x.id === hit.id) : null;
-      setDrag({ ...hit, start: p, s0: base ? { ...base } : null, points0: hit.kind === "vertex" ? (lines.find(x=>x.id===hit.id).points.map(pt=>({...pt}))) : null });
-    } else setSel(null);
+      startDrag({ ...hit, start: p, s0: base ? { ...base } : null, points0: hit.kind === "vertex" ? (lines.find(x=>x.id===hit.id).points.map(pt=>({...pt}))) : null });
+    } else {
+      // empty space in Move → one-finger drag pans the view (like a maps app)
+      setSel(null);
+      const wrap = wrapRef.current;
+      startDrag({ kind: "pan", sx: e.clientX, sy: e.clientY, l0: wrap ? wrap.scrollLeft : 0, t0: wrap ? wrap.scrollTop : 0 });
+    }
   };
   const onMove = (e) => {
     if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pinch.current && gPointers.current.size >= 2){ const pts = [...gPointers.current.values()]; const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1; const wrap = wrapRef.current, rect = wrap.getBoundingClientRect(); const mx = (pts[0].x+pts[1].x)/2 - rect.left, my = (pts[0].y+pts[1].y)/2 - rect.top; anchorAt(mx, my); setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.25, 8)); return; }
+    if (pinch.current && gPointers.current.size >= 2){
+      const pts = [...gPointers.current.values()]; const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1;
+      const wrap = wrapRef.current, rect = wrap.getBoundingClientRect();
+      const mx = (pts[0].x+pts[1].x)/2 - rect.left, my = (pts[0].y+pts[1].y)/2 - rect.top;
+      // PAN: move the scroll opposite to the two-finger midpoint drift (works even with no zoom change)
+      wrap.scrollLeft -= (mx - pinch.current.mx); wrap.scrollTop -= (my - pinch.current.my);
+      pinch.current.mx = mx; pinch.current.my = my;
+      // ZOOM: only when the pinch distance actually changes; anchor on the midpoint (uses the just-updated scroll)
+      if (Math.abs(d - (pinch.current.dPrev || pinch.current.d0)) > 0.5){ anchorAt(mx, my); setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.25, 8)); }
+      pinch.current.dPrev = d;
+      return;
+    }
+    const drag = dragRef.current;   // read from the ref so a fast drag isn't lost to stale state
+    if (drag && drag.kind === "pan"){ const wrap = wrapRef.current; if (wrap){ wrap.scrollLeft = drag.l0 - (e.clientX - drag.sx); wrap.scrollTop = drag.t0 - (e.clientY - drag.sy); } return; }
     const p = toWorld(e); moved.current = true;
     if (draft && tool === "fence"){ setDraft({ ...draft, preview: p }); return; }
     if (!drag) return;
@@ -2271,7 +2292,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     gPointers.current.delete(e.pointerId);
     if (gPointers.current.size < 2) pinch.current = null;
     if (preview){ patchSheet(preview); setPreview(null); }
-    setDrag(null);
+    dragRef.current = null; setDrag(null);
   };
 
   const finishLine = () => { if (draft && draft.points.length >= 2){ patchSheet({ lines: [...(sheet.lines||[]), { id: uid(), name: draft.name, color: draft.color, style: draft.style, points: draft.points }] }); } setDraft(null); };
