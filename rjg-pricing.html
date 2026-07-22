@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v74 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v75 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2238,12 +2238,17 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   // the canvas takes the image's shape (capped), so at fit the image fills it with no grey border
   const maxCh = Math.round((typeof window !== "undefined" ? window.innerHeight : 800) * 0.66);
   const ch = clamp(Math.round(cw * worldH / worldW), 240, maxCh);
-  // "cover" scale = smallest zoom that still fills the whole canvas → you can never zoom out to bare grey
+  // "cover" scale = zoom that exactly fills the canvas (the default view, so it opens with no grey border)
   const coverScale = Math.max(cw / worldW, ch / worldH) || 1;
   const fitScale = coverScale;
-  const minScale = coverScale, maxScale = Math.max(coverScale * 60, 16);
-  // keep the image covering the canvas: clamp the pan so its edges never pull inside the view
-  const clampView = (v) => { const s = clamp(v.scale, minScale, maxScale); const minTx = cw - worldW*s, minTy = ch - worldH*s; return { scale: s, tx: clamp(v.tx, minTx, 0), ty: clamp(v.ty, minTy, 0) }; };
+  const minScale = coverScale * 0.1, maxScale = Math.max(coverScale * 60, 16);   // zoom out far (Google-Maps style)
+  // clamp the pan. Zoomed in past fill: hold the image edges to the frame (no grey creeps in).
+  // Zoomed out past fill: let it float with surrounding space, but keep some of it on-screen so it can't be lost.
+  const clampView = (v) => {
+    const s = clamp(v.scale, minScale, maxScale);
+    if (s >= coverScale){ const minTx = cw - worldW*s, minTy = ch - worldH*s; return { scale: s, tx: clamp(v.tx, minTx, 0), ty: clamp(v.ty, minTy, 0) }; }
+    const m = 0.15; return { scale: s, tx: clamp(v.tx, -worldW*s + cw*m, cw*(1-m)), ty: clamp(v.ty, -worldH*s + ch*m, ch*(1-m)) };
+  };
   const fitView = () => clampView({ scale: coverScale, tx: (cw - worldW*coverScale)/2, ty: (ch - worldH*coverScale)/2 });
   // refit when the sheet/background or the canvas size changes
   const fitKey = activeId + ":" + worldW + "x" + worldH + "@" + cw + "x" + ch;
