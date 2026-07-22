@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v63 · 21 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v64 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -175,6 +175,7 @@ const JOB_KINDS = {
   new:       { label: "New job / quote",           short: "Quote", prefix: "RJG-Q", seq: "quoteSeq", priced: true,  badge: "#02224B" },
   rfq:       { label: "Subcontractor price request", short: "RFQ",  prefix: "RFQ-",  seq: "rfqSeq",   priced: false, badge: "#0f766e" },
   variation: { label: "Variation to a client",      short: "VPR",  prefix: "VPR-",  seq: "vprSeq",   priced: true,  badge: "#b45309" },
+  site:      { label: "Site management plan",       short: "SMP",  prefix: "SMP-",  seq: "smpSeq",   priced: false, badge: "#7c3aed", site: true },
 };
 const jobKind = (p) => (p && JOB_KINDS[p.kind]) ? p.kind : "new";
 const DEFAULT_LOGO = "./vendor/rjg-logo.png";   // real RJG logo (white on navy)
@@ -1246,6 +1247,58 @@ const OBJECT_INK = "#1f74c4";
 // floor-finish colours so a room's floor reads at a glance in 2D, the PDF and 3D
 const FLOOR_COL = { tile: "#dfe7ee", timber: "#d6a869", carpet: "#cdbfad", vinyl: "#dbe2e8", laminate: "#e3c690", concrete: "#c4c9cf", epoxy: "#a9c3d4" };
 const FLOOR_3D = { tile: 0xd3dce4, timber: 0xc4915a, carpet: 0xbfb2a2, vinyl: 0xd0d8e0, laminate: 0xd2b079, concrete: 0xb8bec5, epoxy: 0x9dbacb };
+// ===== Site Management Plan =====
+// Site icons (dropped over an aerial/photo/drawing) and fence-line styles, matching the RJG SMP form.
+const SITE_STAMPS = [
+  ["firstaid", "First aid"], ["parking", "Parking"], ["amenities", "Amenities / toilet"],
+  ["supervisor", "Supervisor station"], ["office", "Site office"], ["evac", "Evacuation point"],
+  ["bin", "Site bin / trailer"], ["container", "Container"], ["trailer", "Trailer"],
+  ["banner", "Banner / sign"], ["access", "Access (Enter / Exit)"],
+];
+const SITE_STAMP_LABEL = Object.fromEntries(SITE_STAMPS);
+const SITE_LINE_STYLES = {
+  fence_stage1:  { label: "Stage 1 site fence",  color: "#e11d2e", dash: [13, 8], w: 3 },
+  fence_stage2:  { label: "Stage 2 site fence",  color: "#1f9d55", dash: [13, 8], w: 3 },
+  fence_existing:{ label: "Existing fence",       color: "#e0b400", dash: [15, 9], w: 3 },
+  pedestrian:    { label: "Pedestrian access",    color: "#1f5fbf", dash: [2, 8],  w: 3 },
+};
+const SITE_LINES = Object.keys(SITE_LINE_STYLES);
+// draw one site icon centred at s.x,s.y (px), size s.size, rotated s.angle
+function drawSiteStamp(ctx, s){
+  const w = s.size || 46, h = w; ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((s.angle || 0) * Math.PI / 180);
+  ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+  const box = (col) => { rrect(ctx, -w/2, -h/2, w, h, 6); ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.stroke(); };
+  const t = (txt, col, frac, dy) => { ctx.fillStyle = col; ctx.font = "800 " + Math.round(h * (frac || 0.4)) + "px system-ui"; ctx.fillText(txt, 0, dy || 0); };
+  if (s.type === "firstaid"){ box("#1f9d55"); ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(4, w*0.15); ctx.beginPath(); ctx.moveTo(0,-h*0.26); ctx.lineTo(0,h*0.26); ctx.moveTo(-w*0.26,0); ctx.lineTo(w*0.26,0); ctx.stroke(); }
+  else if (s.type === "parking"){ box("#1f5fbf"); t("P", "#fff", 0.66, 2); }
+  else if (s.type === "amenities"){ box("#1f5fbf"); t("WC", "#fff", 0.42); }
+  else if (s.type === "evac"){ box("#1f9d55"); t("ASSEMBLY", "#fff", 0.19); }
+  else if (s.type === "supervisor" || s.type === "office"){
+    ctx.fillStyle = "#fff"; ctx.strokeStyle = "#33414f"; ctx.lineWidth = 2; rrect(ctx, -w/2, -h*0.12, w, h*0.58, 3); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-w*0.58,-h*0.12); ctx.lineTo(0,-h*0.5); ctx.lineTo(w*0.58,-h*0.12); ctx.closePath(); ctx.fillStyle = "#8a5a3c"; ctx.fill(); ctx.stroke();
+    t(s.type === "office" ? "OFFICE" : "SUP", "#33414f", 0.16, h*0.16); }
+  else if (s.type === "bin"){ ctx.fillStyle = "#2f7fd0"; ctx.strokeStyle = "#1b4e86"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-w*0.5,h*0.28); ctx.lineTo(-w*0.36,-h*0.3); ctx.lineTo(w*0.36,-h*0.3); ctx.lineTo(w*0.5,h*0.28); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+  else if (s.type === "container"){ box("#c26a2a"); ctx.strokeStyle = "rgba(0,0,0,.28)"; ctx.lineWidth = 1; for (let i=-2;i<=2;i++){ ctx.beginPath(); ctx.moveTo(i*w*0.16,-h/2+3); ctx.lineTo(i*w*0.16,h/2-3); ctx.stroke(); } t("20ft", "#fff", 0.2); }
+  else if (s.type === "trailer"){ ctx.fillStyle = "#8a929c"; ctx.strokeStyle = "#4a5560"; ctx.lineWidth = 2; rrect(ctx, -w/2, -h*0.28, w, h*0.5, 3); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#222"; [-(w*0.25), w*0.25].forEach(x => { ctx.beginPath(); ctx.arc(x, h*0.26, h*0.12, 0, 7); ctx.fill(); }); }
+  else if (s.type === "banner"){ ctx.strokeStyle = "#555"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-w*0.4,h*0.5); ctx.lineTo(-w*0.4,-h*0.5); ctx.stroke(); ctx.fillStyle = "#e11d2e"; rrect(ctx, -w*0.4, -h*0.5, w*0.8, h*0.4, 2); ctx.fill(); t("SIGN", "#fff", 0.16, -h*0.3); }
+  else if (s.type === "access"){ ctx.fillStyle = "#1f9d55"; rrect(ctx, -w/2, -h*0.5, w, h*0.42, 3); ctx.fill(); t("ENTER", "#fff", 0.22, -h*0.29); ctx.fillStyle = "#d21f2b"; rrect(ctx, -w/2, h*0.06, w, h*0.42, 3); ctx.fill(); t("EXIT", "#fff", 0.22, h*0.27); }
+  ctx.restore();
+}
+function loadImg(src){ return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("image load failed")); im.src = src; }); }
+// Free aerial: geocode (Nominatim) then a static satellite image (Esri World Imagery). Cached into the plan → offline after.
+async function fetchAerialImage(lat, lon, span){
+  const d = span || 0.0035, W = 1200, H = 900, dLat = d * 0.72;
+  const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
+  const url = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image";
+  const im = await loadImg(url);
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H; cv.getContext("2d").drawImage(im, 0, 0, W, H);
+  return { bg: cv.toDataURL("image/jpeg", 0.85), natW: W, natH: H, lat, lon, span: d };
+}
+async function geocodeAU(query){
+  const r = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=au&q=" + encodeURIComponent(query), { headers: { "Accept": "application/json" } });
+  const arr = await r.json(); if (!arr || !arr.length) throw new Error("Location not found — try a fuller address.");
+  return { lat: +arr[0].lat, lon: +arr[0].lon, name: arr[0].display_name };
+}
 const FENCE_WALL_STYLES = [["fence","Timber"],["fence_black","Black steel"],["fence_glass","Glass"]];
 const FENCE_WALL_COLOR = { fence: "#9c7b56", fence_black: "#2a2f36", fence_glass: "#5fa9d6" };
 // Structures with selectable roof lines. Roofs use the same hip/gable/skillion/
@@ -2038,6 +2091,302 @@ function Plan3D({ plan, onClose, onSave, onPersist }){
       <div className="text-center text-xs py-2" style={{ color: "var(--muted)" }}>{editMode === "objects" ? "Moving objects — drag any object to slide it around the floor. Orbit still works on empty space." : editMode === "walls" ? "Editing walls — drag an orange corner to lengthen or shorten the walls. Orbit still works on empty space." : "Drag to orbit · pinch / scroll to zoom · walls " + (plan.wallHeight || 2.7) + " m · use Move / Edit walls to adjust"}</div>
     </div>
   );
+}
+
+/* =========================================================================
+   SITE MANAGEMENT PLAN EDITOR
+   A light markup tool: an aerial / photo / drawing background with site icons,
+   colour-coded fence lines and text notes dropped on top. Everything is stored
+   per job in project.sitePlan and rendered on the RJG Site Management Plan form.
+   ========================================================================= */
+function SitePlanEditor({ plan, onChange: rawChange }){
+  const { notify } = useStore();
+  const undoRef = useRef([]);
+  const [undoN, setUndoN] = useState(0);
+  const onChange = (next) => { undoRef.current.push(plan); if (undoRef.current.length > 80) undoRef.current.shift(); setUndoN(undoRef.current.length); rawChange(next); };
+  const undoPlan = () => { const prev = undoRef.current.pop(); if (!prev) return; setUndoN(undoRef.current.length); setDraft(null); setSel(null); rawChange(prev); };
+
+  const canvasRef = useRef(null), wrapRef = useRef(null);
+  const [wrapW, setWrapW] = useState(360);
+  const [tool, setTool] = useState("move");       // move | place | fence | note
+  const [stampType, setStampType] = useState("bin");
+  const [lineKind, setLineKind] = useState("fence_stage1");
+  const [draft, setDraft] = useState(null);         // building a fence line { kind, points:[] }
+  const [sel, setSel] = useState(null);             // selected item { kind:'stamp'|'note', id }
+  const [drag, setDrag] = useState(null);
+  const [preview, setPreview] = useState(null);     // live { stamps, notes, lines } during a drag
+  const [zoom, setZoom] = useState(1);
+  const [busy, setBusy] = useState("");
+  const [showLoc, setShowLoc] = useState(false);
+  const [locQuery, setLocQuery] = useState("");
+  const bgImg = useRef(null);
+  const [bgRev, setBgRev] = useState(0);
+  const gPointers = useRef(new Map()), pinch = useRef(null), zoomAnchor = useRef(null), moved = useRef(false);
+
+  const stamps = (preview && preview.stamps) || plan.stamps || [];
+  const notes = (preview && preview.notes) || plan.notes || [];
+  const lines = (preview && preview.lines) || plan.lines || [];
+  const worldW = plan.bg ? (plan.natW || 1200) : 1200;
+  const worldH = plan.bg ? (plan.natH || 900) : 900;
+
+  useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
+  // load the background image whenever it changes so we can paint it under the markups
+  useEffect(() => { if (!plan.bg){ bgImg.current = null; setBgRev(r => r + 1); return; } let live = true; loadImg(plan.bg).then(im => { if (live){ bgImg.current = im; setBgRev(r => r + 1); } }).catch(() => {}); return () => { live = false; }; }, [plan.bg]);
+
+  const S = Math.min(1, wrapW / worldW) * zoom;
+  const cssW = worldW * S, cssH = worldH * S;
+  useEffect(() => {
+    const wrap = wrapRef.current; if (!wrap) return;
+    const onWheel = (e) => { e.preventDefault(); const rect = wrap.getBoundingClientRect(); const sx = e.clientX-rect.left, sy = e.clientY-rect.top; zoomAnchor.current = { fx: (wrap.scrollLeft+sx)/(wrap.scrollWidth||1), fy: (wrap.scrollTop+sy)/(wrap.scrollHeight||1), sx, sy }; setZoom(z => clamp(z * (e.deltaY < 0 ? 1.12 : 1/1.12), 0.2, 6)); };
+    wrap.addEventListener("wheel", onWheel, { passive: false });
+    return () => wrap.removeEventListener("wheel", onWheel);
+  }, []);
+  useLayoutEffect(() => { const wrap = wrapRef.current, a = zoomAnchor.current; if (!wrap || !a) return; wrap.scrollLeft = a.fx * wrap.scrollWidth - a.sx; wrap.scrollTop = a.fy * wrap.scrollHeight - a.sy; zoomAnchor.current = null; }, [zoom]);
+  const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: clamp((e.clientX - r.left) / S, 0, worldW), y: clamp((e.clientY - r.top) / S, 0, worldH) }; };
+
+  // rotate / resize / delete handle positions for a selected stamp (world coords)
+  const stampHandles = (s) => {
+    const a = (s.angle || 0) * Math.PI / 180, w = s.size || 46, gap = 14 / S;
+    const rot = (lx, ly) => ({ x: s.x + lx*Math.cos(a) - ly*Math.sin(a), y: s.y + lx*Math.sin(a) + ly*Math.cos(a) });
+    return { rotate: rot(0, -(w/2 + gap + 16/S)), size: rot(w/2 + gap, w/2 + gap), del: rot(-(w/2 + gap), -(w/2 + gap)) };
+  };
+
+  useEffect(() => {
+    const cv = canvasRef.current; if (!cv) return;
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = cssW * dpr; cv.height = cssH * dpr; cv.style.width = cssW + "px"; cv.style.height = cssH + "px";
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr * S, 0, 0, dpr * S, 0, 0);
+    ctx.clearRect(0, 0, worldW, worldH);
+    if (bgImg.current){ ctx.drawImage(bgImg.current, 0, 0, worldW, worldH); }
+    else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, worldW, worldH); ctx.fillStyle = "#aab3bf"; ctx.font = "600 22px system-ui"; ctx.textAlign = "center"; ctx.fillText("Add a background — upload a drawing, take a photo,", worldW/2, worldH/2 - 16); ctx.fillText("or drop an aerial from a searched location.", worldW/2, worldH/2 + 16); }
+    // fence / access lines
+    const drawLine = (l, sel2) => {
+      const st = SITE_LINE_STYLES[l.kind] || SITE_LINE_STYLES.fence_stage1, pts = l.points; if (pts.length < 1) return;
+      ctx.save(); ctx.strokeStyle = st.color; ctx.lineWidth = st.w; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(st.dash.map(d => d));
+      ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]);
+      if (sel2 || tool === "move"){ ctx.fillStyle = st.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); }
+      ctx.restore();
+    };
+    lines.forEach(l => drawLine(l));
+    stamps.forEach(s => drawSiteStamp(ctx, s));
+    // text notes
+    notes.forEach(n => { ctx.save(); ctx.font = "700 15px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top"; const tw = ctx.measureText(n.text || "").width; ctx.fillStyle = "rgba(255,255,255,.86)"; rrect(ctx, n.x - 4, n.y - 3, tw + 8, 20, 3); ctx.fill(); ctx.fillStyle = "#c01722"; ctx.fillText(n.text || "", n.x, n.y); ctx.restore(); });
+    // live fence draft
+    if (draft && draft.points.length){ const st = SITE_LINE_STYLES[draft.kind]; const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; ctx.save(); ctx.strokeStyle = st.color; ctx.lineWidth = st.w; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(st.dash); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = st.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/S, 0, 7); ctx.fill(); }); ctx.restore(); }
+    // selected stamp handles
+    if (tool === "move" && sel && sel.kind === "stamp"){
+      const s = stamps.find(x => x.id === sel.id);
+      if (s){ const h = stampHandles(s), w0 = s.size || 46, a = (s.angle||0)*Math.PI/180, hs = 1/S, knob = 12*hs;
+        ctx.save(); ctx.translate(s.x, s.y); ctx.rotate(a); ctx.strokeStyle = "#e8792b"; ctx.setLineDash([5,4]); ctx.lineWidth = 1.5*hs; ctx.strokeRect(-w0/2, -w0/2, w0, w0); ctx.restore(); ctx.setLineDash([]);
+        ctx.strokeStyle = "#e8792b"; ctx.fillStyle = "#e8792b"; ctx.lineWidth = 1.5*hs;
+        ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(h.rotate.x, h.rotate.y); ctx.stroke();
+        ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, knob, 0, 7); ctx.fill(); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(h.rotate.x, h.rotate.y, knob*0.45, 0, 7); ctx.fill();
+        ctx.fillStyle = "#e8792b"; ctx.fillRect(h.size.x - 8*hs, h.size.y - 8*hs, 16*hs, 16*hs); ctx.fillStyle = "#fff"; ctx.fillRect(h.size.x - 3*hs, h.size.y - 3*hs, 6*hs, 6*hs);
+        ctx.fillStyle = "#dc2626"; ctx.beginPath(); ctx.arc(h.del.x, h.del.y, knob, 0, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2*hs; const cx = knob*0.4; ctx.beginPath(); ctx.moveTo(h.del.x-cx,h.del.y-cx); ctx.lineTo(h.del.x+cx,h.del.y+cx); ctx.moveTo(h.del.x+cx,h.del.y-cx); ctx.lineTo(h.del.x-cx,h.del.y+cx); ctx.stroke();
+      }
+    }
+    // north arrow
+    (() => { const nx = worldW - 40, ny = 44; ctx.save(); ctx.translate(nx, ny); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0,0,22,0,7); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#c01722"; ctx.beginPath(); ctx.moveTo(0,-16); ctx.lineTo(6,4); ctx.lineTo(0,0); ctx.lineTo(-6,4); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#111"; ctx.font = "700 12px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("N", 0, 12); ctx.restore(); })();
+  }, [stamps, notes, lines, draft, tool, sel, cssW, cssH, S, worldW, worldH, bgRev]);
+
+  const hitStampHandle = (p) => {
+    if (!(sel && sel.kind === "stamp")) return null;
+    const s = stamps.find(x => x.id === sel.id); if (!s) return null;
+    const h = stampHandles(s), thr = 15 / S;
+    if (dist(p, h.del) < thr) return "del"; if (dist(p, h.rotate) < thr) return "rotate"; if (dist(p, h.size) < thr) return "size"; return null;
+  };
+  const hitTest = (p) => {
+    const thr = 16 / S;
+    for (let i = notes.length - 1; i >= 0; i--){ const n = notes[i]; if (n.locked) continue; if (Math.abs(p.x - (n.x + 30)) < 40/S + 30/S && Math.abs(p.y - (n.y + 8)) < 16/S) return { kind: "note", id: n.id }; }
+    for (let i = stamps.length - 1; i >= 0; i--){ const s = stamps[i]; if (s.locked) continue; if (dist(p, s) < Math.max(thr, (s.size || 46)/2)) return { kind: "stamp", id: s.id }; }
+    for (let i = lines.length - 1; i >= 0; i--){ const l = lines[i]; if (l.locked) continue; for (let j = 0; j < l.points.length; j++){ if (dist(p, l.points[j]) < thr) return { kind: "vertex", id: l.id, idx: j }; } }
+    return null;
+  };
+
+  const startPinch = () => {
+    const wrap = wrapRef.current, pts = [...gPointers.current.values()], rect = wrap.getBoundingClientRect();
+    const mx = (pts[0].x + pts[1].x)/2 - rect.left, my = (pts[0].y + pts[1].y)/2 - rect.top;
+    pinch.current = { d0: Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1, z0: zoom, fx: (wrap.scrollLeft + mx)/(wrap.scrollWidth || 1), fy: (wrap.scrollTop + my)/(wrap.scrollHeight || 1) };
+    setDraft(null); setDrag(null); setPreview(null);
+  };
+  const onDown = (e) => {
+    gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (gPointers.current.size >= 2){ startPinch(); return; }
+    e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch(_){}
+    moved.current = false;
+    const p = toWorld(e);
+    if (tool === "place"){ const s = { id: uid(), type: stampType, x: p.x, y: p.y, size: 46, angle: 0 }; onChange({ ...plan, stamps: [...(plan.stamps||[]), s] }); setSel({ kind: "stamp", id: s.id }); return; }
+    if (tool === "note"){ const text = prompt("Note text:"); if (text != null && text.trim()){ onChange({ ...plan, notes: [...(plan.notes||[]), { id: uid(), x: p.x, y: p.y, text: text.trim() }] }); } return; }
+    if (tool === "fence"){ if (!draft || draft.kind !== lineKind){ setDraft({ kind: lineKind, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
+    // move / edit
+    const handle = hitStampHandle(p);
+    if (handle){ const s = stamps.find(x => x.id === sel.id); setDrag({ kind: handle, id: s.id, start: p, s0: { ...s } }); return; }
+    const hit = hitTest(p);
+    if (hit){ if (hit.kind === "stamp" || hit.kind === "note") setSel({ kind: hit.kind, id: hit.id }); else setSel(null);
+      const base = hit.kind === "stamp" ? stamps.find(x => x.id === hit.id) : hit.kind === "note" ? notes.find(x => x.id === hit.id) : null;
+      setDrag({ ...hit, start: p, s0: base ? { ...base } : null, points0: hit.kind === "vertex" ? (lines.find(x=>x.id===hit.id).points.map(pt=>({...pt}))) : null });
+    } else setSel(null);
+  };
+  const onMove = (e) => {
+    if (gPointers.current.has(e.pointerId)) gPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pinch.current && gPointers.current.size >= 2){ const pts = [...gPointers.current.values()]; const d = Math.hypot(pts[0].x-pts[1].x, pts[0].y-pts[1].y) || 1; setZoom(clamp(pinch.current.z0 * d / pinch.current.d0, 0.2, 6)); return; }
+    const p = toWorld(e); moved.current = true;
+    if (draft && tool === "fence"){ setDraft({ ...draft, preview: p }); return; }
+    if (!drag) return;
+    if (drag.kind === "stamp"){ setPreview({ stamps: stamps.map(s => s.id === drag.id ? { ...s, x: clamp(drag.s0.x + (p.x-drag.start.x),0,worldW), y: clamp(drag.s0.y + (p.y-drag.start.y),0,worldH) } : s) }); }
+    else if (drag.kind === "note"){ setPreview({ notes: notes.map(n => n.id === drag.id ? { ...n, x: clamp(drag.s0.x + (p.x-drag.start.x),0,worldW), y: clamp(drag.s0.y + (p.y-drag.start.y),0,worldH) } : n) }); }
+    else if (drag.kind === "vertex"){ setPreview({ lines: lines.map(l => l.id === drag.id ? { ...l, points: l.points.map((pt,i) => i === drag.idx ? { x: p.x, y: p.y } : pt) } : l) }); }
+    else if (drag.kind === "size"){ const s = drag.s0; const nd = Math.max(18, Math.hypot(p.x - s.x, p.y - s.y) * 1.42); setPreview({ stamps: stamps.map(x => x.id === drag.id ? { ...x, size: nd } : x) }); }
+    else if (drag.kind === "rotate"){ const s = drag.s0; let ang = Math.atan2(p.y - s.y, p.x - s.x) * 180/Math.PI + 90; ang = Math.round(ang/5)*5; setPreview({ stamps: stamps.map(x => x.id === drag.id ? { ...x, angle: ((ang%360)+360)%360 } : x) }); }
+  };
+  const onUp = (e) => {
+    gPointers.current.delete(e.pointerId);
+    if (gPointers.current.size < 2) pinch.current = null;
+    if (preview){ onChange({ ...plan, ...preview }); setPreview(null); }
+    setDrag(null);
+  };
+
+  const finishLine = () => { if (draft && draft.points.length >= 2){ onChange({ ...plan, lines: [...(plan.lines||[]), { id: uid(), kind: draft.kind, points: draft.points }] }); } setDraft(null); };
+  const setBg = (patch) => { undoRef.current = []; setUndoN(0); onChange({ ...plan, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, snapshot: undefined, stamps: plan.stamps || [], notes: plan.notes || [], lines: plan.lines || [] }); };
+  const onUpload = (e) => {
+    const file = e.target.files[0]; if (!file) return; setBusy("upload");
+    const r = new FileReader();
+    r.onload = () => { const im = new Image(); im.onload = () => { const MAX = 2200, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX/Math.max(w,h)); let bg = r.result, nw = w, nh = h; if (sc < 1){ try { const cv = document.createElement("canvas"); nw = Math.round(w*sc); nh = Math.round(h*sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im,0,0,nw,nh); bg = cv.toDataURL("image/jpeg", 0.85); } catch(_){} } setBg({ bg, natW: nw, natH: nh }); setBusy(""); }; im.onerror = () => { alert("Could not load that image. Use a JPG or PNG."); setBusy(""); }; im.src = r.result; };
+    r.onerror = () => { alert("Could not read that file."); setBusy(""); };
+    r.readAsDataURL(file); e.target.value = "";
+  };
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon); setBg({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
+  const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
+  const saveSnapshot = () => { const cv = canvasRef.current; if (cv) onChange({ ...plan, snapshot: cv.toDataURL("image/jpeg", 0.9) }); notify("Saved for the report"); };
+  const clearMarkups = () => { if ((stamps.length || lines.length || notes.length) && confirm("Clear all icons, fence lines and notes? (Keeps the background.)")){ setSel(null); setDraft(null); onChange({ ...plan, stamps: [], lines: [], notes: [], snapshot: undefined }); } };
+  const removeBg = () => { if (confirm("Remove the background image?")){ onChange({ ...plan, bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined }); } };
+
+  const usedTypes = [...new Set(stamps.map(s => s.type))];
+  const usedLines = [...new Set(lines.map(l => l.kind))];
+  const toggleLock = (kind, id) => { if (kind === "stamp") onChange({ ...plan, stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) }); else if (kind === "line") onChange({ ...plan, lines: lines.map(l => l.id === id ? { ...l, locked: !l.locked } : l) }); else onChange({ ...plan, notes: notes.map(n => n.id === id ? { ...n, locked: !n.locked } : n) }); };
+  const delItem = (kind, id) => { if (kind === "stamp") onChange({ ...plan, stamps: stamps.filter(s => s.id !== id) }); else if (kind === "line") onChange({ ...plan, lines: lines.filter(l => l.id !== id) }); else onChange({ ...plan, notes: notes.filter(n => n.id !== id) }); setSel(null); };
+
+  return (
+    <div className="space-y-3">
+      {/* ---- background source ---- */}
+      <div className="card p-3 space-y-2">
+        <div className="font-semibold text-sm brand-text">Background</div>
+        <div className="flex gap-2 flex-wrap">
+          <label className="btn btn-primary cursor-pointer">{busy === "upload" ? "…" : <><IcUpload size={15} /> Upload drawing</>}<input type="file" accept="image/*" className="hidden" onChange={onUpload} disabled={!!busy} /></label>
+          <label className="btn btn-ghost cursor-pointer"><IcCamera size={15} /> Take photo<input type="file" accept="image/*" capture="environment" className="hidden" onChange={onUpload} disabled={!!busy} /></label>
+          <button className="btn btn-ghost" disabled={!!busy} onClick={() => setShowLoc(v => !v)}>🛰 Aerial from location</button>
+          {plan.bg && <button className="btn btn-ghost" style={{ marginLeft: "auto", color: "#dc2626" }} onClick={removeBg}><IcTrash size={14} /> Remove background</button>}
+        </div>
+        {showLoc && <div className="flex gap-2 flex-wrap items-center p-2 rounded" style={{ background: "var(--bg)" }}>
+          <input className="inp flex-1" style={{ minWidth: 200 }} placeholder="Search an address or suburb (e.g. 22 Percy St, West End QLD)" value={locQuery} onChange={e => setLocQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") searchLoc(); }} />
+          <button className="btn btn-primary" disabled={busy === "aerial"} onClick={searchLoc}>{busy === "aerial" ? "…" : "Search"}</button>
+          <button className="btn btn-ghost" disabled={busy === "aerial"} onClick={myLocation}>📍 Use my location</button>
+          <div className="text-xs w-full" style={{ color: "var(--muted)" }}>Grabs a satellite image (Esri World Imagery) and stores it in this job so it works offline afterwards. You need signal the first time.</div>
+        </div>}
+        {plan.loc && plan.loc.name && <div className="text-xs" style={{ color: "var(--muted)" }}>📍 {plan.loc.name}</div>}
+      </div>
+
+      {/* ---- tools ---- */}
+      <div className="flex gap-2 items-center flex-wrap">
+        <div className="scroll-x flex gap-1.5">
+          {[["move","Move / edit"],["place","Place icon"],["fence","Fence / access line"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
+        </div>
+        <button className="btn btn-ghost !py-1 ml-auto" style={{ opacity: undoN ? 1 : 0.45 }} disabled={!undoN} onClick={undoPlan}>↶ Undo{undoN ? " (" + undoN + ")" : ""}</button>
+        {(stamps.length || lines.length || notes.length) ? <button className="btn btn-ghost !py-1" onClick={clearMarkups}><IcTrash size={14} /> Clear markups</button> : null}
+      </div>
+      {tool === "place" && <div className="flex gap-1.5 items-center flex-wrap">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Icon:</span>
+        <select className="inp !py-1.5 !w-auto" value={stampType} onChange={e => setStampType(e.target.value)}>{SITE_STAMPS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
+        <span className="text-sm" style={{ color: "var(--muted)" }}>Tap the plan to drop it. Switch to <b>Move / edit</b> to move, rotate, resize, lock or delete.</span>
+      </div>}
+      {tool === "fence" && <div className="flex gap-1.5 items-center flex-wrap">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Line:</span>
+        <select className="inp !py-1.5 !w-auto" value={lineKind} onChange={e => { setLineKind(e.target.value); setDraft(null); }}>{SITE_LINES.map(k => <option key={k} value={k}>{SITE_LINE_STYLES[k].label}</option>)}</select>
+        {draft && draft.points.length > 0 && <>
+          <span className="text-sm" style={{ color: "var(--muted)" }}>{draft.points.length} point{draft.points.length === 1 ? "" : "s"}</span>
+          <button className="btn btn-ghost !py-1" onClick={() => setDraft({ ...draft, points: draft.points.slice(0, -1), preview: null })}>Undo point</button>
+          <button className="btn btn-accent !py-1" disabled={draft.points.length < 2} onClick={finishLine}><IcCheck size={14} /> Finish line</button>
+          <button className="btn btn-ghost !py-1" onClick={() => setDraft(null)}>Cancel</button>
+        </>}
+        {(!draft || !draft.points.length) && <span className="text-sm" style={{ color: "var(--muted)" }}>Tap to drop each corner, then Finish line.</span>}
+      </div>}
+      {tool === "note" && <div className="text-sm" style={{ color: "var(--muted)" }}>Tap where you want a note, then type it.</div>}
+
+      <div className="flex items-center gap-2 flex-wrap text-sm">
+        <span style={{ color: "var(--muted)" }}>Zoom</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z/1.25, 0.2, 6))}>−</button>
+        <span style={{ minWidth: 38, textAlign: "center" }}>{Math.round(zoom*100)}%</span>
+        <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(z => clamp(z*1.25, 0.2, 6))}>+</button>
+        {zoom !== 1 && <button className="btn btn-ghost !py-0.5 !px-2" onClick={() => setZoom(1)}>Fit</button>}
+        <span className="text-xs">· pinch or scroll to zoom · two fingers to pan</span>
+      </div>
+      <div ref={wrapRef} className="card overflow-auto" style={{ maxHeight: "60vh" }}>
+        <canvas ref={canvasRef} className="editor" style={{ touchAction: "none", cursor: tool === "move" ? "default" : "crosshair" }} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} />
+      </div>
+
+      {sel && sel.kind === "stamp" && (() => { const s = stamps.find(x => x.id === sel.id); if (!s) return null; return (
+        <div className="flex items-center gap-2 flex-wrap card p-2" style={{ borderColor: "#e8792b" }}>
+          <span className="chip" style={{ background: "rgba(232,121,43,.12)", color: "#b45309" }}>{SITE_STAMP_LABEL[s.type] || s.type}</span>
+          <button className="btn btn-ghost !py-1 !px-2" onClick={() => onChange({ ...plan, stamps: stamps.map(x => x.id === s.id ? { ...x, angle: (((s.angle||0)-15)%360+360)%360 } : x) })}>↺</button>
+          <button className="btn btn-ghost !py-1 !px-2" onClick={() => onChange({ ...plan, stamps: stamps.map(x => x.id === s.id ? { ...x, angle: (((s.angle||0)+15)%360)%360 } : x) })}>↻</button>
+          <button className="btn btn-ghost !py-1" onClick={() => toggleLock("stamp", s.id)}>{s.locked ? "🔒 Locked" : "🔓 Lock"}</button>
+          <span className="text-xs" style={{ color: "var(--muted)" }}>drag to move · orange knob rotates · square resizes</span>
+          <button className="btn btn-ghost !py-1 ml-auto" style={{ color: "#dc2626" }} onClick={() => delItem("stamp", s.id)}><IcTrash size={15} /> Delete</button>
+        </div>
+      ); })()}
+
+      <div className="flex gap-2">
+        <button className="btn btn-primary flex-1" onClick={saveSnapshot}><IcCheck size={16} /> Save for report</button>
+      </div>
+
+      {/* ---- item list ---- */}
+      {(stamps.length > 0 || lines.length > 0 || notes.length > 0) && (
+        <div className="card p-3 space-y-1.5">
+          <div className="font-semibold text-sm brand-text">On this plan</div>
+          {stamps.map(s => (
+            <div key={s.id} className="flex items-center gap-2 text-sm" style={{ opacity: s.locked ? 0.6 : 1 }}>
+              <span className="chip">Icon</span><span className="flex-1 truncate">{SITE_STAMP_LABEL[s.type] || s.type}</span>
+              <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("stamp", s.id)}>{s.locked ? "🔒" : "🔓"}</button>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delItem("stamp", s.id)}><IcTrash size={14} /></button>
+            </div>
+          ))}
+          {lines.map(l => (
+            <div key={l.id} className="flex items-center gap-2 text-sm" style={{ opacity: l.locked ? 0.6 : 1 }}>
+              <span className="inline-block rounded" style={{ width: 18, height: 4, background: (SITE_LINE_STYLES[l.kind]||{}).color }} /><span className="flex-1 truncate">{(SITE_LINE_STYLES[l.kind]||{}).label}</span>
+              <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("line", l.id)}>{l.locked ? "🔒" : "🔓"}</button>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delItem("line", l.id)}><IcTrash size={14} /></button>
+            </div>
+          ))}
+          {notes.map(n => (
+            <div key={n.id} className="flex items-center gap-2 text-sm" style={{ opacity: n.locked ? 0.6 : 1 }}>
+              <span className="chip">Note</span><input className="inp !py-1 flex-1" value={n.text || ""} onChange={e => onChange({ ...plan, notes: notes.map(x => x.id === n.id ? { ...x, text: e.target.value } : x) })} />
+              <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("note", n.id)}>{n.locked ? "🔒" : "🔓"}</button>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delItem("note", n.id)}><IcTrash size={14} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ---- legend preview (auto from used icons / lines — matches the SMP form) ---- */}
+      {(usedTypes.length > 0 || usedLines.length > 0) && (
+        <div className="card p-3">
+          <div className="font-semibold text-sm brand-text mb-2">Legend (auto — shows on the report)</div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+            {usedLines.map(k => <div key={k} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 22, height: 4, background: SITE_LINE_STYLES[k].color }} /> {SITE_LINE_STYLES[k].label}</div>)}
+            {usedTypes.map(tp => <div key={tp} className="flex items-center gap-2"><SiteStampChip type={tp} /> {SITE_STAMP_LABEL[tp]}</div>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// small canvas swatch of one site icon (for the legend list)
+function SiteStampChip({ type }){
+  const ref = useRef(null);
+  useEffect(() => { const cv = ref.current; if (!cv) return; const dpr = window.devicePixelRatio || 1; cv.width = 30*dpr; cv.height = 30*dpr; const ctx = cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,30,30); drawSiteStamp(ctx, { type, x: 15, y: 15, size: 24, angle: 0 }); }, [type]);
+  return <canvas ref={ref} style={{ width: 30, height: 30 }} />;
 }
 
 function FloorPlanEditor({ plan, onChange: rawChange, onAddToQuote }){
@@ -3032,6 +3381,31 @@ function buildWordHtml(project, settings, t, logo, attachments){
   const foot = `<div style="background:${b};color:#fff;text-align:center;font-size:11px;font-weight:bold;padding:8px;margin-top:14px">ABN: ${esc(settings.abn)} &nbsp;•&nbsp; Open Builders Licence: ${esc(settings.license)} &nbsp;•&nbsp; ${esc(settings.website)}</div>`;
   const wrap = (title, inner) => `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)} ${esc(project.quoteNo)}</title></head><body style="font-family:Arial,Helvetica,sans-serif;color:#141922;font-size:13px">${head}${inner}${foot}</body></html>`;
 
+  // ===== SITE MANAGEMENT PLAN (RJG CON37-FORM-01) =====
+  if (kind === "site") {
+    const sp = project.sitePlan || {};
+    const wPlanImg = rShow.planimg !== false, wLegend = rShow.legend !== false, wNotes = rShow.notes !== false;
+    const lineKinds = [...new Set((sp.lines || []).map(l => l.kind))];
+    const stampTypes = [...new Set((sp.stamps || []).map(s => s.type))];
+    const legendRows = lineKinds.map(k => `<tr><td width="34" style="padding:3px 6px"><div style="width:26px;height:4px;background:${SITE_LINE_STYLES[k].color}"></div></td><td style="padding:3px 6px">${esc(SITE_LINE_STYLES[k].label)}</td></tr>`).join("")
+      + stampTypes.map(tp => `<tr><td width="34" style="padding:3px 6px;text-align:center">&#9632;</td><td style="padding:3px 6px">${esc(SITE_STAMP_LABEL[tp] || tp)}</td></tr>`).join("");
+    const legend = (wLegend && (lineKinds.length || stampTypes.length)) ? `<div style="font-weight:bold;text-transform:uppercase;font-size:11px;color:#5b6472;margin-bottom:4px">Legend</div><table style="border-collapse:collapse;margin-bottom:12px">${legendRows}</table>` : "";
+    const planImg = wPlanImg && sp.snapshot ? `<div style="margin-bottom:12px"><img src="${sp.snapshot}" style="max-width:640px;border:1px solid #e4e7ec"/></div>` : "";
+    return wrap("SITE MANAGEMENT PLAN", `
+    <table width="100%" style="border-bottom:3px solid ${b};margin-bottom:12px"><tr>
+      <td style="font-size:24px;font-weight:bold;color:${b}">SITE MANAGEMENT PLAN</td>
+      <td style="text-align:right;font-size:12px">Plan # <b>${esc(project.quoteNo)}</b><br/>Date ${esc(fmtDate(project.date||project.createdAt||now()))}</td>
+    </tr></table>
+    <table width="100%" style="margin-bottom:12px"><tr>
+      <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Project</div><b>${esc(project.title)}</b><br/>${esc(project.site)}</td>
+      <td width="50%" valign="top"><div style="font-size:11px;font-weight:bold;text-transform:uppercase;color:#5b6472">Client / prepared by</div><b>${esc(project.client)}</b><br/>${project.preparedBy?"Prepared by "+esc(project.preparedBy):""}</td>
+    </tr></table>
+    ${planImg}
+    ${legend}
+    ${(wNotes && project.notes)?block("Notes", project.notes):""}
+    <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Site Management Plan Form</b><br/>Document No.: CON37-FORM-01 &nbsp;&nbsp; Version No.: 1A &nbsp;&nbsp; Release Date: 1st July 2021<br/>Uncontrolled if printed</div>`);
+  }
+
   if (kind === "new") {
     // Margin display: "spread" folds the margin into each line rate (nothing shown);
     // otherwise it's itemised as Subtotal + Margin + Total.
@@ -3113,9 +3487,14 @@ function ReportView({ project, onChange }){
   const showScope = rShow.scope !== false, showExcl = rShow.exclusions !== false, showTerms = rShow.terms !== false;
   const showAtt = rShow.attachments !== false, showLines = rShow.lines !== false;
   const showPrices = priced && rShow.prices !== false;   // hide $ even on a priced quote (scope-only document)
+  const showPlanImg = rShow.planimg !== false, showLegend = rShow.legend !== false, showNotes = rShow.notes !== false;   // Site Management Plan sections
   const setRShow = (k, v) => onChange({ ...project, reportShow: { ...rShow, [k]: v } });
-  const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : "QUOTATION";
-  const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #";
+  const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : kind === "site" ? "SITE MANAGEMENT PLAN" : "QUOTATION";
+  const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : kind === "site" ? "Plan #" : "Quote #";
+  // Site Management Plan: pull the drawn plan + auto-build the legend from what's used
+  const sp = project.sitePlan || {};
+  const spStampTypes = [...new Set((sp.stamps || []).map(s => s.type))];
+  const spLineKinds = [...new Set((sp.lines || []).map(l => l.kind))];
   const sheetRef = useRef(null);
   const [busy, setBusy] = useState("");
   const inc = (x) => x.include !== false;
@@ -3139,7 +3518,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption) });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption), pb: project.preparedBy, spI: sp.snapshot ? sp.snapshot.length : 0, spL: [spStampTypes.join(","), spLineKinds.join(",")] });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
@@ -3155,6 +3534,10 @@ function ReportView({ project, onChange }){
     if (kind === "variation") return {
       subject: "Variation " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
       body: "Hi" + (project.client ? " " + project.client : "") + ",\n\nPlease find attached a variation" + (project.contractRef ? " to " + project.contractRef : "") + " for your approval.\n\nTotal price inc GST: " + money(t.totalInc) + "\n\nKind regards,\n" + settings.company
+    };
+    if (kind === "site") return {
+      subject: "Site Management Plan " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
+      body: "Hi,\n\nPlease find attached the Site Management Plan for " + (project.title || "the site") + (project.site ? " at " + project.site : "") + ".\n\nKind regards,\n" + (project.preparedBy || settings.company)
     };
     return {
       subject: "Quotation " + (project.quoteNo || "") + (project.title ? " — " + project.title : ""),
@@ -3188,7 +3571,7 @@ function ReportView({ project, onChange }){
           <button className="btn btn-ghost" onClick={doEmailLink}><IcDoc size={16} /> Email (text only)</button>
           <button className="btn btn-ghost" disabled={busy} onClick={() => window.print()}><IcPrint size={16} /> Print</button>
         </div>
-        <div className="card p-3">
+        {kind !== "site" && <div className="card p-3">
           <div className="font-semibold text-sm brand-text mb-1">Attach to quote — tick what to include</div>
           {hasAttachChoices ? (
             <div className="space-y-1.5 text-sm mt-2">
@@ -3197,17 +3580,24 @@ function ReportView({ project, onChange }){
               {plans.map(p => <label key={p.id} className="flex items-center gap-2"><input type="checkbox" checked={inc(p)} onChange={() => toggle("plan", p.id)} /> <img src={p.render3d || p.snapshot} className="w-9 h-9 object-cover rounded border" style={{ borderColor: "var(--line)" }} /> <span className="chip">Plan</span> {p.name}{p.render3d ? " (incl. 3D)" : ""}</label>)}
             </div>
           ) : <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>Nothing to attach yet. Add site photos in the <b>Photos</b> tab, drawings/takeoffs in <b>Drawings / Takeoff</b>, or a <b>Floor plan</b> — they'll appear here to tick on.</div>}
-        </div>
+        </div>}
         <div className="card p-3">
           <div className="font-semibold text-sm brand-text mb-1">Show on this report — untick to hide a section</div>
           <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm mt-2">
+            {kind === "site" ? (<>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={showPlanImg} onChange={(e) => setRShow("planimg", e.target.checked)} /> Site plan drawing</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={showLegend} onChange={(e) => setRShow("legend", e.target.checked)} /> Legend</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={showNotes} onChange={(e) => setRShow("notes", e.target.checked)} /> Notes</label>
+            </>) : (<>
             {priced && <label className="flex items-center gap-2"><input type="checkbox" checked={showPrices} onChange={(e) => setRShow("prices", e.target.checked)} /> Prices ($ rates &amp; totals)</label>}
             {kind === "new" && <label className="flex items-center gap-2"><input type="checkbox" checked={showLines} onChange={(e) => setRShow("lines", e.target.checked)} /> Line-item table</label>}
             <label className="flex items-center gap-2"><input type="checkbox" checked={showScope} onChange={(e) => setRShow("scope", e.target.checked)} /> Scope of works</label>
             <label className="flex items-center gap-2"><input type="checkbox" checked={showExcl} onChange={(e) => setRShow("exclusions", e.target.checked)} /> Exclusions</label>
             {priced && <label className="flex items-center gap-2"><input type="checkbox" checked={showTerms} onChange={(e) => setRShow("terms", e.target.checked)} /> Terms &amp; payment</label>}
             <label className="flex items-center gap-2"><input type="checkbox" checked={showAtt} onChange={(e) => setRShow("attachments", e.target.checked)} /> Attachments</label>
+            </>)}
           </div>
+          {kind === "site" && !sp.snapshot && <div className="text-xs mt-2" style={{ color: "#b45309" }}>Tip: on the <b>Site plan</b> tab, tap <b>Save for report</b> so the drawing appears here.</div>}
         </div>
       </div>
 
@@ -3223,7 +3613,43 @@ function ReportView({ project, onChange }){
         </div>
 
         <div style={{ padding: "26px 30px" }}>
-          {kind === "new" ? (<>
+          {kind === "site" ? (<>
+          {/* ===== SITE MANAGEMENT PLAN (RJG CON37-FORM-01) ===== */}
+          <div className="flex justify-between items-start gap-6 pb-3 mb-4" style={{ borderBottom: "3px solid var(--brand)" }}>
+            <div className="wordmark brand-text" style={{ fontSize: 30, lineHeight: 1.05 }}>SITE MANAGEMENT PLAN</div>
+            <div className="text-right text-sm">
+              <div><span style={{ color: "var(--muted)" }}>Plan #</span> <b>{project.quoteNo || "—"}</b></div>
+              <div><span style={{ color: "var(--muted)" }}>Date</span> {fmtDate(project.date || project.createdAt || now())}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-6 mb-4 text-sm">
+            <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Project</div><div className="font-semibold">{project.title || "—"}</div><div>{project.site}</div></div>
+            <div><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Client / prepared by</div><div className="font-semibold">{project.client || "—"}</div><div>{project.preparedBy ? "Prepared by " + project.preparedBy : ""}</div></div>
+          </div>
+          {showPlanImg && (sp.snapshot
+            ? <div className="mb-4" style={{ pageBreakInside: "avoid" }}><img src={sp.snapshot} className="w-full rounded border" style={{ borderColor: "var(--line)" }} /></div>
+            : <div className="mb-4 text-sm p-6 text-center rounded" style={{ background: "rgba(2,34,75,.05)", color: "var(--muted)" }}>No site plan drawn yet — draw it on the <b>Site plan</b> tab and tap <b>Save for report</b>.</div>)}
+          {showLegend && (spLineKinds.length > 0 || spStampTypes.length > 0) && (
+            <div className="mb-4" style={{ pageBreakInside: "avoid" }}>
+              <div className="text-xs font-bold uppercase mb-2" style={{ color: "var(--muted)" }}>Legend</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
+                {spLineKinds.map(k => <div key={k} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 26, height: 4, background: SITE_LINE_STYLES[k].color }} /> {SITE_LINE_STYLES[k].label}</div>)}
+                {spStampTypes.map(tp => <div key={tp} className="flex items-center gap-2"><SiteStampChip type={tp} /> {SITE_STAMP_LABEL[tp]}</div>)}
+              </div>
+            </div>
+          )}
+          {showNotes && project.notes && <div className="mb-4 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Notes</div><div style={{ whiteSpace: "pre-wrap" }}>{project.notes}</div></div>}
+          {/* doc-control block (matches CON37-FORM-01 footer) */}
+          <div className="text-xs pt-3 mt-4" style={{ borderTop: "1px solid var(--line)", color: "var(--muted)" }}>
+            <div className="font-semibold" style={{ color: "var(--ink)" }}>Site Management Plan Form</div>
+            <div className="flex gap-5 flex-wrap mt-1">
+              <span>Document No.: CON37-FORM-01</span>
+              <span>Version No.: 1A</span>
+              <span>Release Date: 1st July 2021</span>
+            </div>
+            <div className="mt-0.5">Uncontrolled if printed</div>
+          </div>
+          </>) : kind === "new" ? (<>
           {/* ===== QUOTATION (unchanged) ===== */}
           <div className="flex justify-between items-start gap-6 pb-4 mb-5" style={{ borderBottom: "3px solid var(--brand)" }}>
             <div className="wordmark brand-text" style={{ fontSize: 44, lineHeight: 1 }}>QUOTATION</div>
@@ -3466,7 +3892,9 @@ function JobWorkspace({ project: incoming, onChange: persist, onBack, onDelete }
   const curPlan = plans.find(p => p.id === openPlan);
   const kind = jobKind(project), kv = JOB_KINDS[kind];
   const quoteTabLabel = kind === "rfq" ? "Known quantities" : kind === "variation" ? "Variation items" : "Quote";
-  const tabs = [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["photos", "Photos"], ["quote", quoteTabLabel], ["report", "Report"]];
+  const tabs = kind === "site"
+    ? [["details", "Details"], ["siteplan", "Site plan"], ["report", "Report"]]
+    : [["details", "Details"], ["drawings", "Drawings / Takeoff"], ["plans", "Floor plan"], ["photos", "Photos"], ["quote", quoteTabLabel], ["report", "Report"]];
   const t = totalsFor(project, useStore().settings);
 
   return (
@@ -3474,7 +3902,7 @@ function JobWorkspace({ project: incoming, onChange: persist, onBack, onDelete }
       <div className="flex items-center gap-2 mb-3">
         <button className="btn btn-ghost !p-2" onClick={onBack}><IcBack size={18} /></button>
         <div className="flex-1 min-w-0"><div className="font-bold truncate flex items-center gap-2"><span className="chip" style={{ background: kv.badge, color: "#fff" }}>{kv.short}</span>{project.title || "Untitled"}</div><div className="text-xs truncate" style={{ color: "var(--muted)" }}>{kind === "rfq" ? (project.subCompany || project.subName || "") : project.client} {(kind === "rfq" ? (project.subCompany||project.subName) : project.client) && project.site ? "·" : ""} {project.site}</div></div>
-        {kv.priced ? <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>Total inc GST</div><div className="font-bold brand-text">{money(t.totalInc)}</div></div> : <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>{kv.short}</div><div className="font-bold" style={{ color: kv.badge }}>Price request</div></div>}
+        {kv.priced ? <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>Total inc GST</div><div className="font-bold brand-text">{money(t.totalInc)}</div></div> : <div className="text-right"><div className="text-xs" style={{ color: "var(--muted)" }}>{kv.short}</div><div className="font-bold" style={{ color: kv.badge }}>{kind === "site" ? "Site plan" : "Price request"}</div></div>}
       </div>
 
       <div className="scroll-x flex gap-1.5 mb-4">
@@ -3484,7 +3912,7 @@ function JobWorkspace({ project: incoming, onChange: persist, onBack, onDelete }
       {tab === "details" && (
         <div className="card p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label={kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : "Quote #"}><input className="inp" value={project.quoteNo || ""} onChange={e => upd({ quoteNo: e.target.value })} /></Field>
+            <Field label={kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : kind === "site" ? "Plan #" : "Quote #"}><input className="inp" value={project.quoteNo || ""} onChange={e => upd({ quoteNo: e.target.value })} /></Field>
             <Field label="Date"><input type="date" className="inp" value={new Date(project.date || project.createdAt || now()).toISOString().slice(0,10)} onChange={e => upd({ date: new Date(e.target.value).getTime() })} /></Field>
           </div>
 
@@ -3522,6 +3950,15 @@ function JobWorkspace({ project: incoming, onChange: persist, onBack, onDelete }
             <Field label="Description of scope / works"><textarea className="inp" rows="5" value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
             <Field label="Documents / mark-ups / drawings to reference"><textarea className="inp" rows="2" value={project.refs || ""} onChange={e => upd({ refs: e.target.value })} /></Field>
             <p className="text-xs" style={{ color: "var(--muted)" }}>Choose whether to show or spread the margin under <b>Variation items</b> → margin.</p>
+          </>) : kind === "site" ? (<>
+            <Field label="Project / job title"><input className="inp" placeholder="e.g. 22 Percy Street, West End — New townhouses" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
+              <Field label="Prepared by"><input className="inp" placeholder="Your name" value={project.preparedBy || ""} onChange={e => upd({ preparedBy: e.target.value })} /></Field>
+            </div>
+            <Field label="Site address"><input className="inp" value={project.site || ""} onChange={e => upd({ site: e.target.value })} /></Field>
+            <Field label="Notes (shown under the plan)"><textarea className="inp" rows="4" placeholder="e.g. Deliveries via Percy Street only. Site induction at the office container. Keep pedestrian path clear at all times." value={project.notes || ""} onChange={e => upd({ notes: e.target.value })} /></Field>
+            <p className="text-xs" style={{ color: "var(--muted)" }}>Draw the plan under the <b>Site plan</b> tab — background, icons, fence lines and notes — then it prints on the RJG Site Management Plan form in <b>Report</b>.</p>
           </>) : (<>
             <Field label="Job / project title"><input className="inp" value={project.title || ""} onChange={e => upd({ title: e.target.value })} /></Field>
             <Field label="Client"><input className="inp" value={project.client || ""} onChange={e => upd({ client: e.target.value })} /></Field>
@@ -3625,6 +4062,7 @@ function JobWorkspace({ project: incoming, onChange: persist, onBack, onDelete }
         </div>
       )}
 
+      {tab === "siteplan" && <SitePlanEditor plan={project.sitePlan || {}} onChange={sp => upd({ sitePlan: sp })} />}
       {tab === "quote" && <QuoteEditor project={project} onChange={onChange} priced={kv.priced} kind={kind} />}
       {tab === "report" && <ReportView project={project} onChange={onChange} />}
     </div>
@@ -3641,7 +4079,9 @@ function JobsScreen({ onOpen }){
   const createKind = async (kind) => {
     setChooser(false);
     const k = JOB_KINDS[kind]; const seqKey = k.seq; const seq = settings[seqKey] || 1;
-    const p = await upsertProject({ kind, title: "", client: "", site: "", date: now(), quoteNo: k.prefix + String(seq).padStart(4, "0"), margin: settings.defaultMargin, terms: settings.terms, drawings: [], floorplans: [], quoteLines: [] });
+    const base = { kind, title: "", client: "", site: "", date: now(), quoteNo: k.prefix + String(seq).padStart(4, "0"), margin: settings.defaultMargin, terms: settings.terms, drawings: [], floorplans: [], quoteLines: [] };
+    if (kind === "site") base.sitePlan = { stamps: [], lines: [], notes: [] };
+    const p = await upsertProject(base);
     await dbPut("kv", { ...settings, [seqKey]: seq + 1 }, "settings");
     onOpen(p.id);
   };
@@ -3663,7 +4103,7 @@ function JobsScreen({ onOpen }){
           {Object.entries(JOB_KINDS).map(([k, v]) => (
             <button key={k} className="w-full text-left card p-3 hover:brightness-95" onClick={() => createKind(k)} style={{ borderLeft: "5px solid " + v.badge }}>
               <div className="flex items-center gap-2"><span className="chip" style={{ background: v.badge, color: "#fff" }}>{v.short}</span><span className="font-bold">{v.label}</span></div>
-              <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{k === "new" ? "Full quote to a client — client details, priced items, RJG quotation." : k === "rfq" ? "Send scope + marked-up photos, takeoffs & plans to a subbie to price. No prices shown — they send a price back to you." : "Priced variation on an existing job — client + original job reference, on the variation letterhead."}</div>
+              <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{k === "new" ? "Full quote to a client — client details, priced items, RJG quotation." : k === "rfq" ? "Send scope + marked-up photos, takeoffs & plans to a subbie to price. No prices shown — they send a price back to you." : k === "variation" ? "Priced variation on an existing job — client + original job reference, on the variation letterhead." : "Site mock-up over an aerial / photo / drawing — drop bins, fencing, access, amenities, parking, first aid etc. On the RJG Site Management Plan form."}</div>
             </button>
           ))}
         </div>
