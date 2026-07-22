@@ -22,31 +22,75 @@ planning-aware** yield and concept site layout for pre-lodgement discussions.
 - Core planning-control checks (lot size, frontage, site cover, height,
   setbacks, POS, parking) with the rule cited on each.
 - An indicative, to-scale **concept layout** (SVG) and a printable report.
+- **Auto-fetch** of a site's facts from live QLD web services (see below).
+
+## Live data — "pull it automatically for any council"
+
+`api/lookup` pulls a site's facts from real, web-accessible QLD services and
+returns one normalized model that prefills the form. Enter a **Lot/Plan**
+(e.g. `3RP12345`) or **coordinates**, press *Pull site data*.
+
+Two tiers of coverage:
+
+| Data | Source | Coverage |
+|---|---|---|
+| Lot boundary + area | QLD DCDB cadastre (`spatial-gis.information.qld.gov.au`) | **Every** QLD address |
+| Screening flood | QLD Floodplain Assessment Overlay (`services8.arcgis.com/g9mpp…`) | **Every** QLD address (screening only) |
+| Council identity | QLD LGA boundaries | **Every** QLD address |
+| Zoning + authoritative flood | Each council's ArcGIS service | Councils with a queryable service |
+| Address → Lot/Plan | QLD Geocoder / PLSplus (`geocode.information.qld.gov.au`) | Statewide, **needs a free key** |
+
+Honest limits:
+- **Zoning/council-flood** is automatic only for councils that expose a
+  queryable ArcGIS service (Townsville is wired; the rest are registry stubs in
+  `engine/councils.js`). Councils with only an interactive "PD Online" viewer
+  fall back to statewide data + manual zone entry.
+- The statewide flood layer is **screening** ("not intended to predict flooding
+  for specific parcels"); the app prefers a council's authoritative flood
+  overlay where available and labels which one it used.
+- Auto-fetch supplies the **zone and overlays**; the **numeric controls** behind
+  a zone still come from the encoded rules pack (`engine/schemes.js`).
+- Calls run **server-side** (council servers block direct browser calls / CORS).
 
 ## Run it
 
-No build step. Open `index.html` in a browser, or serve the folder:
+**Static only (no live data):** open `index.html`, or `python3 -m http.server`.
+
+**Full app incl. live QLD data pulls** (needs outbound network):
 
 ```bash
-cd sitefit && python3 -m http.server 8080   # then visit http://localhost:8080
+cd sitefit && node server.mjs      # http://localhost:8080
 ```
 
-Deploys as static hosting (Vercel / Firebase) alongside the existing app.
+Tests (no network needed):
+
+```bash
+node test/geo.test.mjs      # geometry maths
+node test/lookup.test.mjs   # lookup orchestration (mocked services)
+```
+
+Deploy: static files + `api/lookup.mjs` as a Vercel Node serverless function.
 
 ## Structure
 
 ```
 sitefit/
-  index.html          UI + compliance report (vanilla JS, self-contained CSS)
+  index.html          UI, auto-fetch, compliance report (vanilla JS)
+  server.mjs          local dev server (static + /api/lookup)
+  api/
+    lookup.mjs        server-side site lookup against QLD services
   engine/
     schemes.js        QPP rules engine + council packs (Townsville)
     flood.js          Flood / storm-tide intelligence
     yield.js          Subdivision + duplex yield and compliance
     concept.js        Indicative to-scale SVG layout generator
+    geo.js            Parcel geometry: area, frontage, flood-overlap %
+    councils.js       Data-source registry (endpoints per council)
+  test/               unit + orchestration tests
 ```
 
-The engine is plain, framework-free JS attached to `window.SiteFit`, so it
-carries straight over to the production stack unchanged.
+The engine is plain, framework-free JS, so it carries straight over to the
+production stack unchanged.
 
 ## Roadmap (from the blueprint)
 
@@ -57,6 +101,18 @@ carries straight over to the production stack unchanged.
 
 ## Adding a council
 
-Add a pack to `engine/schemes.js` following the Townsville shape (zones with
-lot size, frontage, height, cover, setbacks, POS, parking, dual-occ rules).
-Because all QLD schemes share the QPP structure, this is data entry, not code.
+Two parts, both data entry (not code) thanks to the shared QPP structure:
+
+1. **Rules pack** — add a zone set to `engine/schemes.js` following the
+   Townsville shape (lot size, frontage, height, cover, setbacks, POS, parking,
+   dual-occ rules), verified against that council's adopted scheme.
+2. **Data source** — in `engine/councils.js`, fill the council's `planning.url`
+   with its ArcGIS MapServer and set `apiAvailable: true`. Layers are matched by
+   name regex at runtime, so exact layer IDs don't need hard-coding.
+
+## Verified vs. deploy-only
+
+The geometry maths and the lookup orchestration are unit-tested (`test/`). The
+live network calls are coded against the real, current endpoints but are
+validated on deploy / a network-enabled run — the build environment used to
+author this had outbound network restricted.

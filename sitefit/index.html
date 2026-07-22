@@ -176,10 +176,20 @@
         <div class="card-h"><span class="no">01</span><h2>Site &amp; scenario</h2></div>
         <div class="card-b">
 
+          <fieldset class="flood-fieldset" style="border-color:var(--line-strong);background:var(--panel-2)">
+            <legend style="color:var(--ink-2)">⤓ Auto-fetch from QLD data</legend>
+            <label class="f"><span class="lbl">Lot / Plan</span><input type="text" id="lotplan" placeholder="e.g. 3RP12345" /></label>
+            <div class="row2">
+              <label class="f"><span class="lbl">Lat</span><input type="number" id="lat" step="0.00001" placeholder="-19.26000" /></label>
+              <label class="f"><span class="lbl">Lng</span><input type="number" id="lng" step="0.00001" placeholder="146.82000" /></label>
+            </div>
+            <button type="button" class="go" id="fetchBtn" style="background:var(--info)">Pull site data</button>
+            <div id="fetchStatus" class="hint" style="margin-top:9px"></div>
+          </fieldset>
+
           <label class="f">
-            <span class="lbl">Address / job reference (optional)</span>
+            <span class="lbl">Job reference (optional)</span>
             <input type="text" id="address" placeholder="e.g. 12 Example St, Kirwan" />
-            <div class="hint">v1: manual entry. Live cadastre lookup wires in at Phase&nbsp;2.</div>
           </label>
 
           <label class="f">
@@ -278,6 +288,60 @@
   });
 
   function n(id){ var v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; }
+  function setVal(id,v){ if(v!=null) document.getElementById(id).value = v; }
+
+  // --- Auto-fetch from QLD web services (via /api/lookup) ---
+  function applyLookup(d, status){
+    setVal("area", d.area_m2);
+    setVal("frontage", d.frontage_m);
+    // council -> rules pack
+    if (d.councilPackId){
+      var opt = Array.prototype.find.call(councilSel.options, function(o){ return o.value===d.councilPackId; });
+      if (opt){ councilSel.value = d.councilPackId; loadZones(); }
+    }
+    // zone -> pack key
+    if (d.zone && d.zone.packKey){
+      var zs = document.getElementById("zone");
+      var zopt = Array.prototype.find.call(zs.options, function(o){ return o.value===d.zone.packKey; });
+      if (zopt) zs.value = d.zone.packKey;
+    }
+    // flood
+    if (d.flood){
+      setVal("hazard", d.flood.hazard || "none");
+      setVal("affected", d.flood.affectedPct || 0);
+    }
+    // provenance + warnings
+    var parts = [];
+    parts.push('<b>Pulled:</b> '+(d.sources||[]).join(" · "));
+    if (d.lotplan) parts.push('Lot/Plan '+d.lotplan);
+    if (d.council) parts.push('Council: '+d.council+(d.councilPackId?'':' <span style="color:var(--warn)">(no rules pack yet — verify zone controls)</span>'));
+    if (d.zone && d.zone.name) parts.push('Zone: '+d.zone.name);
+    if (d.flood){
+      parts.push('Flood: '+d.flood.hazard+' ~'+(d.flood.affectedPct||0)+'% '+
+        (d.flood.authoritative?'<span style="color:var(--pass)">(council overlay)</span>':'<span style="color:var(--warn)">(statewide screening — confirm with council overlay)</span>'));
+    }
+    if (d.warnings && d.warnings.length) parts.push('<span style="color:var(--warn)">'+d.warnings.join(" · ")+'</span>');
+    status.innerHTML = parts.join('<br>');
+  }
+
+  var fetchBtn = document.getElementById("fetchBtn");
+  if (fetchBtn) fetchBtn.addEventListener("click", async function(){
+    var status = document.getElementById("fetchStatus");
+    var lotplan = document.getElementById("lotplan").value.trim();
+    var lat = document.getElementById("lat").value.trim();
+    var lng = document.getElementById("lng").value.trim();
+    var qs = lotplan ? ("lotplan="+encodeURIComponent(lotplan)) : (lat&&lng ? ("lat="+encodeURIComponent(lat)+"&lng="+encodeURIComponent(lng)) : "");
+    if(!qs){ status.innerHTML='<span style="color:var(--warn)">Enter a Lot/Plan, or Lat and Lng.</span>'; return; }
+    status.textContent = "Fetching from QLD DCDB / flood overlay / council…";
+    try {
+      var r = await fetch("/api/lookup?"+qs);
+      var d = await r.json();
+      if (d.error){ status.innerHTML='<span style="color:var(--fail)">'+d.error+'</span>'; return; }
+      applyLookup(d, status);
+    } catch(e){
+      status.innerHTML='<span style="color:var(--warn)">Live lookup needs the SiteFit server or deployment running (this build has no network here). Run <code>node server.mjs</code> or deploy, or enter values manually.</span>';
+    }
+  });
 
   document.getElementById("siteForm").addEventListener("submit", function(e){
     e.preventDefault();
