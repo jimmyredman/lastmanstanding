@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SiteFit — Development Feasibility (RJG)</title>
+<meta name="description" content="Indicative, planning-aware development yield and concept design for Queensland sites. Internal RJG tool." />
+<style>
+  :root {
+    --paper: #eef1f0; --panel: #f7f8f7; --panel-2:#eceeed; --ink: #16211f; --ink-2: #3a4a46;
+    --muted: #6c7a76; --line: #d3dcd8; --line-strong: #b9c6c1;
+    --accent: #c01f57; --accent-soft:#f4dde5;
+    --pass: #2e7d5b; --pass-bg:#e2f0ea; --warn: #b0761a; --warn-bg:#f6ecd8;
+    --info:#3a63a8; --info-bg:#e4ebf6; --fail: #c1443c; --fail-bg:#f6e0de;
+    --grid: rgba(22,33,31,0.05);
+    /* drawing tokens (used by inline SVG) */
+    --sf-draw-bg:#e9edec; --sf-boundary:#c01f57; --sf-ink:#16211f;
+    --sf-lot:#dfe8e4; --sf-lot-line:#7d918a; --sf-road:#cdd6d2;
+    --sf-dwelling:#c7d6e6; --sf-flood:#6ba7d6; --sf-flood-ink:#123a5c;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:#0e1513; --panel:#15201d; --panel-2:#1a2723; --ink:#dde6e2; --ink-2:#b3c1bc;
+      --muted:#7f8f8a; --line:#26332f; --line-strong:#34443f;
+      --accent:#ef6b96; --accent-soft:#341922;
+      --pass:#4caf85; --pass-bg:#12271f; --warn:#d59b3f; --warn-bg:#2a2110;
+      --info:#7fa0dd; --info-bg:#141d2c; --fail:#e06a63; --fail-bg:#2a1513;
+      --grid: rgba(221,230,226,0.045);
+      --sf-draw-bg:#16211f; --sf-boundary:#ef6b96; --sf-ink:#dde6e2;
+      --sf-lot:#20302b; --sf-lot-line:#4a5f58; --sf-road:#2a3833;
+      --sf-dwelling:#233348; --sf-flood:#2c5f8a; --sf-flood-ink:#bcd8ef;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background-color: var(--paper);
+    background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 26px 26px; color: var(--ink); font-family: var(--sans);
+    font-size: 15px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 clamp(14px,3vw,32px); }
+
+  /* Title block header */
+  header.tb { border-bottom: 1.5px solid var(--ink); background: var(--panel); }
+  .tb-inner { max-width:1240px; margin:0 auto; padding: 14px clamp(14px,3vw,32px); display:flex; flex-wrap:wrap; gap:12px 24px; align-items:baseline; justify-content:space-between; }
+  .brand { display:flex; align-items:baseline; gap:12px; }
+  .brand .mark { font-family:var(--mono); font-weight:700; letter-spacing:0.02em; font-size:20px; color:var(--ink); }
+  .brand .mark b { color:var(--accent); }
+  .brand .tagline { font-size:12px; color:var(--muted); }
+  .tb-meta { font-family:var(--mono); font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); display:flex; gap:18px; flex-wrap:wrap; }
+  .tb-meta b { color:var(--ink-2); font-weight:600; }
+
+  .layout { display:grid; grid-template-columns:1fr; gap:26px; padding: 26px 0 80px; }
+  @media (min-width: 940px){ .layout { grid-template-columns: 380px 1fr; align-items:start; } }
+
+  /* Panels */
+  .card { border:1px solid var(--line-strong); background:var(--panel); border-radius:7px; }
+  .card > h2, .card > h3 { margin:0; }
+  .card-h { display:flex; align-items:center; gap:10px; padding:13px 16px; border-bottom:1px solid var(--line); }
+  .card-h .no { font-family:var(--mono); font-size:12px; font-weight:700; color:var(--accent); }
+  .card-h h2 { font-size:15px; font-weight:700; letter-spacing:0.01em; }
+  .card-b { padding:16px; }
+  @media (min-width:940px){ .form-col { position:sticky; top:16px; } }
+
+  label.f { display:block; margin:0 0 13px; }
+  label.f .lbl { display:block; font-family:var(--mono); font-size:10.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin-bottom:5px; }
+  input[type=number], input[type=text], select {
+    width:100%; padding:9px 11px; font-size:14px; font-family:var(--sans);
+    background:var(--paper); color:var(--ink); border:1px solid var(--line-strong); border-radius:5px;
+  }
+  input:focus, select:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent); }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .hint { font-size:11px; color:var(--muted); margin-top:4px; }
+
+  .seg { display:flex; border:1px solid var(--line-strong); border-radius:5px; overflow:hidden; }
+  .seg button { flex:1; padding:9px 8px; background:var(--paper); color:var(--ink-2); border:none; cursor:pointer; font-family:var(--mono); font-size:12px; letter-spacing:0.04em; }
+  .seg button[aria-pressed=true] { background:var(--accent); color:#fff; font-weight:600; }
+  .seg button + button { border-left:1px solid var(--line-strong); }
+
+  .flood-fieldset { border:1px solid var(--accent); border-radius:6px; padding:13px; margin:4px 0 13px; background:var(--accent-soft); }
+  .flood-fieldset legend { font-family:var(--mono); font-size:10.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--accent); padding:0 6px; font-weight:700; }
+  :root[data-nodark] {}
+  .chk { display:flex; align-items:center; gap:8px; font-size:13px; margin-top:8px; }
+  .chk input { width:auto; }
+
+  button.go { width:100%; padding:12px; background:var(--ink); color:var(--paper); border:none; border-radius:6px; font-family:var(--mono); font-size:13px; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; font-weight:600; }
+  button.go:hover { background:var(--accent); }
+
+  /* Results */
+  .placeholder { border:1px dashed var(--line-strong); border-radius:8px; padding:48px 24px; text-align:center; color:var(--muted); }
+  .placeholder .big { font-family:var(--mono); font-size:13px; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent); margin-bottom:8px; }
+
+  .headline { display:flex; flex-wrap:wrap; align-items:baseline; gap:14px 26px; padding:20px 22px; border:1.5px solid var(--ink); border-radius:8px; background:var(--panel); }
+  .headline .num { font-family:var(--mono); font-size:56px; font-weight:800; line-height:1; color:var(--accent); font-variant-numeric:tabular-nums; }
+  .headline .unit { font-size:16px; color:var(--ink-2); }
+  .headline .ctx { margin-left:auto; text-align:right; font-size:12.5px; color:var(--muted); }
+  .headline .ctx b { color:var(--ink); font-weight:600; }
+
+  .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:1px; background:var(--line); border:1px solid var(--line); border-radius:7px; overflow:hidden; margin-top:14px; }
+  .metrics > div { background:var(--panel); padding:12px 14px; }
+  .metrics dt { font-family:var(--mono); font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); }
+  .metrics dd { margin:3px 0 0; font-size:16px; font-weight:600; font-variant-numeric:tabular-nums; }
+
+  .flood-panel { border:1px solid var(--line-strong); border-left:4px solid var(--sf-flood); border-radius:0 7px 7px 0; background:var(--panel); margin-top:18px; }
+  .flood-panel.knockout { border-left-color:var(--fail); }
+  .flood-panel .fh { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--line); }
+  .flood-panel .fh .tag { font-family:var(--mono); font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:var(--sf-flood-ink); font-weight:700; }
+  .flood-panel .fh .badge { margin-left:auto; }
+  .flood-panel .fb { padding:6px 16px 14px; }
+
+  .checks { margin-top:18px; }
+  .grp-h { font-family:var(--mono); font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted); margin:16px 0 6px; }
+  .check { display:grid; grid-template-columns:auto 1fr; gap:11px; padding:9px 0; border-bottom:1px solid var(--line); align-items:start; }
+  .check:last-child { border-bottom:none; }
+  .badge { font-family:var(--mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; font-weight:700; padding:3px 8px; border-radius:4px; white-space:nowrap; }
+  .b-pass{ color:var(--pass); background:var(--pass-bg);} .b-caution{ color:var(--warn); background:var(--warn-bg);} .b-fail{ color:var(--fail); background:var(--fail-bg);} .b-info{ color:var(--info); background:var(--info-bg);}
+  .check .txt { font-size:13.5px; }
+  .check .ref { font-family:var(--mono); font-size:10.5px; color:var(--muted); margin-top:2px; }
+
+  .concept { margin-top:18px; }
+  .concept .drawbox { border:1px solid var(--line-strong); border-radius:7px; overflow:hidden; background:var(--sf-draw-bg); }
+  .caption { font-size:11.5px; color:var(--muted); margin-top:7px; }
+
+  .assumptions { margin-top:18px; font-size:13px; }
+  .assumptions ul { margin:6px 0 0; padding-left:18px; color:var(--ink-2); }
+  .assumptions li { margin-bottom:4px; }
+
+  .disclaimer { margin-top:20px; padding:13px 16px; border:1px solid var(--warn); background:var(--warn-bg); border-radius:6px; font-size:12px; color:var(--ink-2); }
+  .disclaimer b { color:var(--warn); }
+
+  .actions { display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; }
+  .actions button { padding:10px 16px; border-radius:6px; border:1px solid var(--line-strong); background:var(--panel); color:var(--ink); font-family:var(--mono); font-size:12px; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; }
+  .actions button:hover { border-color:var(--accent); color:var(--accent); }
+
+  .stack { display:grid; gap:0; }
+
+  /* Print — the report */
+  @media print {
+    body { background:#fff; color:#000; }
+    header.tb, .form-col, .actions, .placeholder { display:none !important; }
+    .layout { grid-template-columns:1fr; padding:0; }
+    .card, .flood-panel, .headline { border-color:#333 !important; }
+    .report-head { display:block !important; }
+  }
+  .report-head { display:none; margin-bottom:18px; padding-bottom:12px; border-bottom:2px solid #000; }
+  .report-head h1 { font-size:22px; margin:0 0 3px; }
+  .report-head .sub { font-size:12px; color:#333; }
+</style>
+</head>
+<body>
+
+<header class="tb">
+  <div class="tb-inner">
+    <div class="brand">
+      <span class="mark">Site<b>Fit</b></span>
+      <span class="tagline">Development feasibility &amp; concept design · RJG Builders</span>
+    </div>
+    <div class="tb-meta">
+      <span>Mode <b>Internal</b></span>
+      <span>Jurisdiction <b>QLD</b></span>
+      <span>Build <b>MVP v0.1</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="layout">
+
+    <!-- INPUT -->
+    <div class="form-col">
+      <form class="card" id="siteForm">
+        <div class="card-h"><span class="no">01</span><h2>Site &amp; scenario</h2></div>
+        <div class="card-b">
+
+          <fieldset class="flood-fieldset" style="border-color:var(--line-strong);background:var(--panel-2)">
+            <legend style="color:var(--ink-2)">⤓ Auto-fetch from QLD data</legend>
+            <label class="f"><span class="lbl">Lot / Plan</span><input type="text" id="lotplan" placeholder="e.g. 3RP12345" /></label>
+            <div class="row2">
+              <label class="f"><span class="lbl">Lat</span><input type="number" id="lat" step="0.00001" placeholder="-19.26000" /></label>
+              <label class="f"><span class="lbl">Lng</span><input type="number" id="lng" step="0.00001" placeholder="146.82000" /></label>
+            </div>
+            <button type="button" class="go" id="fetchBtn" style="background:var(--info)">Pull site data</button>
+            <div id="fetchStatus" class="hint" style="margin-top:9px"></div>
+          </fieldset>
+
+          <label class="f">
+            <span class="lbl">Job reference (optional)</span>
+            <input type="text" id="address" placeholder="e.g. 12 Example St, Kirwan" />
+          </label>
+
+          <label class="f">
+            <span class="lbl">Council</span>
+            <select id="council"></select>
+          </label>
+
+          <label class="f">
+            <span class="lbl">Zone</span>
+            <select id="zone"></select>
+          </label>
+
+          <div class="f">
+            <span class="lbl">Development type</span>
+            <div class="seg" role="group" aria-label="Development type">
+              <button type="button" data-dev="subdivision" aria-pressed="true">Subdivision</button>
+              <button type="button" data-dev="duplex" aria-pressed="false">Duplex</button>
+            </div>
+          </div>
+
+          <div class="row2">
+            <label class="f"><span class="lbl">Site area (m²)</span><input type="number" id="area" value="1800" min="0" /></label>
+            <label class="f"><span class="lbl">Frontage (m)</span><input type="number" id="frontage" value="30" min="0" /></label>
+          </div>
+
+          <fieldset class="flood-fieldset">
+            <legend>◆ Flood &amp; storm tide</legend>
+            <label class="f">
+              <span class="lbl">Flood hazard category</span>
+              <select id="hazard">
+                <option value="none">None mapped</option>
+                <option value="low">Low hazard</option>
+                <option value="medium">Medium hazard</option>
+                <option value="high">High hazard</option>
+                <option value="floodway">Floodway</option>
+              </select>
+            </label>
+            <label class="f">
+              <span class="lbl">Site affected (%)</span>
+              <input type="number" id="affected" value="0" min="0" max="100" />
+            </label>
+            <div class="row2">
+              <label class="f"><span class="lbl">Defined flood level (m AHD)</span><input type="number" id="dfl" step="0.1" placeholder="e.g. 4.2" /></label>
+              <label class="f"><span class="lbl">Ground level (m AHD)</span><input type="number" id="ground" step="0.1" placeholder="e.g. 3.5" /></label>
+            </div>
+            <label class="chk"><input type="checkbox" id="stormTide" /> Storm-tide inundation mapped (coastal)</label>
+          </fieldset>
+
+          <button type="submit" class="go">Assess site</button>
+        </div>
+      </form>
+
+      <p class="caption" style="margin-top:12px">Townsville pack. Lot dimensions and flood freeboard are verified against the adopted City Plan (Reconfiguring a lot code, zone codes, Flood hazard overlay code); site-cover, setbacks, POS and parking are indicative (QDC-governed) and must be confirmed by an RPEQ / registered town planner before use.</p>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="results">
+      <div class="placeholder">
+        <div class="big">◆ Awaiting assessment</div>
+        <p>Enter the site details and press <b>Assess site</b>.<br>Flood is treated as a first-class constraint and flows through every number.</p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="engine/schemes.js"></script>
+<script src="engine/flood.js"></script>
+<script src="engine/yield.js"></script>
+<script src="engine/concept.js"></script>
+<script>
+(function(){
+  "use strict";
+  var SF = window.SiteFit;
+  var devType = "subdivision";
+
+  // Populate council + zone.
+  var councilSel = document.getElementById("council");
+  SF.schemes.list().forEach(function(c){
+    var o = document.createElement("option"); o.value=c.id; o.textContent=c.name; councilSel.appendChild(o);
+  });
+  function loadZones(){
+    var zoneSel = document.getElementById("zone"); zoneSel.innerHTML="";
+    SF.schemes.zonesFor(councilSel.value).forEach(function(z){
+      var o=document.createElement("option"); o.value=z.code; o.textContent=z.code+" — "+z.name; zoneSel.appendChild(o);
+    });
+  }
+  councilSel.addEventListener("change", loadZones); loadZones();
+
+  // Dev type toggle.
+  document.querySelectorAll(".seg button").forEach(function(b){
+    b.addEventListener("click", function(){
+      devType=b.getAttribute("data-dev");
+      document.querySelectorAll(".seg button").forEach(function(x){ x.setAttribute("aria-pressed", x===b?"true":"false"); });
+    });
+  });
+
+  function n(id){ var v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; }
+  function setVal(id,v){ if(v!=null) document.getElementById(id).value = v; }
+
+  // --- Auto-fetch from QLD web services (via /api/lookup) ---
+  function applyLookup(d, status){
+    setVal("area", d.area_m2);
+    setVal("frontage", d.frontage_m);
+    // council -> rules pack
+    if (d.councilPackId){
+      var opt = Array.prototype.find.call(councilSel.options, function(o){ return o.value===d.councilPackId; });
+      if (opt){ councilSel.value = d.councilPackId; loadZones(); }
+    }
+    // zone -> pack key
+    if (d.zone && d.zone.packKey){
+      var zs = document.getElementById("zone");
+      var zopt = Array.prototype.find.call(zs.options, function(o){ return o.value===d.zone.packKey; });
+      if (zopt) zs.value = d.zone.packKey;
+    }
+    // flood
+    if (d.flood){
+      setVal("hazard", d.flood.hazard || "none");
+      setVal("affected", d.flood.affectedPct || 0);
+    }
+    // provenance + warnings
+    var parts = [];
+    parts.push('<b>Pulled:</b> '+(d.sources||[]).join(" · "));
+    if (d.lotplan) parts.push('Lot/Plan '+d.lotplan);
+    if (d.council) parts.push('Council: '+d.council+(d.councilPackId?'':' <span style="color:var(--warn)">(no rules pack yet — verify zone controls)</span>'));
+    if (d.zone && d.zone.name) parts.push('Zone: '+d.zone.name);
+    if (d.flood){
+      parts.push('Flood: '+d.flood.hazard+' ~'+(d.flood.affectedPct||0)+'% '+
+        (d.flood.authoritative?'<span style="color:var(--pass)">(council overlay)</span>':'<span style="color:var(--warn)">(statewide screening — confirm with council overlay)</span>'));
+    }
+    if (d.warnings && d.warnings.length) parts.push('<span style="color:var(--warn)">'+d.warnings.join(" · ")+'</span>');
+    status.innerHTML = parts.join('<br>');
+  }
+
+  var fetchBtn = document.getElementById("fetchBtn");
+  if (fetchBtn) fetchBtn.addEventListener("click", async function(){
+    var status = document.getElementById("fetchStatus");
+    var lotplan = document.getElementById("lotplan").value.trim();
+    var lat = document.getElementById("lat").value.trim();
+    var lng = document.getElementById("lng").value.trim();
+    var qs = lotplan ? ("lotplan="+encodeURIComponent(lotplan)) : (lat&&lng ? ("lat="+encodeURIComponent(lat)+"&lng="+encodeURIComponent(lng)) : "");
+    if(!qs){ status.innerHTML='<span style="color:var(--warn)">Enter a Lot/Plan, or Lat and Lng.</span>'; return; }
+    status.textContent = "Fetching from QLD DCDB / flood overlay / council…";
+    try {
+      var r = await fetch("/api/lookup?"+qs);
+      var d = await r.json();
+      if (d.error){ status.innerHTML='<span style="color:var(--fail)">'+d.error+'</span>'; return; }
+      applyLookup(d, status);
+    } catch(e){
+      status.innerHTML='<span style="color:var(--warn)">Live lookup needs the SiteFit server or deployment running (this build has no network here). Run <code>node server.mjs</code> or deploy, or enter values manually.</span>';
+    }
+  });
+
+  document.getElementById("siteForm").addEventListener("submit", function(e){
+    e.preventDefault();
+    var site = { area_m2: n("area")||0, frontage_m: n("frontage")||0, groundLevel_m: n("ground") };
+    var opts = {
+      councilId: councilSel.value,
+      zoneCode: document.getElementById("zone").value,
+      devType: devType,
+      flood: {
+        hazard: document.getElementById("hazard").value,
+        affectedPct: n("affected")||0,
+        dfl_m: n("dfl"),
+        ground_m: n("ground"),
+        stormTide: document.getElementById("stormTide").checked
+      }
+    };
+    var res = SF.yield.assess(site, opts);
+    render(res, site);
+  });
+
+  function badgeClass(l){ return l==="pass"?"b-pass":l==="caution"?"b-caution":l==="fail"?"b-fail":"b-info"; }
+  function esc(s){ return String(s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
+
+  function render(res, site){
+    var el = document.getElementById("results");
+    if (res.error){ el.innerHTML='<div class="placeholder"><div class="big">Cannot assess</div><p>'+esc(res.error)+'</p></div>'; return; }
+
+    var flood = res.flood || {};
+    var knock = flood.isKnockout;
+
+    // group checks
+    var groups = {};
+    (res.checks||[]).forEach(function(c){ (groups[c.group]=groups[c.group]||[]).push(c); });
+    var order = ["Flood & storm tide","Land use","Planning controls","Yield","Built form","Amenity","Parking"];
+    var groupHtml = order.filter(function(g){return groups[g];}).map(function(g){
+      var items = groups[g].map(function(c){
+        return '<div class="check"><span class="badge '+badgeClass(c.level)+'">'+esc(c.level)+'</span>'+
+               '<div><div class="txt">'+esc(c.text)+'</div>'+(c.ref?'<div class="ref">'+esc(c.ref)+'</div>':'')+'</div></div>';
+      }).join("");
+      return '<div class="grp-h">'+esc(g)+'</div>'+items;
+    }).join("");
+
+    var metrics = (res.metrics||[]).map(function(m){
+      return '<div><dt>'+esc(m.label)+'</dt><dd>'+esc(m.value)+'</dd></div>';
+    }).join("");
+
+    var floodFindings = (flood.findings||[]).map(function(f){
+      return '<div class="check"><span class="badge '+badgeClass(f.level)+'">'+esc(f.level)+'</span><div class="txt">'+esc(f.text)+'</div></div>';
+    }).join("");
+
+    var svg = SF.concept.draw(res);
+
+    var assumptions = (res.assumptions||[]).map(function(a){ return '<li>'+esc(a)+'</li>'; }).join("");
+
+    el.innerHTML =
+      '<div class="report-head"><h1>SiteFit — Preliminary Feasibility</h1>'+
+        '<div class="sub">'+esc(res.council)+' · '+esc(res.zone.code+" "+res.zone.name)+' · '+esc(res.devTypeLabel)+
+        (document.getElementById("address").value?(' · '+esc(document.getElementById("address").value)):'')+'</div></div>'+
+
+      '<div class="headline">'+
+        '<span class="num">'+esc(res.headline)+'</span><span class="unit">'+esc(res.headlineUnit)+'</span>'+
+        '<div class="ctx"><b>'+esc(res.devTypeLabel)+'</b><br>'+esc(res.zone.code)+' — '+esc(res.zone.name)+'<br>'+esc(res.council)+'</div>'+
+      '</div>'+
+
+      '<dl class="metrics">'+metrics+'</dl>'+
+
+      '<div class="flood-panel'+(knock?' knockout':'')+'">'+
+        '<div class="fh"><span class="tag">◆ Flood assessment</span>'+
+          '<span class="badge '+(knock?'b-fail':(flood.hazardKey==="none"?'b-pass':'b-caution'))+' badge">'+esc(flood.hazard.label)+
+          (flood.affectedPct?(' · '+flood.affectedPct+'%'):'')+'</span></div>'+
+        '<div class="fb"><div class="checks">'+floodFindings+'</div></div>'+
+      '</div>'+
+
+      '<div class="concept"><div class="grp-h">Indicative concept layout</div>'+
+        '<div class="drawbox">'+svg+'</div>'+
+        '<div class="caption">Indicative only — proves the yield is achievable; not architecturally resolved, engineered or certified. Street at bottom, north as arrowed.</div>'+
+      '</div>'+
+
+      '<div class="checks"><div class="grp-h" style="margin-top:22px">Compliance summary</div>'+groupHtml+'</div>'+
+
+      '<div class="assumptions"><b>Assumptions</b><ul>'+assumptions+'</ul>'+
+        '<div class="caption" style="margin-top:8px">Scheme basis: '+esc(res.scheme)+'</div></div>'+
+
+      '<div class="disclaimer"><b>Decision support only.</b> Indicative — not for construction or lodgement. '+
+        'Subject to pre-lodgement advice and RPEQ / registered town-planner certification. Planning controls are illustrative and must be verified against the current adopted planning scheme. Site data entered manually and not independently verified.</div>'+
+
+      '<div class="actions"><button type="button" onclick="window.print()">Print / save report (PDF)</button></div>';
+
+    el.scrollIntoView({behavior:"smooth", block:"start"});
+  }
+})();
+</script>
+</body>
+</html>
