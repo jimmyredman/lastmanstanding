@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v73 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v74 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -2235,15 +2235,21 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   useEffect(() => { if (!sheet.bg){ bgImg.current = null; setBgRev(r => r + 1); return; } let live = true; loadImg(sheet.bg).then(im => { if (live){ bgImg.current = im; setBgRev(r => r + 1); } }).catch(() => {}); return () => { live = false; }; }, [sheet.bg]);
 
   const cw = Math.max(200, wrapW);
-  const ch = clamp(Math.round(wrapW * 0.72), 300, 620);
-  const fitScale = Math.min(cw / worldW, ch / worldH) || 1;
-  const minScale = fitScale * 0.2, maxScale = Math.max(fitScale * 60, 16);
-  const fitView = () => { const sc = Math.min(cw / worldW, ch / worldH); return { scale: sc, tx: (cw - worldW*sc)/2, ty: (ch - worldH*sc)/2 }; };
+  // the canvas takes the image's shape (capped), so at fit the image fills it with no grey border
+  const maxCh = Math.round((typeof window !== "undefined" ? window.innerHeight : 800) * 0.66);
+  const ch = clamp(Math.round(cw * worldH / worldW), 240, maxCh);
+  // "cover" scale = smallest zoom that still fills the whole canvas → you can never zoom out to bare grey
+  const coverScale = Math.max(cw / worldW, ch / worldH) || 1;
+  const fitScale = coverScale;
+  const minScale = coverScale, maxScale = Math.max(coverScale * 60, 16);
+  // keep the image covering the canvas: clamp the pan so its edges never pull inside the view
+  const clampView = (v) => { const s = clamp(v.scale, minScale, maxScale); const minTx = cw - worldW*s, minTy = ch - worldH*s; return { scale: s, tx: clamp(v.tx, minTx, 0), ty: clamp(v.ty, minTy, 0) }; };
+  const fitView = () => clampView({ scale: coverScale, tx: (cw - worldW*coverScale)/2, ty: (ch - worldH*coverScale)/2 });
   // refit when the sheet/background or the canvas size changes
   const fitKey = activeId + ":" + worldW + "x" + worldH + "@" + cw + "x" + ch;
   useEffect(() => { applyView(fitView()); }, [fitKey]);
 
-  const zoomTo = (nextScale, sx, sy) => { const v = viewRef.current; if (!v) return; const s = clamp(nextScale, minScale, maxScale); const wx = (sx - v.tx)/v.scale, wy = (sy - v.ty)/v.scale; applyView({ scale: s, tx: sx - wx*s, ty: sy - wy*s }); };
+  const zoomTo = (nextScale, sx, sy) => { const v = viewRef.current; if (!v) return; const s = clamp(nextScale, minScale, maxScale); const wx = (sx - v.tx)/v.scale, wy = (sy - v.ty)/v.scale; applyView(clampView({ scale: s, tx: sx - wx*s, ty: sy - wy*s })); };
   const toWorld = (e) => { const r = canvasRef.current.getBoundingClientRect(), v = viewRef.current || fitView(); const sx = e.clientX - r.left, sy = e.clientY - r.top; return { x: clamp((sx - v.tx)/v.scale, 0, worldW), y: clamp((sy - v.ty)/v.scale, 0, worldH) }; };
   const SC = () => (viewRef.current ? viewRef.current.scale : fitScale);
 
@@ -2354,11 +2360,11 @@ function SitePlanEditor({ plan, onChange: rawChange }){
       let tx = v.tx + (mx - pinch.current.mx), ty = v.ty + (my - pinch.current.my);
       const s0 = v.scale, s = clamp(pinch.current.s0 * d / pinch.current.d0, minScale, maxScale);
       const wx = (mx - tx)/s0, wy = (my - ty)/s0; tx = mx - wx*s; ty = my - wy*s;
-      applyView({ scale: s, tx, ty }); pinch.current.mx = mx; pinch.current.my = my;
+      applyView(clampView({ scale: s, tx, ty })); pinch.current.mx = mx; pinch.current.my = my;
       return;
     }
     const drag = dragRef.current;
-    if (drag && drag.kind === "pan"){ const v = viewRef.current; applyView({ ...v, tx: drag.tx0 + (e.clientX - drag.sx0), ty: drag.ty0 + (e.clientY - drag.sy0) }); return; }
+    if (drag && drag.kind === "pan"){ const v = viewRef.current; applyView(clampView({ ...v, tx: drag.tx0 + (e.clientX - drag.sx0), ty: drag.ty0 + (e.clientY - drag.sy0) })); return; }
     const p = toWorld(e); moved.current = true;
     if (draft && tool === "fence"){ setDraft({ ...draft, preview: p }); return; }
     if (!drag) return;
