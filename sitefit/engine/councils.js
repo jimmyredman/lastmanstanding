@@ -32,18 +32,25 @@
       areaField: "lot_area",     // m2 (verify against live schema; falls back to computed area)
     },
     // Queensland Floodplain Assessment Overlay — statewide SCREENING flood.
-    // Hosted ArcGIS Online FeatureServer (CORS-friendly, supports query).
+    // Published as layer 15 of the QLD Government AdminBoundariesFramework
+    // MapServer (confirmed live 2026-07). The previously used ArcGIS Online
+    // FeatureServer mirror is no longer reachable, so we hit the authoritative
+    // QLD Government service directly. Polygon queries return the overlay extent
+    // intersecting the parcel; engine/geo.js computes the affected %.
     floodScreening: {
-      url: "https://services8.arcgis.com/g9mppFwSsmIw9E0Z/arcgis/rest/services/Queensland_floodplain_assessment_overlay/FeatureServer/0",
+      url: "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Boundaries/AdminBoundariesFramework/MapServer/15",
       label: "QLD Floodplain Assessment Overlay (screening)",
       authoritative: false,
     },
     // Local government area boundaries — used to identify which council a point
-    // falls in, then look the council up in COUNCILS below.
+    // falls in, then look the council up in COUNCILS below. Layer 11 carries
+    // the LGA name in `adminareaname` (e.g. "TOWNSVILLE CITY"); note the layer
+    // also has an `admintypename` field ("LOCAL GOVERNMENT") that a loose /name/
+    // match would grab first, so the name regex is scoped to the real field.
     lgaBoundaries: {
       url: "https://spatial-gis.information.qld.gov.au/arcgis/rest/services/Boundaries/AdminBoundariesFramework/MapServer",
       lgaLayerNameRegex: /local government area|lga/i,
-      lgaNameField: /lga|name|locality/i,
+      lgaNameField: /adminareaname|^lga$/i,
     },
     // Address -> lot/plan + coordinates. Free QLD service but requires a key.
     geocoder: {
@@ -73,7 +80,17 @@
   const COUNCILS = {
     "townsville city council": {
       packId: "townsville",
-      apiAvailable: true,
+      // The council's City Plan ArcGIS (EXT_CityPlanningScheme_Current) and its
+      // FloodInfoPortal both require an ArcGIS token — they return HTTP 499
+      // "Token Required" to anonymous callers (confirmed 2026-07). The only
+      // public Townsville service (PUB_Core) carries cadastre/roads/suburbs, not
+      // zoning or the flood overlay. So auto-zoning is NOT available for
+      // Townsville today: we resolve the council + rules pack, screen flood from
+      // the statewide overlay, and the zone is entered manually. Set
+      // apiAvailable:true and supply a token-bearing/public planning.url to
+      // switch live zoning + authoritative council flood back on.
+      apiAvailable: false,
+      requiresToken: true,
       planning: {
         url: "https://maps.townsville.qld.gov.au/arcgis/rest/services/Geocortex/EXT_CityPlanningScheme_Current/MapServer",
         zoneLayerNameRegex: /zone|zoning/i,

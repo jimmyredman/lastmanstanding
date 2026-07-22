@@ -5,13 +5,17 @@ planning-aware** yield and concept site layout for pre-lodgement discussions.
 
 > **Decision support only — not an approval.** Every output is indicative and
 > must be verified against the adopted planning scheme and signed off by a
-> registered town planner / RPEQ before it is relied on. The planning numbers
-> in this MVP are **illustrative** placeholders structured on the Townsville
-> City Plan; they must be checked against the current adopted scheme.
+> registered town planner / RPEQ before it is relied on. Lot dimensions
+> (minimum lot size, frontage, depth) and the flood freeboard are **verified**
+> against the adopted Townsville City Plan codes; site-cover, setbacks, POS and
+> car parking for dwelling houses are QDC-governed and remain **indicative**.
+> All numbers must be confirmed against the current adopted scheme.
 
 ## What this MVP does
 
-- Council: **Townsville** (illustrative pack). Zones: LDR, LMDR, RR.
+- Council: **Townsville**. Zones: LDR, RR (lot dimensions verified against the
+  adopted City Plan); LMDR retained as an indicative stub (Townsville's real
+  equivalent is the Medium density residential zone).
 - Development types: **Land subdivision (ROL)** and **Dual occupancy (duplex)**.
 - **Flood intelligence** as a first-class constraint:
   - hazard category (none / low / medium / high / floodway),
@@ -35,16 +39,22 @@ Two tiers of coverage:
 | Data | Source | Coverage |
 |---|---|---|
 | Lot boundary + area | QLD DCDB cadastre (`spatial-gis.information.qld.gov.au`) | **Every** QLD address |
-| Screening flood | QLD Floodplain Assessment Overlay (`services8.arcgis.com/g9mpp…`) | **Every** QLD address (screening only) |
+| Screening flood | QLD Floodplain Assessment Overlay (`spatial-gis.information.qld.gov.au/…/AdminBoundariesFramework/MapServer/15`) | **Every** QLD address (screening only) |
 | Council identity | QLD LGA boundaries | **Every** QLD address |
 | Zoning + authoritative flood | Each council's ArcGIS service | Councils with a queryable service |
 | Address → Lot/Plan | QLD Geocoder / PLSplus (`geocode.information.qld.gov.au`) | Statewide, **needs a free key** |
 
 Honest limits:
 - **Zoning/council-flood** is automatic only for councils that expose a
-  queryable ArcGIS service (Townsville is wired; the rest are registry stubs in
-  `engine/councils.js`). Councils with only an interactive "PD Online" viewer
-  fall back to statewide data + manual zone entry.
+  *public, keyless* queryable ArcGIS service. Townsville's City Plan ArcGIS
+  (`EXT_CityPlanningScheme_Current`) and its FloodInfoPortal both require an
+  ArcGIS **token** (they return HTTP 499 to anonymous callers), and the only
+  public Townsville service (`PUB_Core`) carries cadastre/roads/suburbs — not
+  zoning. So Townsville currently resolves the council + rules pack and screens
+  flood from the statewide overlay, but the **zone is entered manually**
+  (`apiAvailable:false` in `engine/councils.js`, with the endpoint retained so a
+  token-bearing/public URL flips live zoning back on). Other councils are
+  registry stubs; those with only a "PD Online" viewer degrade the same way.
 - The statewide flood layer is **screening** ("not intended to predict flooding
   for specific parcels"); the app prefers a council's authoritative flood
   overlay where available and labels which one it used.
@@ -113,6 +123,10 @@ Two parts, both data entry (not code) thanks to the shared QPP structure:
 ## Verified vs. deploy-only
 
 The geometry maths and the lookup orchestration are unit-tested (`test/`). The
-live network calls are coded against the real, current endpoints but are
-validated on deploy / a network-enabled run — the build environment used to
-author this had outbound network restricted.
+live QLD lookups (cadastre, LGA/council identification, statewide flood
+screening) have been run end-to-end against the real endpoints with real
+Townsville lot/plans and confirmed to resolve. Townsville zoning is not
+auto-fetched (its planning ArcGIS is token-gated — see Honest limits). The zone
+controls in `engine/schemes.js` are verified for lot dimensions and freeboard
+against the adopted City Plan codes cited in each pack's `sources`; QDC-governed
+built-form controls remain indicative and are flagged inline.

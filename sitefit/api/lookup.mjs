@@ -107,9 +107,13 @@ export async function lookup(input) {
   try {
     const lgaLayer = await resolveLayer(S.lgaBoundaries.url, S.lgaBoundaries.lgaLayerNameRegex);
     if (lgaLayer) {
+      // NOTE: no resultRecordCount here — the AdminBoundariesFramework MapServer
+      // returns ZERO features for a point-intersects query when resultRecordCount
+      // is set (it needs paging params it doesn't advertise). A point falls in
+      // exactly one LGA polygon, so the cap isn't needed anyway.
       const j = await agQuery(lgaLayer, {
         geometry: c[0] + "," + c[1], geometryType: "esriGeometryPoint", inSR: "4326",
-        spatialRel: "esriSpatialRelIntersects", outFields: "*", returnGeometry: "false", resultRecordCount: "1",
+        spatialRel: "esriSpatialRelIntersects", outFields: "*", returnGeometry: "false",
       });
       const f = (j.features || [])[0];
       if (f) { councilName = pickField(f.attributes, S.lgaBoundaries.lgaNameField); sources.push("QLD LGA boundaries"); }
@@ -168,7 +172,7 @@ export async function lookup(input) {
       if (zl) {
         const j = await agQuery(zl, {
           geometry: c[0] + "," + c[1], geometryType: "esriGeometryPoint", inSR: "4326",
-          spatialRel: "esriSpatialRelIntersects", outFields: "*", returnGeometry: "false", resultRecordCount: "1",
+          spatialRel: "esriSpatialRelIntersects", outFields: "*", returnGeometry: "false",
         });
         const f = (j.features || [])[0];
         if (f) {
