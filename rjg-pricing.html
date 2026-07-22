@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v67 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v68 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1308,15 +1308,42 @@ function drawSiteStamp(ctx, s){
   ctx.restore();
 }
 function loadImg(src){ return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("image load failed")); im.src = src; }); }
-// Aerial capture area presets — half-width in degrees longitude (smaller = tighter, sharper for house-scale drawing)
-const AERIAL_AREAS = [["close", "Close (~180 m)", 0.0009], ["site", "Site (~350 m)", 0.0017], ["wide", "Wide (~700 m)", 0.0034]];
-// Free aerial: geocode (Nominatim) then a static satellite image (Esri World Imagery). Captured at high
-// resolution so you can zoom right in to draw around a house; cached into the sheet → offline afterwards.
-async function fetchAerialImage(lat, lon, span){
-  const d = span || 0.0017;
-  // keep ground pixels roughly square: 1° lat is constant, 1° lon shrinks by cos(lat)
+// Aerial capture area presets — [key, label, half-width° lon, tile zoom]. Smaller area + higher zoom = sharper.
+const AERIAL_AREAS = [["close", "Close — sharpest (~170 m)", 0.0008, 20], ["site", "Site (~340 m)", 0.0016, 20], ["wide", "Wide (~700 m)", 0.0034, 19]];
+// Web-Mercator tile helpers (fractional tile coords)
+const lon2tileF = (lon, z) => (lon + 180) / 360 * Math.pow(2, z);
+const lat2tileF = (lat, z) => { const r = lat * Math.PI / 180; return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z); };
+// Pull native Esri World Imagery tiles at high zoom and stitch them — this gives the sharpest imagery the free
+// source actually holds (the /export endpoint resamples and looks soft when you zoom right in to a house).
+async function fetchAerialTiles(lat, lon, d, z){
   const dLat = d * Math.cos(lat * Math.PI / 180);
-  const W = 2048, H = Math.round(W * dLat / d);   // ~2048 × 2048·(dLat/d)
+  const lonMin = lon - d, lonMax = lon + d, latMin = lat - dLat, latMax = lat + dLat;
+  while (z > 16 && (Math.floor(lon2tileF(lonMax,z)) - Math.floor(lon2tileF(lonMin,z)) + 1) * (Math.floor(lat2tileF(latMin,z)) - Math.floor(lat2tileF(latMax,z)) + 1) > 144) z--;
+  const x0 = Math.floor(lon2tileF(lonMin,z)), x1 = Math.floor(lon2tileF(lonMax,z));
+  const y0 = Math.floor(lat2tileF(latMax,z)), y1 = Math.floor(lat2tileF(latMin,z));
+  const nx = x1 - x0 + 1, ny = y1 - y0 + 1;
+  const stitch = document.createElement("canvas"); stitch.width = nx * 256; stitch.height = ny * 256;
+  const sctx = stitch.getContext("2d"); let ok = 0;
+  const jobs = [];
+  for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++){
+    jobs.push(loadImg("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/" + z + "/" + ty + "/" + tx).then(im => { sctx.drawImage(im, (tx-x0)*256, (ty-y0)*256); ok++; }).catch(() => {}));
+  }
+  await Promise.all(jobs);
+  if (!ok) throw new Error("no tiles");
+  // crop the stitched grid to the exact bbox
+  const cx0 = (lon2tileF(lonMin,z) - x0) * 256, cx1 = (lon2tileF(lonMax,z) - x0) * 256;
+  const cy0 = (lat2tileF(latMax,z) - y0) * 256, cy1 = (lat2tileF(latMin,z) - y0) * 256;
+  const cw = Math.max(1, Math.round(cx1 - cx0)), chh = Math.max(1, Math.round(cy1 - cy0));
+  const out = document.createElement("canvas"); out.width = cw; out.height = chh;
+  out.getContext("2d").drawImage(stitch, Math.round(cx0), Math.round(cy0), cw, chh, 0, 0, cw, chh);
+  return { bg: out.toDataURL("image/jpeg", 0.92), natW: cw, natH: chh, lat, lon, span: d };
+}
+// Free aerial: geocode (Nominatim) then satellite imagery (Esri World Imagery), cached into the sheet → offline after.
+async function fetchAerialImage(lat, lon, span, zoom){
+  const d = span || 0.0016, z = zoom || 20;
+  try { const r = await fetchAerialTiles(lat, lon, d, z); if (r.natW >= 256) return r; } catch(e){}
+  // fallback: single static export request
+  const dLat = d * Math.cos(lat * Math.PI / 180), W = 2048, H = Math.round(W * dLat / d);
   const bbox = [lon - d, lat - dLat, lon + d, lat + dLat].join(",");
   const url = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=" + bbox + "&bboxSR=4326&imageSR=4326&size=" + W + "," + H + "&format=jpg&f=image";
   const im = await loadImg(url);
@@ -2155,7 +2182,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const [busy, setBusy] = useState("");
   const [showLoc, setShowLoc] = useState(false);
   const [locQuery, setLocQuery] = useState("");
-  const [aerialArea, setAerialArea] = useState("site");
+  const [aerialArea, setAerialArea] = useState("close");
   const bgImg = useRef(null);
   const [bgRev, setBgRev] = useState(0);
   const gPointers = useRef(new Map()), pinch = useRef(null), moved = useRef(false);
@@ -2357,8 +2384,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     if (sheetEmpty(sheet)){ setDoc({ ...doc, sheets: sheets.map(s => s.id === activeId ? { ...s, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, snapshot: undefined } : s) }); }
     else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
   };
-  const areaSpan = (AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[1])[2];
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaSpan); setBackground({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const areaPreset = AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[0];
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3]); setBackground({ ...res, loc: { lat, lon, name: name || "" } }); notify("Aerial captured — now offline in this job"); } catch(e){ alert("Couldn't fetch the aerial image. You need to be online the first time (it's then stored for offline use). You can also upload a drawing or take a photo instead."); } setBusy(""); setShowLoc(false); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
   const saveSnapshot = () => { patchSheet({ snapshot: renderFull() }); notify("Saved for the report"); };
