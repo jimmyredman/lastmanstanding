@@ -94,10 +94,10 @@
         {
           "home": "Eels",
           "away": "Panthers",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 18,
+          "awayScore": 24,
+          "winner": "Panthers",
+          "completed": true,
           "date": "2026-07-23T09:50Z",
           "venue": "CommBank Stadium"
         },
