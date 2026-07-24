@@ -104,20 +104,20 @@
         {
           "home": "Knights",
           "away": "Roosters",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 22,
+          "awayScore": 23,
+          "winner": "Roosters",
+          "completed": true,
           "date": "2026-07-24T08:00Z",
           "venue": "McDonald Jones Stadium"
         },
         {
           "home": "Rabbitohs",
           "away": "Storm",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 28,
+          "awayScore": 26,
+          "winner": "Rabbitohs",
+          "completed": true,
           "date": "2026-07-24T10:00Z",
           "venue": "Accor Stadium"
         },
