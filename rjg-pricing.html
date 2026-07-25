@@ -166,7 +166,7 @@ async function seedDefaultItems(){
 /* =========================================================================
    Defaults
    ========================================================================= */
-const APP_VERSION = "v75 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
+const APP_VERSION = "v76 · 22 Jul 2026";        // shown in Settings so you can confirm the live build
 const SEED_PRICES_DATE = "19 Jul 2026";         // date of the built-in price register (shown until a device imports its own)
 const MASTER_PRICES_TS = Date.parse("2026-07-19");   // release time of the current master list; devices last updated before this are flagged out of date
 const COST_TYPES = ["Material", "Labour", "Equipment", "Plant", "Crew", "Subcontractor", "Prelim", "Other"];
@@ -1282,10 +1282,10 @@ const lineKey = (lp) => lp.name + "|" + lp.color + "|" + lp.style;
 function normalizeSite(sp){
   sp = sp || {};
   if (Array.isArray(sp.sheets) && sp.sheets.length) return sp;
-  const sheet = { id: "s1", name: "Sheet 1", bg: sp.bg, natW: sp.natW, natH: sp.natH, loc: sp.loc || null, stamps: sp.stamps || [], lines: sp.lines || [], notes: sp.notes || [], snapshot: sp.snapshot };
+  const sheet = { id: "s1", name: "Sheet 1", bg: sp.bg, natW: sp.natW, natH: sp.natH, loc: sp.loc || null, mPerPx: sp.mPerPx, stamps: sp.stamps || [], lines: sp.lines || [], notes: sp.notes || [], areas: sp.areas || [], snapshot: sp.snapshot };
   return { sheets: [sheet], active: "s1" };
 }
-const sheetEmpty = (s) => !s.bg && !(s.stamps||[]).length && !(s.lines||[]).length && !(s.notes||[]).length;
+const sheetEmpty = (s) => !s.bg && !(s.stamps||[]).length && !(s.lines||[]).length && !(s.notes||[]).length && !(s.areas||[]).length;
 // draw one site icon centred at s.x,s.y (px), size s.size, rotated s.angle
 function drawSiteStamp(ctx, s){
   const w = s.size || 46, h = w; ctx.save(); ctx.translate(s.x, s.y); ctx.rotate((s.angle || 0) * Math.PI / 180);
@@ -2205,6 +2205,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const [fenceName, setFenceName] = useState("New site fence");
   const [fenceColor, setFenceColor] = useState("#e11d2e");
   const [fenceStyle, setFenceStyle] = useState("dashed");
+  const [areaName, setAreaName] = useState("Area");
+  const [areaColor, setAreaColor] = useState("#1f74c4");
   const [draft, setDraft] = useState(null);
   const [sel, setSel] = useState(null);
   const [drag, setDrag] = useState(null);
@@ -2228,8 +2230,14 @@ function SitePlanEditor({ plan, onChange: rawChange }){
   const stamps = (preview && preview.stamps) || sheet.stamps || [];
   const notes = (preview && preview.notes) || sheet.notes || [];
   const lines = (preview && preview.lines) || sheet.lines || [];
+  const areas = (preview && preview.areas) || sheet.areas || [];
   const worldW = sheet.bg ? (sheet.natW || 1200) : 1200;
   const worldH = sheet.bg ? (sheet.natH || 900) : 900;
+  // scale: metres per image pixel. Auto-set for aerials; set by hand for uploads/photos via the Set-scale tool.
+  const mpp = sheet.mPerPx || 0, hasScale = mpp > 0;
+  const lineLenM = (l) => hasScale ? perimeter(l.points, false) * mpp : 0;     // lineal metres of a polyline
+  const areaM2 = (a) => hasScale ? shoelace(a.points) * mpp * mpp : 0;          // m² of a polygon
+  const fmtM = (m) => (m >= 100 ? Math.round(m) : round2(m).toFixed(2)) + " m";
 
   useEffect(() => { const m = () => wrapRef.current && setWrapW(wrapRef.current.clientWidth); m(); window.addEventListener("resize", m); return () => window.removeEventListener("resize", m); }, []);
   useEffect(() => { if (!sheet.bg){ bgImg.current = null; setBgRev(r => r + 1); return; } let live = true; loadImg(sheet.bg).then(im => { if (live){ bgImg.current = im; setBgRev(r => r + 1); } }).catch(() => {}); return () => { live = false; }; }, [sheet.bg]);
@@ -2266,8 +2274,12 @@ function SitePlanEditor({ plan, onChange: rawChange }){
 
   // draw the site markups in world coordinates (transform already applied). `unit` = screen px per world px,
   // used to keep line thickness / note text a constant on-screen size at any zoom.
+  // a pill of text centred at (x,y) in world coords, constant on-screen size
+  const label = (ctx, unit, x, y, txt, col) => { ctx.save(); ctx.font = "700 " + (13/unit) + "px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; const w = ctx.measureText(txt).width + 10/unit; ctx.fillStyle = "rgba(255,255,255,.9)"; rrect(ctx, x - w/2, y - 9/unit, w, 18/unit, 4/unit); ctx.fill(); ctx.fillStyle = col || "#0b3d6b"; ctx.fillText(txt, x, y); ctx.restore(); };
   const paintMarkups = (ctx, unit, dots) => {
-    lines.forEach(l => { const lp = lineProps(l), pts = l.points; if (!pts.length) return; ctx.save(); ctx.strokeStyle = lp.color; ctx.lineWidth = 3/unit; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash((SITE_LINE_DASH[lp.style] || []).map(x => x/unit)); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); if (dots){ ctx.fillStyle = lp.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/unit, 0, 7); ctx.fill(); }); } ctx.restore(); });
+    // measured areas (under the lines/icons)
+    areas.forEach(a => { const pts = a.points; if (pts.length < 2) return; ctx.save(); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.closePath(); ctx.fillStyle = (a.color || "#1f74c4") + "2e"; ctx.fill(); ctx.strokeStyle = a.color || "#1f74c4"; ctx.lineWidth = 2.5/unit; ctx.setLineDash([]); ctx.stroke(); if (dots){ ctx.fillStyle = a.color || "#1f74c4"; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/unit, 0, 7); ctx.fill(); }); } ctx.restore(); if (pts.length >= 3){ const c = centroid(pts); label(ctx, unit, c.x, c.y, (a.name ? a.name + " · " : "") + (hasScale ? round2(areaM2(a)).toFixed(1) + " m²" : "set scale"), a.color); } });
+    lines.forEach(l => { const lp = lineProps(l), pts = l.points; if (!pts.length) return; ctx.save(); ctx.strokeStyle = lp.color; ctx.lineWidth = 3/unit; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash((SITE_LINE_DASH[lp.style] || []).map(x => x/unit)); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); if (dots){ ctx.fillStyle = lp.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/unit, 0, 7); ctx.fill(); }); } ctx.restore(); if (hasScale && pts.length >= 2){ const mid = pts[Math.floor((pts.length-1)/2)], nx = pts[Math.floor((pts.length-1)/2)+1] || mid; label(ctx, unit, (mid.x+nx.x)/2, (mid.y+nx.y)/2, fmtM(lineLenM(l)), lp.color); } });
     stamps.forEach(s => drawSiteStamp(ctx, s));
     notes.forEach(n => { ctx.save(); ctx.font = "700 " + (15/unit) + "px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "top"; const tw = ctx.measureText(n.text || "").width; ctx.fillStyle = "rgba(255,255,255,.86)"; rrect(ctx, n.x - 4/unit, n.y - 3/unit, tw + 8/unit, 20/unit, 3/unit); ctx.fill(); ctx.fillStyle = "#c01722"; ctx.fillText(n.text || "", n.x, n.y); ctx.restore(); });
   };
@@ -2285,8 +2297,10 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     if (bgImg.current){ ctx.imageSmoothingQuality = "high"; ctx.drawImage(bgImg.current, 0, 0, worldW, worldH); }
     else { ctx.fillStyle = "#eef1f5"; ctx.fillRect(0, 0, worldW, worldH); }
     paintMarkups(ctx, scale, tool === "move");
-    // live fence draft
-    if (draft && draft.points.length){ const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; ctx.save(); ctx.strokeStyle = draft.color; ctx.lineWidth = 3/scale; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash((SITE_LINE_DASH[draft.style] || []).map(x => x/scale)); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = draft.color; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/scale, 0, 7); ctx.fill(); }); ctx.restore(); }
+    // live draft (fence line / area polygon / scale line)
+    if (draft && draft.points.length){ const pts = draft.preview ? [...draft.points, draft.preview] : draft.points; const col = draft.color || "#0b7d3b"; ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 3/scale; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash(draft.kind === "scale" ? [8/scale,6/scale] : (SITE_LINE_DASH[draft.style] || []).map(x => x/scale)); ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); if (draft.kind === "area" && pts.length > 2) ctx.closePath(); ctx.stroke(); ctx.setLineDash([]); if (draft.kind === "area" && pts.length > 2){ ctx.fillStyle = col + "22"; ctx.fill(); } ctx.fillStyle = col; pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 5/scale, 0, 7); ctx.fill(); }); ctx.restore();
+      // live measurement readout while drawing
+      if (hasScale && pts.length >= 2){ if (draft.kind === "area" && pts.length >= 3){ const c = centroid(pts); label(ctx, scale, c.x, c.y, round2(shoelace(pts)*mpp*mpp).toFixed(1) + " m²", col); } else if (draft.kind !== "area"){ const a = pts[pts.length-2], bpt = pts[pts.length-1]; label(ctx, scale, (a.x+bpt.x)/2, (a.y+bpt.y)/2, fmtM(perimeter(pts,false)*mpp), col); } } }
     // selected stamp handles (constant on-screen size via /scale)
     if (tool === "move" && sel && sel.kind === "stamp"){
       const s = stamps.find(x => x.id === sel.id);
@@ -2304,7 +2318,9 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     if (!bgImg.current){ ctx.fillStyle = "#8792a0"; ctx.font = "600 15px system-ui"; ctx.textAlign = "center"; ctx.fillText("Add a background — upload a drawing, take a photo,", cw/2, ch/2 - 12); ctx.fillText("or drop an aerial from a searched location.", cw/2, ch/2 + 12); }
     // north arrow (screen-space, top-right corner)
     (() => { ctx.save(); ctx.translate(cw - 30, 30); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0,0,18,0,7); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#c01722"; ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(5,3); ctx.lineTo(0,0); ctx.lineTo(-5,3); ctx.closePath(); ctx.fill(); ctx.fillStyle = "#111"; ctx.font = "700 10px system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("N", 0, 10); ctx.restore(); })();
-  }, [stamps, notes, lines, draft, tool, sel, view, cw, ch, worldW, worldH, bgRev]);
+    // scale bar (screen-space, bottom-left) — a "nice" round length in metres
+    if (hasScale){ const pxPerM = view.scale / mpp; let targetPx = cw * 0.22, mNice = targetPx * mpp; const pow = Math.pow(10, Math.floor(Math.log10(mNice))); const step = mNice/pow >= 5 ? 5 : mNice/pow >= 2 ? 2 : 1; mNice = step * pow; const barPx = mNice * pxPerM; const bx = 14, by = ch - 16; ctx.save(); ctx.strokeStyle = "#111"; ctx.fillStyle = "#111"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.moveTo(bx, by-5); ctx.lineTo(bx, by+5); ctx.moveTo(bx+barPx, by-5); ctx.lineTo(bx+barPx, by+5); ctx.stroke(); ctx.font = "700 11px system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillStyle = "#fff"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.strokeText((mNice >= 1 ? mNice : mNice) + " m", bx, by - 6); ctx.fillStyle = "#111"; ctx.fillText((mNice) + " m", bx, by - 6); ctx.restore(); }
+  }, [stamps, notes, lines, areas, draft, tool, sel, view, cw, ch, worldW, worldH, bgRev, mpp]);
 
   const hitStampHandle = (p) => {
     if (!(sel && sel.kind === "stamp")) return null;
@@ -2341,7 +2357,15 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     const p = toWorld(e);
     if (tool === "place"){ const s = { id: uid(), type: stampType, x: p.x, y: p.y, size: Math.max(20, 46/SC()), angle: 0 }; patchSheet({ stamps: [...(sheet.stamps||[]), s] }); setSel({ kind: "stamp", id: s.id }); return; }
     if (tool === "note"){ const text = prompt("Note text:"); if (text != null && text.trim()){ patchSheet({ notes: [...(sheet.notes||[]), { id: uid(), x: p.x, y: p.y, text: text.trim() }] }); } return; }
-    if (tool === "fence"){ if (!draft){ setDraft({ name: fenceName, color: fenceColor, style: fenceStyle, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
+    if (tool === "fence"){ if (!draft){ setDraft({ kind: "fence", name: fenceName, color: fenceColor, style: fenceStyle, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
+    if (tool === "area"){ if (!draft){ setDraft({ kind: "area", name: areaName, color: areaColor, points: [p] }); } else { setDraft({ ...draft, points: [...draft.points, p], preview: null }); } return; }
+    if (tool === "scale"){
+      if (!draft){ setDraft({ kind: "scale", points: [p] }); }
+      else { const pts = [...draft.points, p], pxd = dist(pts[0], pts[1]); setDraft(null);
+        const ans = prompt("Real distance between the two points, in metres:"); const m = parseFloat(ans);
+        if (m > 0 && pxd > 0){ patchSheet({ mPerPx: m / pxd }); notify("Scale set — measurements are now in metres"); } }
+      return;
+    }
     const handle = hitStampHandle(p);
     if (handle){ const s = stamps.find(x => x.id === sel.id); startDrag({ kind: handle, id: s.id, start: p, s0: { ...s } }); return; }
     const hit = hitTest(p);
@@ -2371,7 +2395,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     const drag = dragRef.current;
     if (drag && drag.kind === "pan"){ const v = viewRef.current; applyView(clampView({ ...v, tx: drag.tx0 + (e.clientX - drag.sx0), ty: drag.ty0 + (e.clientY - drag.sy0) })); return; }
     const p = toWorld(e); moved.current = true;
-    if (draft && tool === "fence"){ setDraft({ ...draft, preview: p }); return; }
+    if (draft && (tool === "fence" || tool === "area" || tool === "scale")){ setDraft({ ...draft, preview: p }); return; }
     if (!drag) return;
     if (drag.kind === "stamp"){ setPreview({ stamps: stamps.map(s => s.id === drag.id ? { ...s, x: clamp(drag.s0.x + (p.x-drag.start.x),0,worldW), y: clamp(drag.s0.y + (p.y-drag.start.y),0,worldH) } : s) }); }
     else if (drag.kind === "note"){ setPreview({ notes: notes.map(n => n.id === drag.id ? { ...n, x: clamp(drag.s0.x + (p.x-drag.start.x),0,worldW), y: clamp(drag.s0.y + (p.y-drag.start.y),0,worldH) } : n) }); }
@@ -2401,8 +2425,8 @@ function SitePlanEditor({ plan, onChange: rawChange }){
 
   // ---- sheets ----
   const switchSheet = (id) => { if (id === activeId) return; const snap = (sheet.bg||sheet.stamps||sheet.lines||sheet.notes) ? renderFull() : sheet.snapshot; setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: sheets.map(s => s.id === activeId && snap ? { ...s, snapshot: snap } : s) }); };
-  const addSheet = () => { const snap = renderFull(); const id = uid(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), stamps: [], lines: [], notes: [] }] }); };
-  const delSheet = (id) => { if (sheets.length <= 1){ if (confirm("Clear this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined, stamps: [], lines: [], notes: [] }, id); return; } if (!confirm("Delete this sheet?")) return; const remaining = sheets.filter(s => s.id !== id); setDoc({ ...doc, sheets: remaining, active: (id === activeId ? remaining[0].id : activeId) }); };
+  const addSheet = () => { const snap = renderFull(); const id = uid(); setSel(null); setDraft(null); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: snap } : s), { id, name: "Sheet " + (sheets.length + 1), stamps: [], lines: [], notes: [], areas: [] }] }); };
+  const delSheet = (id) => { if (sheets.length <= 1){ if (confirm("Clear this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, mPerPx: undefined, snapshot: undefined, stamps: [], lines: [], notes: [], areas: [] }, id); return; } if (!confirm("Delete this sheet?")) return; const remaining = sheets.filter(s => s.id !== id); setDoc({ ...doc, sheets: remaining, active: (id === activeId ? remaining[0].id : activeId) }); };
   const renameSheet = (id, name) => setDoc({ ...doc, sheets: sheets.map(s => s.id === id ? { ...s, name } : s) });
 
   const readImage = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => { const im = new Image(); im.onload = () => { const MAX = 2600, w = im.naturalWidth, h = im.naturalHeight, sc = Math.min(1, MAX/Math.max(w,h)); let bg = r.result, nw = w, nh = h; if (sc < 1){ try { const cv = document.createElement("canvas"); nw = Math.round(w*sc); nh = Math.round(h*sc); cv.width = nw; cv.height = nh; cv.getContext("2d").drawImage(im,0,0,nw,nh); bg = cv.toDataURL("image/jpeg", 0.9); } catch(_){} } res({ bg, natW: nw, natH: nh, name: (file.name||"").replace(/\.[^.]+$/, "") }); }; im.onerror = () => rej(new Error("decode")); im.src = r.result; }; r.onerror = () => rej(new Error("read")); r.readAsDataURL(file); });
@@ -2415,7 +2439,7 @@ function SitePlanEditor({ plan, onChange: rawChange }){
       let base = sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s);
       let newActive = activeId, i0 = 0;
       if (sheetEmpty(sheet)){ const im = imgs[0]; base = base.map(s => s.id === activeId ? { ...s, bg: im.bg, natW: im.natW, natH: im.natH, loc: null, snapshot: undefined } : s); i0 = 1; }
-      const extra = imgs.slice(i0).map(im => ({ id: uid(), name: im.name || ("Sheet " + (sheets.length + 1)), bg: im.bg, natW: im.natW, natH: im.natH, loc: null, stamps: [], lines: [], notes: [] }));
+      const extra = imgs.slice(i0).map(im => ({ id: uid(), name: im.name || ("Sheet " + (sheets.length + 1)), bg: im.bg, natW: im.natW, natH: im.natH, loc: null, stamps: [], lines: [], notes: [], areas: [] }));
       if (extra.length) newActive = i0 === 1 ? activeId : extra[0].id;
       setDoc({ ...doc, active: newActive, sheets: [...base, ...extra] });
       notify(imgs.length + (imgs.length === 1 ? " image added" : " images added as sheets"));
@@ -2423,24 +2447,28 @@ function SitePlanEditor({ plan, onChange: rawChange }){
     setBusy("");
   };
   const setBackground = (patch) => {
-    if (sheetEmpty(sheet)){ setDoc({ ...doc, sheets: sheets.map(s => s.id === activeId ? { ...s, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, snapshot: undefined } : s) }); }
-    else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, stamps: [], lines: [], notes: [] }] }); }
+    const mp = patch.mPerPx || undefined;   // aerials carry a real-world scale; uploads don't
+    if (sheetEmpty(sheet)){ setDoc({ ...doc, sheets: sheets.map(s => s.id === activeId ? { ...s, bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, mPerPx: mp, snapshot: undefined } : s) }); }
+    else { const cur = renderFull(); const id = uid(); setDoc({ ...doc, active: id, sheets: [...sheets.map(s => s.id === activeId ? { ...s, snapshot: cur } : s), { id, name: "Sheet " + (sheets.length + 1), bg: patch.bg, natW: patch.natW, natH: patch.natH, loc: patch.loc || null, mPerPx: mp, stamps: [], lines: [], notes: [], areas: [] }] }); }
   };
   const areaPreset = AERIAL_AREAS.find(a => a[0] === aerialArea) || AERIAL_AREAS[0];
-  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3], aerialSrc || undefined); setBackground({ ...res, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — now offline in this job"); } catch(e){ alert((e && e.message ? e.message : "Couldn't fetch the aerial image.") + "\n\nBe online the first time. Or upload a drawing / take a photo instead."); } setBusy(""); setShowLoc(false); };
+  const aerialFrom = async (lat, lon, name) => { setBusy("aerial"); try { const res = await fetchAerialImage(lat, lon, areaPreset[2], areaPreset[3], aerialSrc || undefined); const mPerPx = (2 * res.span * 111320 * Math.cos(lat * Math.PI/180)) / res.natW; setBackground({ ...res, mPerPx, loc: { lat, lon, name: name || "", source: res.source } }); notify("Aerial captured (" + (res.source || "") + ") — scale set automatically"); } catch(e){ alert((e && e.message ? e.message : "Couldn't fetch the aerial image.") + "\n\nBe online the first time. Or upload a drawing / take a photo instead."); } setBusy(""); setShowLoc(false); };
   const recaptureAerial = () => { if (sheet.loc && sheet.loc.lat != null) aerialFrom(sheet.loc.lat, sheet.loc.lon, sheet.loc.name); };
   const searchLoc = async () => { const q = locQuery.trim(); if (!q) return; setBusy("aerial"); try { const g = await geocodeAU(q); await aerialFrom(g.lat, g.lon, g.name); } catch(e){ alert(e.message || "Location search failed. Be online to search, or upload / photograph the site instead."); setBusy(""); } };
   const myLocation = () => { if (!navigator.geolocation){ alert("This device can't share its location. Search an address or upload instead."); return; } setBusy("aerial"); navigator.geolocation.getCurrentPosition(pos => aerialFrom(pos.coords.latitude, pos.coords.longitude, "Current location"), () => { alert("Couldn't get your location. Allow location access, search an address, or upload / photograph the site."); setBusy(""); }, { enableHighAccuracy: true, timeout: 12000 }); };
   const saveSnapshot = () => { patchSheet({ snapshot: renderFull() }); notify("Saved for the report"); };
-  const clearMarkups = () => { if ((stamps.length || lines.length || notes.length) && confirm("Clear all icons, fence lines and notes on this sheet? (Keeps the background.)")){ setSel(null); setDraft(null); patchSheet({ stamps: [], lines: [], notes: [], snapshot: undefined }); } };
+  const clearMarkups = () => { if ((stamps.length || lines.length || notes.length || areas.length) && confirm("Clear all icons, lines, areas and notes on this sheet? (Keeps the background & scale.)")){ setSel(null); setDraft(null); patchSheet({ stamps: [], lines: [], notes: [], areas: [], snapshot: undefined }); } };
   const removeBg = () => { if (confirm("Remove the background image on this sheet?")) patchSheet({ bg: undefined, natW: undefined, natH: undefined, loc: null, snapshot: undefined }); };
+  const finishArea = () => { if (draft && draft.kind === "area" && draft.points.length >= 3){ patchSheet({ areas: [...(sheet.areas||[]), { id: uid(), name: draft.name, color: draft.color, points: draft.points }] }); } setDraft(null); };
 
   const usedTypes = [...new Set(stamps.map(s => s.type))];
   const usedLineKeys = {}; lines.forEach(l => { const lp = lineProps(l); usedLineKeys[lineKey(lp)] = lp; });
   const legendLines = Object.values(usedLineKeys);
-  const toggleLock = (kind, id) => { if (kind === "stamp") patchSheet({ stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) }); else if (kind === "line") patchSheet({ lines: lines.map(l => l.id === id ? { ...l, locked: !l.locked } : l) }); else patchSheet({ notes: notes.map(n => n.id === id ? { ...n, locked: !n.locked } : n) }); };
-  const delItem = (kind, id) => { if (kind === "stamp") patchSheet({ stamps: stamps.filter(s => s.id !== id) }); else if (kind === "line") patchSheet({ lines: lines.filter(l => l.id !== id) }); else patchSheet({ notes: notes.filter(n => n.id !== id) }); setSel(null); };
+  const totalLinealM = hasScale ? lines.reduce((s, l) => s + lineLenM(l), 0) : 0;
+  const toggleLock = (kind, id) => { if (kind === "stamp") patchSheet({ stamps: stamps.map(s => s.id === id ? { ...s, locked: !s.locked } : s) }); else if (kind === "line") patchSheet({ lines: lines.map(l => l.id === id ? { ...l, locked: !l.locked } : l) }); else if (kind === "area") patchSheet({ areas: areas.map(a => a.id === id ? { ...a, locked: !a.locked } : a) }); else patchSheet({ notes: notes.map(n => n.id === id ? { ...n, locked: !n.locked } : n) }); };
+  const delItem = (kind, id) => { if (kind === "stamp") patchSheet({ stamps: stamps.filter(s => s.id !== id) }); else if (kind === "line") patchSheet({ lines: lines.filter(l => l.id !== id) }); else if (kind === "area") patchSheet({ areas: areas.filter(a => a.id !== id) }); else patchSheet({ notes: notes.filter(n => n.id !== id) }); setSel(null); };
   const setLineProp = (id, patch) => patchSheet({ lines: lines.map(l => l.id === id ? { ...l, ...patch, kind: undefined } : l) });
+  const setAreaProp = (id, patch) => patchSheet({ areas: areas.map(a => a.id === id ? { ...a, ...patch } : a) });
 
   return (
     <div className="space-y-3">
@@ -2486,14 +2514,22 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         {sheet.loc && sheet.loc.name && <div className="flex items-center gap-2 flex-wrap text-xs" style={{ color: "var(--muted)" }}><span>📍 {sheet.loc.name}{sheet.loc.source ? " · " + sheet.loc.source : ""}</span><button className="btn btn-ghost !py-0.5 !px-2" disabled={busy === "aerial"} onClick={recaptureAerial}>{busy === "aerial" ? "…" : "↻ Re-capture sharper (current Area/Source)"}</button></div>}
       </div>
 
+      {/* ---- scale indicator ---- */}
+      <div className="flex items-center gap-2 flex-wrap text-xs card p-2" style={{ borderColor: hasScale ? "#1f9d55" : "#e0b400" }}>
+        <span className="chip" style={{ background: hasScale ? "rgba(31,157,85,.12)" : "rgba(224,180,0,.14)", color: hasScale ? "#177a43" : "#8a6d00" }}>{hasScale ? "📐 Scale set" : "📐 No scale"}</span>
+        <span style={{ color: "var(--muted)" }}>{hasScale ? ("Measurements shown in metres" + (sheet.loc ? " (from aerial)" : "") + " · ~" + round2(mpp).toFixed(2) + " m/px") : "Lengths & areas need a scale. Aerials set it automatically; for an upload/photo use Set scale."}</span>
+        <button className={"tab !py-1 " + (tool === "scale" ? "tab-active" : "card")} onClick={() => { setTool("scale"); setDraft(null); setSel(null); }}>Set scale</button>
+      </div>
+
       {/* ---- tools ---- */}
       <div className="flex gap-2 items-center flex-wrap">
         <div className="scroll-x flex gap-1.5">
-          {[["move","Move / pan"],["place","Place icon"],["fence","Fence / line"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
+          {[["move","Move / pan"],["place","Place icon"],["fence","Fence / line"],["area","Area m²"],["note","Text note"]].map(([t,l]) => <button key={t} className={"tab " + (tool === t ? "tab-active" : "card")} onClick={() => { setTool(t); setDraft(null); setSel(null); }}>{l}</button>)}
         </div>
         <button className="btn btn-ghost !py-1 ml-auto" style={{ opacity: undoN ? 1 : 0.45 }} disabled={!undoN} onClick={undoPlan}>↶ Undo{undoN ? " (" + undoN + ")" : ""}</button>
-        {(stamps.length || lines.length || notes.length) ? <button className="btn btn-ghost !py-1" onClick={clearMarkups}><IcTrash size={14} /> Clear markups</button> : null}
+        {(stamps.length || lines.length || notes.length || areas.length) ? <button className="btn btn-ghost !py-1" onClick={clearMarkups}><IcTrash size={14} /> Clear markups</button> : null}
       </div>
+      {tool === "scale" && <div className="text-sm card p-2" style={{ color: "var(--muted)" }}>Tap two points a known distance apart (e.g. a boundary you know the length of), then type that distance in metres. {draft && draft.points.length === 1 ? <b className="brand-text">Now tap the second point.</b> : "This sets the scale so fences read in lineal metres and areas in m²."}</div>}
       {tool === "place" && <div className="flex gap-1.5 items-center flex-wrap">
         <span className="text-xs" style={{ color: "var(--muted)" }}>Icon:</span>
         <select className="inp !py-1.5 !w-auto" value={stampType} onChange={e => setStampType(e.target.value)}>{SITE_STAMPS.map(([v,l]) => <option key={v} value={v}>{l}</option>)}</select>
@@ -2513,7 +2549,18 @@ function SitePlanEditor({ plan, onChange: rawChange }){
           <button className="btn btn-ghost !py-1" onClick={() => setDraft({ ...draft, points: draft.points.slice(0, -1), preview: null })}>Undo point</button>
           <button className="btn btn-accent !py-1" disabled={draft.points.length < 2} onClick={finishLine}><IcCheck size={14} /> Finish line</button>
           <button className="btn btn-ghost !py-1" onClick={() => setDraft(null)}>Cancel</button>
-        </div> : <div className="text-sm w-full" style={{ color: "var(--muted)" }}>Tap to drop each corner, then Finish line. Each named/coloured line shows in the legend.</div>}
+        </div> : <div className="text-sm w-full" style={{ color: "var(--muted)" }}>Tap to drop each corner, then Finish line. {hasScale ? "Shows its lineal metres." : "Set a scale to read lineal metres."}</div>}
+      </div>}
+      {tool === "area" && <div className="flex gap-1.5 items-center flex-wrap card p-2">
+        <span className="text-xs" style={{ color: "var(--muted)" }}>Area (m²):</span>
+        <input className="inp !py-1" style={{ width: 150 }} placeholder="Name (e.g. Laydown zone)" value={areaName} onChange={e => { setAreaName(e.target.value); if (draft) setDraft({ ...draft, name: e.target.value }); }} />
+        <input type="color" value={areaColor} onChange={e => { setAreaColor(e.target.value); if (draft) setDraft({ ...draft, color: e.target.value }); }} className="h-8 w-9 rounded border" title="Area colour" style={{ borderColor: "var(--line)" }} />
+        {draft && draft.points.length > 0 ? <div className="flex gap-1.5 items-center w-full mt-1">
+          <span className="text-sm" style={{ color: "var(--muted)" }}>{draft.points.length} corner{draft.points.length === 1 ? "" : "s"}{hasScale && draft.points.length >= 3 ? " · " + round2(shoelace(draft.points)*mpp*mpp).toFixed(1) + " m²" : ""}</span>
+          <button className="btn btn-ghost !py-1" onClick={() => setDraft({ ...draft, points: draft.points.slice(0, -1), preview: null })}>Undo corner</button>
+          <button className="btn btn-accent !py-1" disabled={draft.points.length < 3} onClick={finishArea}><IcCheck size={14} /> Finish area</button>
+          <button className="btn btn-ghost !py-1" onClick={() => setDraft(null)}>Cancel</button>
+        </div> : <div className="text-sm w-full" style={{ color: "var(--muted)" }}>Tap the corners of the area, then Finish area. {hasScale ? "Reports its m²." : "Set a scale to read m²."}</div>}
       </div>}
       {tool === "note" && <div className="text-sm" style={{ color: "var(--muted)" }}>Tap where you want a note, then type it.</div>}
 
@@ -2544,20 +2591,40 @@ function SitePlanEditor({ plan, onChange: rawChange }){
         <button className="btn btn-primary flex-1" onClick={saveSnapshot}><IcCheck size={16} /> Save this sheet for report</button>
       </div>
 
+      {/* ---- measurements summary ---- */}
+      {hasScale && (lines.length > 0 || areas.length > 0) && (
+        <div className="card p-3">
+          <div className="font-semibold text-sm brand-text mb-1">Measurements</div>
+          {lines.length > 0 && <div className="text-sm flex justify-between"><span>Total lineal metres (lines / fences)</span><b>{round2(totalLinealM).toFixed(1)} m</b></div>}
+          {areas.map(a => <div key={a.id} className="text-sm flex justify-between" style={{ color: "var(--muted)" }}><span>{a.name || "Area"}</span><span>{round2(areaM2(a)).toFixed(1)} m²</span></div>)}
+        </div>
+      )}
+
       {/* ---- item list ---- */}
-      {(stamps.length > 0 || lines.length > 0 || notes.length > 0) && (
+      {(stamps.length > 0 || lines.length > 0 || notes.length > 0 || areas.length > 0) && (
         <div className="card p-3 space-y-1.5">
           <div className="font-semibold text-sm brand-text">On this sheet</div>
           {lines.map(l => { const lp = lineProps(l); return (
             <div key={l.id} className="flex items-center gap-2 text-sm" style={{ opacity: l.locked ? 0.6 : 1 }}>
               <span className="inline-block rounded" style={{ width: 18, height: 4, background: lp.color }} />
               <input className="inp !py-1" style={{ flex: "1 1 90px" }} value={l.name != null ? l.name : lp.name} onChange={e => setLineProp(l.id, { name: e.target.value })} disabled={l.locked} />
+              {hasScale && <span className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--muted)" }}>{fmtM(lineLenM(l))}</span>}
               <input type="color" value={l.color || lp.color} onChange={e => setLineProp(l.id, { color: e.target.value })} className="h-7 w-8 rounded border" style={{ borderColor: "var(--line)" }} disabled={l.locked} />
               <select className="inp !py-1 !w-auto" value={l.style || lp.style} onChange={e => setLineProp(l.id, { style: e.target.value })} disabled={l.locked}>{SITE_LINE_STYLE_OPTS.map(([v,ll]) => <option key={v} value={v}>{ll}</option>)}</select>
               <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("line", l.id)}>{l.locked ? "🔒" : "🔓"}</button>
               <button className="btn btn-ghost !p-1.5" onClick={() => delItem("line", l.id)}><IcTrash size={14} /></button>
             </div>
           ); })}
+          {areas.map(a => (
+            <div key={a.id} className="flex items-center gap-2 text-sm" style={{ opacity: a.locked ? 0.6 : 1 }}>
+              <span className="inline-block rounded" style={{ width: 14, height: 14, background: (a.color||"#1f74c4") + "55", border: "1.5px solid " + (a.color||"#1f74c4") }} />
+              <input className="inp !py-1" style={{ flex: "1 1 90px" }} value={a.name || ""} placeholder="Area" onChange={e => setAreaProp(a.id, { name: e.target.value })} disabled={a.locked} />
+              {hasScale && <span className="text-xs font-semibold whitespace-nowrap" style={{ color: "var(--muted)" }}>{round2(areaM2(a)).toFixed(1)} m²</span>}
+              <input type="color" value={a.color || "#1f74c4"} onChange={e => setAreaProp(a.id, { color: e.target.value })} className="h-7 w-8 rounded border" style={{ borderColor: "var(--line)" }} disabled={a.locked} />
+              <button className="btn btn-ghost !p-1.5" onClick={() => toggleLock("area", a.id)}>{a.locked ? "🔒" : "🔓"}</button>
+              <button className="btn btn-ghost !p-1.5" onClick={() => delItem("area", a.id)}><IcTrash size={14} /></button>
+            </div>
+          ))}
           {stamps.map(s => (
             <div key={s.id} className="flex items-center gap-2 text-sm" style={{ opacity: s.locked ? 0.6 : 1 }}>
               <span className="chip">Icon</span><span className="flex-1 truncate">{SITE_STAMP_LABEL[s.type] || s.type}</span>
@@ -3592,8 +3659,13 @@ function buildWordHtml(project, settings, t, logo, attachments){
   // ===== SITE MANAGEMENT PLAN (RJG CON37-FORM-01) =====
   if (kind === "site") {
     const sheets = normalizeSite(project.sitePlan).sheets;
-    const wPlanImg = rShow.planimg !== false, wLegend = rShow.legend !== false, wNotes = rShow.notes !== false;
+    const wPlanImg = rShow.planimg !== false, wLegend = rShow.legend !== false, wNotes = rShow.notes !== false, wMeasure = rShow.measure !== false;
     const drawn = sheets.filter(sh => sh.snapshot || sh.bg);
+    // measurements across scaled sheets
+    const fenceM = {}; const areasM = [];
+    sheets.forEach(sh => { const mp = sh.mPerPx || 0; if (!mp) return; (sh.lines || []).forEach(l => { const nm = lineProps(l).name; fenceM[nm] = (fenceM[nm] || 0) + perimeter(l.points, false) * mp; }); (sh.areas || []).forEach(a => areasM.push({ name: a.name || "Area", m2: shoelace(a.points) * mp * mp })); });
+    const fenceRows = Object.entries(fenceM);
+    const measureBlock = (wMeasure && (fenceRows.length || areasM.length)) ? `<div style="font-weight:bold;text-transform:uppercase;font-size:11px;color:#5b6472;margin-bottom:4px">Measurements</div><table style="border-collapse:collapse;margin-bottom:12px;font-size:13px">${fenceRows.map(([nm,m])=>`<tr><td style="padding:2px 24px 2px 0">${esc(nm)} (lineal)</td><td style="text-align:right;font-weight:bold">${round2(m).toFixed(1)} m</td></tr>`).join("")}${fenceRows.length?`<tr style="border-top:1px solid #e4e7ec"><td style="padding:2px 24px 2px 0;font-weight:bold">Total lineal metres</td><td style="text-align:right;font-weight:bold">${round2(fenceRows.reduce((s,[,m])=>s+m,0)).toFixed(1)} m</td></tr>`:""}${areasM.map(a=>`<tr><td style="padding:2px 24px 2px 0">${esc(a.name)} (area)</td><td style="text-align:right;font-weight:bold">${round2(a.m2).toFixed(1)} m&#178;</td></tr>`).join("")}</table>` : "";
     const legMap = {}; sheets.forEach(sh => (sh.lines || []).forEach(l => { const lp = lineProps(l); legMap[lineKey(lp)] = lp; }));
     const legLines = Object.values(legMap);
     const stampTypes = [...new Set(sheets.flatMap(sh => (sh.stamps || []).map(s => s.type)))];
@@ -3612,6 +3684,7 @@ function buildWordHtml(project, settings, t, logo, attachments){
     </tr></table>
     ${planImg}
     ${legend}
+    ${measureBlock}
     ${(wNotes && project.notes)?block("Notes", project.notes):""}
     <div style="border-top:1px solid #e4e7ec;padding-top:8px;margin-top:10px;font-size:11px;color:#5b6472"><b style="color:#141922">Site Management Plan Form</b><br/>Document No.: CON37-FORM-01 &nbsp;&nbsp; Version No.: 1A &nbsp;&nbsp; Release Date: 1st July 2021<br/>Uncontrolled if printed</div>`);
   }
@@ -3697,16 +3770,21 @@ function ReportView({ project, onChange }){
   const showScope = rShow.scope !== false, showExcl = rShow.exclusions !== false, showTerms = rShow.terms !== false;
   const showAtt = rShow.attachments !== false, showLines = rShow.lines !== false;
   const showPrices = priced && rShow.prices !== false;   // hide $ even on a priced quote (scope-only document)
-  const showPlanImg = rShow.planimg !== false, showLegend = rShow.legend !== false, showNotes = rShow.notes !== false;   // Site Management Plan sections
+  const showPlanImg = rShow.planimg !== false, showLegend = rShow.legend !== false, showNotes = rShow.notes !== false, showMeasure = rShow.measure !== false;   // Site Management Plan sections
   const setRShow = (k, v) => onChange({ ...project, reportShow: { ...rShow, [k]: v } });
   const rptTitle = kind === "rfq" ? "PRICE REQUEST" : kind === "variation" ? "VARIATION" : kind === "site" ? "SITE MANAGEMENT PLAN" : "QUOTATION";
   const numLabel = kind === "rfq" ? "RFQ #" : kind === "variation" ? "Variation #" : kind === "site" ? "Plan #" : "Quote #";
-  // Site Management Plan: pull every sheet + auto-build the combined legend from what's used
+  // Site Management Plan: pull every sheet + auto-build the combined legend & measurements from what's used
   const spSheets = normalizeSite(project.sitePlan).sheets;
   const spStampTypes = [...new Set(spSheets.flatMap(sh => (sh.stamps || []).map(s => s.type)))];
   const spLegend = {}; spSheets.forEach(sh => (sh.lines || []).forEach(l => { const lp = lineProps(l); spLegend[lineKey(lp)] = lp; }));
   const spLegendLines = Object.values(spLegend);
   const spDrawn = spSheets.filter(sh => sh.snapshot || sh.bg);
+  // measurements across scaled sheets — fence lineal m grouped by name, and areas by name
+  const spFenceM = {}; const spAreas = [];
+  spSheets.forEach(sh => { const mp = sh.mPerPx || 0; if (!mp) return; (sh.lines || []).forEach(l => { const nm = lineProps(l).name; spFenceM[nm] = (spFenceM[nm] || 0) + perimeter(l.points, false) * mp; }); (sh.areas || []).forEach(a => spAreas.push({ name: a.name || "Area", m2: shoelace(a.points) * mp * mp })); });
+  const spFenceRows = Object.entries(spFenceM);
+  const spHasMeasure = spFenceRows.length > 0 || spAreas.length > 0;
   const sheetRef = useRef(null);
   const [busy, setBusy] = useState("");
   const inc = (x) => x.include !== false;
@@ -3730,7 +3808,7 @@ function ReportView({ project, onChange }){
   // hand it to the OS share sheet instantly — iOS drops the tap "permission" if we
   // generate the PDF only after the tap, which is why the email wouldn't attach.
   const [shareBlob, setShareBlob] = useState(null);
-  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption), pb: project.preparedBy, spI: spDrawn.map(sh => (sh.snapshot||sh.bg||"").length + ":" + (sh.name||"")).join("|"), spL: [spStampTypes.join(","), spLegendLines.map(lineKey).join(",")] });
+  const genKey = JSON.stringify({ k: kind, q: project.quoteNo, c: project.client, s: project.site, ti: project.title, n: project.notes, x: project.exclusions, ca: project.cause, st: project.submitTo, rf: project.refs, cr: project.contractRef, sm: project.showMargin, mm: project.marginMode, rs: project.reportShow, sc: project.subCompany, sn: project.subName, se: project.subEmail, sp: project.subPhone, tr: project.trade, dd: project.dueDate, m: project.margin, g: settings.gst, br: settings.brand, fd: [settings.formDocNo, settings.formDocVer, settings.formDocRelease], lines: (project.quoteLines || []).map(l => [l.desc, l.qty, l.rateEx, l.unit, l.include]), att: attachments.map(a => a.caption), pb: project.preparedBy, spI: spDrawn.map(sh => (sh.snapshot||sh.bg||"").length + ":" + (sh.name||"")).join("|"), spL: [spStampTypes.join(","), spLegendLines.map(lineKey).join(",")], spM: [JSON.stringify(spFenceM), JSON.stringify(spAreas)] });
   useEffect(() => {
     let cancelled = false; setShareBlob(null);
     const id = setTimeout(async () => { if (!sheetRef.current) return; try { const pdf = await elementToPdf(sheetRef.current); if (!cancelled) setShareBlob(pdf.output("blob")); } catch(e){} }, 500);
@@ -3800,6 +3878,7 @@ function ReportView({ project, onChange }){
               <label className="flex items-center gap-2"><input type="checkbox" checked={showPlanImg} onChange={(e) => setRShow("planimg", e.target.checked)} /> Site plan drawing</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={showLegend} onChange={(e) => setRShow("legend", e.target.checked)} /> Legend</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={showNotes} onChange={(e) => setRShow("notes", e.target.checked)} /> Notes</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={showMeasure} onChange={(e) => setRShow("measure", e.target.checked)} /> Measurements</label>
             </>) : (<>
             {priced && <label className="flex items-center gap-2"><input type="checkbox" checked={showPrices} onChange={(e) => setRShow("prices", e.target.checked)} /> Prices ($ rates &amp; totals)</label>}
             {kind === "new" && <label className="flex items-center gap-2"><input type="checkbox" checked={showLines} onChange={(e) => setRShow("lines", e.target.checked)} /> Line-item table</label>}
@@ -3848,6 +3927,16 @@ function ReportView({ project, onChange }){
                 {spLegendLines.map(lp => <div key={lineKey(lp)} className="flex items-center gap-2"><span className="inline-block rounded" style={{ width: 26, height: 4, background: lp.color }} /> {lp.name}</div>)}
                 {spStampTypes.map(tp => <div key={tp} className="flex items-center gap-2"><SiteStampChip type={tp} /> {SITE_STAMP_LABEL[tp]}</div>)}
               </div>
+            </div>
+          )}
+          {showMeasure && spHasMeasure && (
+            <div className="mb-4 text-sm" style={{ pageBreakInside: "avoid" }}>
+              <div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Measurements</div>
+              {spFenceRows.length > 0 && <table className="w-full" style={{ borderCollapse: "collapse", maxWidth: 420 }}><tbody>
+                {spFenceRows.map(([nm, m]) => <tr key={nm}><td className="py-0.5">{nm} (lineal)</td><td className="py-0.5 text-right font-semibold">{round2(m).toFixed(1)} m</td></tr>)}
+                <tr style={{ borderTop: "1px solid var(--line)" }}><td className="py-0.5 font-semibold">Total lineal metres</td><td className="py-0.5 text-right font-bold">{round2(spFenceRows.reduce((s,[,m])=>s+m,0)).toFixed(1)} m</td></tr>
+              </tbody></table>}
+              {spAreas.map((a, i) => <div key={i} className="flex justify-between" style={{ maxWidth: 420 }}><span>{a.name} (area)</span><span className="font-semibold">{round2(a.m2).toFixed(1)} m²</span></div>)}
             </div>
           )}
           {showNotes && project.notes && <div className="mb-4 text-sm" style={{ pageBreakInside: "avoid" }}><div className="text-xs font-bold uppercase mb-1" style={{ color: "var(--muted)" }}>Notes</div><div style={{ whiteSpace: "pre-wrap" }}>{project.notes}</div></div>}
