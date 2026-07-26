@@ -154,20 +154,20 @@
         {
           "home": "Dragons",
           "away": "Titans",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 18,
+          "awayScore": 38,
+          "winner": "Titans",
+          "completed": true,
           "date": "2026-07-26T04:00Z",
           "venue": "Jubilee Stadium"
         },
         {
           "home": "Manly",
           "away": "Sharks",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 12,
+          "awayScore": 48,
+          "winner": "Sharks",
+          "completed": true,
           "date": "2026-07-26T06:05Z",
           "venue": "4 Pines Park"
         }
