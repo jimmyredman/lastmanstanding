@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-23T09:50Z",
+  "updatedAt": "2026-07-30T09:50Z",
   "rounds": {
     "r20": {
       "week": 20,
@@ -170,6 +170,92 @@
           "completed": true,
           "date": "2026-07-26T06:05Z",
           "venue": "4 Pines Park"
+        }
+      ]
+    },
+    "r22": {
+      "week": 22,
+      "year": 2026,
+      "games": [
+        {
+          "home": "Cowboys",
+          "away": "Roosters",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-30T09:50Z",
+          "venue": "Queensland Country Bank Stadium"
+        },
+        {
+          "home": "Dragons",
+          "away": "Dolphins",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-31T08:00Z",
+          "venue": "WIN Stadium"
+        },
+        {
+          "home": "Storm",
+          "away": "Bulldogs",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-07-31T10:00Z",
+          "venue": "AAMI Park"
+        },
+        {
+          "home": "Titans",
+          "away": "Warriors",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-08-01T05:00Z",
+          "venue": "Cbus Super Stadium"
+        },
+        {
+          "home": "Panthers",
+          "away": "Raiders",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-08-01T07:30Z",
+          "venue": "Glen Willow Regional Stadium"
+        },
+        {
+          "home": "Broncos",
+          "away": "Knights",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-08-01T09:35Z",
+          "venue": "Suncorp Stadium"
+        },
+        {
+          "home": "Sharks",
+          "away": "Rabbitohs",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-08-02T04:00Z",
+          "venue": "Ocean Protect Stadium"
+        },
+        {
+          "home": "Tigers",
+          "away": "Eels",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-08-02T06:05Z",
+          "venue": "CommBank Stadium"
         }
       ]
     }
