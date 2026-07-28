@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Scribe</title>
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Scribe" />
+<meta name="theme-color" content="#0b0c10" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="icon" type="image/png" href="/icon-512.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  :root {
+    --app-bg: #0b0c10; --app-text: #eef1f5; --muted: #9aa3b2;
+    --surface: #14161c; --surface-2: #20242d; --inset: rgba(0,0,0,0.30);
+    --border-10: rgba(255,255,255,0.09); --border-20: rgba(255,255,255,0.16);
+    --hover: rgba(255,255,255,0.05); --hairline: rgba(255,255,255,0.08);
+    --nav-bg: rgba(11,12,16,0.82);
+    --card-shadow: 0 1px 2px rgba(0,0,0,0.35), 0 10px 30px rgba(0,0,0,0.28);
+    --accent: #7c8cff; --accent-ink: #0b0c10; --accent-soft: rgba(124,140,255,0.14);
+  }
+  :root.light {
+    --app-bg: #f4f5f8; --app-text: #14171c; --muted: #5b6472;
+    --surface: #ffffff; --surface-2: #eceef3; --inset: #eef1f5;
+    --border-10: rgba(15,23,42,0.10); --border-20: rgba(15,23,42,0.16);
+    --hover: rgba(15,23,42,0.04); --hairline: rgba(15,23,42,0.08);
+    --nav-bg: rgba(244,245,248,0.85);
+    --card-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 8px 24px rgba(15,23,42,0.07);
+    --accent: #5865f2; --accent-ink: #ffffff; --accent-soft: rgba(88,101,242,0.12);
+  }
+  * { -webkit-tap-highlight-color: transparent; }
+  html, body { background: var(--app-bg); color: var(--app-text); font-family: Inter, system-ui, sans-serif; }
+  body { margin: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .surface { background: var(--surface); box-shadow: var(--card-shadow); }
+  .surface-2 { background: var(--surface-2); }
+  .inset { background: var(--inset); }
+  .muted { color: var(--muted); }
+  .bd { border: 1px solid var(--border-10); }
+  .bd-2 { border: 1px solid var(--border-20); }
+  .hairline { border-color: var(--hairline); }
+  .accent { color: var(--accent); }
+  .bg-accent { background: var(--accent); color: var(--accent-ink); }
+  .bg-accent-soft { background: var(--accent-soft); }
+  .nav { background: var(--nav-bg); -webkit-backdrop-filter: saturate(1.4) blur(18px); backdrop-filter: saturate(1.4) blur(18px); border-top: 1px solid var(--hairline); }
+  .press:active { transform: scale(0.97); }
+  input, textarea, select { background: var(--inset); color: var(--app-text); }
+  input::placeholder, textarea::placeholder { color: var(--muted); }
+  .chip { border: 1px solid var(--border-10); }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .pop { animation: pop .18s ease-out; }
+  @keyframes ring { 0%,100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 14px transparent; } }
+  .rec { animation: ring 1.6s ease-in-out infinite; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // ------------------------------------------------------------------
+  //  Firebase.  Paste your NEW project's config below to turn on cloud
+  //  sync across iPad + web.  Until then the app runs locally on-device
+  //  (localStorage) so it works the moment it's deployed.
+  //  Firebase console → Project settings → Your apps → Web → config.
+  // ------------------------------------------------------------------
+  var firebaseConfig = {
+    apiKey: "PASTE_API_KEY",
+    authDomain: "PASTE.firebaseapp.com",
+    projectId: "PASTE_PROJECT_ID",
+    storageBucket: "PASTE.appspot.com",
+    messagingSenderId: "PASTE",
+    appId: "PASTE"
+  };
+  window.__CLOUD__ = !/^PASTE/.test(firebaseConfig.apiKey);
+  if (window.__CLOUD__) {
+    firebase.initializeApp(firebaseConfig);
+    window.__auth = firebase.auth();
+    window.__db = firebase.firestore();
+  }
+</script>
+<script type="text/plain" id="app-source">
+const { useState, useMemo, useEffect, useRef } = React;
+const CLOUD = window.__CLOUD__;
+const auth = window.__auth;
+const db = window.__db;
+
+// ============================================================ Icons =========
+function Ico(path, vb = "0 0 24 24") {
+  return ({ size = 20, className = "" }) => (
+    <svg width={size} height={size} viewBox={vb} fill="none" stroke="currentColor" strokeWidth="1.8"
+      strokeLinecap="round" strokeLinejoin="round" className={className} style={{ flexShrink: 0 }}>{path}</svg>
+  );
+}
+const IcMic = Ico(<><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></>);
+const IcInbox = Ico(<><path d="M3 12h5l2 3h4l2-3h5"/><path d="M5 5h14l2 7v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z"/></>);
+const IcGrid = Ico(<><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>);
+const IcCal = Ico(<><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></>);
+const IcGear = Ico(<><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></>);
+const IcCheck = Ico(<path d="M20 6 9 17l-5-5"/>);
+const IcX = Ico(<path d="M18 6 6 18M6 6l12 12"/>);
+const IcTrash = Ico(<><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></>);
+const IcEdit = Ico(<><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></>);
+const IcPlus = Ico(<path d="M12 5v14M5 12h14"/>);
+const IcBell = Ico(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>);
+
+const TYPES = {
+  task: { label: "Task", color: "#7c8cff", ico: "✓" },
+  event: { label: "Event", color: "#4ade80", ico: "◷" },
+  note: { label: "Note", color: "#fbbf24", ico: "▤" },
+  idea: { label: "Idea", color: "#f472b6", ico: "✦" },
+};
+
+// ============================================================ Store =========
+// One tiny abstraction over Firestore (cloud) OR localStorage (on-device),
+// so every screen uses the same 4 verbs regardless of mode.
+function makeStore(uid) {
+  if (CLOUD) {
+    const base = db.collection("users").doc(uid);
+    const col = (n) => base.collection(n);
+    return {
+      watch(name, cb) {
+        return col(name).orderBy("createdAt", "desc").onSnapshot((s) =>
+          cb(s.docs.map((d) => ({ id: d.id, ...d.data() }))), () => cb([]));
+      },
+      async add(name, data) { const r = await col(name).add({ ...data, createdAt: Date.now(), updatedAt: Date.now() }); return r.id; },
+      async update(name, id, patch) { await col(name).doc(id).set({ ...patch, updatedAt: Date.now() }, { merge: true }); },
+      async remove(name, id) { await col(name).doc(id).delete(); },
+    };
+  }
+  // ---- local mode ----
+  const subs = {};
+  const key = (n) => "scribe_" + uid + "_" + n;
+  const read = (n) => { try { return JSON.parse(localStorage.getItem(key(n)) || "[]"); } catch { return []; } };
+  const write = (n, arr) => { localStorage.setItem(key(n), JSON.stringify(arr)); (subs[n] || []).forEach((cb) => cb(sorted(arr))); };
+  const sorted = (arr) => [...arr].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  return {
+    watch(name, cb) { (subs[name] = subs[name] || []).push(cb); cb(sorted(read(name)));
+      return () => { subs[name] = subs[name].filter((x) => x !== cb); }; },
+    async add(name, data) { const id = "l" + Date.now() + Math.random().toString(36).slice(2, 6);
+      write(name, [...read(name), { id, ...data, createdAt: Date.now(), updatedAt: Date.now() }]); return id; },
+    async update(name, id, patch) { write(name, read(name).map((x) => x.id === id ? { ...x, ...patch, updatedAt: Date.now() } : x)); },
+    async remove(name, id) { write(name, read(name).filter((x) => x.id !== id)); },
+  };
+}
+
+// ============================================================ Helpers =======
+function useCollection(store, name) {
+  const [rows, setRows] = useState([]);
+  useEffect(() => store.watch(name, setRows), [store, name]);
+  return rows;
+}
+function fmtDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso.length <= 10 ? iso + "T00:00:00" : iso);
+  if (isNaN(d)) return iso;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const t = new Date(d); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((t - today) / 864e5);
+  const wd = d.toLocaleDateString("en-AU", { weekday: "short" });
+  const md = d.toLocaleDateString("en-AU", { day: "numeric", month: "short" });
+  const time = iso.length > 10 ? " " + d.toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" }) : "";
+  if (diff === 0) return "Today" + time;
+  if (diff === 1) return "Tomorrow" + time;
+  if (diff === -1) return "Yesterday" + time;
+  return wd + " " + md + time;
+}
+function overdue(iso) {
+  if (!iso) return false;
+  const d = new Date(iso.length <= 10 ? iso + "T23:59:59" : iso);
+  return !isNaN(d) && d < new Date();
+}
+
+// ============================================================ App ===========
+function App() {
+  const [user, setUser] = useState(CLOUD ? undefined : { uid: "local" });
+  useEffect(() => { if (CLOUD) return auth.onAuthStateChanged(setUser); }, []);
+  useEffect(() => {
+    const saved = localStorage.getItem("scribe_theme");
+    document.documentElement.classList.toggle("light", saved === "light");
+  }, []);
+  if (CLOUD && user === undefined) return <Splash />;
+  if (CLOUD && !user) return <AuthScreen />;
+  return <Shell key={user.uid} user={user} />;
+}
+
+function Splash() {
+  return <div className="min-h-screen flex items-center justify-center muted text-sm">Loading…</div>;
+}
+
+function AuthScreen() {
+  const [email, setEmail] = useState(""), [pw, setPw] = useState(""), [mode, setMode] = useState("in"), [err, setErr] = useState("");
+  const go = async () => {
+    setErr("");
+    try {
+      if (mode === "in") await auth.signInWithEmailAndPassword(email.trim(), pw);
+      else await auth.createUserWithEmailAndPassword(email.trim(), pw);
+    } catch (e) { setErr(e.message.replace("Firebase:", "").trim()); }
+  };
+  const google = async () => { try { await auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); } catch (e) { setErr(e.message); } };
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center px-6">
+      <div className="w-14 h-14 rounded-2xl bg-accent flex items-center justify-center mb-4"><IcMic size={26} /></div>
+      <h1 className="text-2xl font-extrabold mb-1">Scribe</h1>
+      <p className="muted text-sm mb-6">Speak it. It sorts it. You approve.</p>
+      <div className="w-full max-w-sm surface bd rounded-2xl p-4 space-y-3">
+        <input className="w-full rounded-xl px-3 py-3 bd text-sm" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} autoCapitalize="none" />
+        <input className="w-full rounded-xl px-3 py-3 bd text-sm" placeholder="Password" type="password" value={pw} onChange={(e) => setPw(e.target.value)} />
+        {err && <p className="text-rose-400 text-xs">{err}</p>}
+        <button className="w-full bg-accent rounded-xl py-3 font-semibold press" onClick={go}>{mode === "in" ? "Sign in" : "Create account"}</button>
+        <button className="w-full surface-2 rounded-xl py-3 font-semibold press text-sm" onClick={google}>Continue with Google</button>
+        <button className="w-full muted text-xs py-1" onClick={() => setMode(mode === "in" ? "up" : "in")}>
+          {mode === "in" ? "Need an account? Sign up" : "Have an account? Sign in"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================ Shell =========
+function Shell({ user }) {
+  const store = useMemo(() => makeStore(user.uid), [user.uid]);
+  const drafts = useCollection(store, "drafts");
+  const items = useCollection(store, "items");
+  const jobs = useCollection(store, "jobs");
+  const startTab = location.hash.replace("#", "") === "capture" ? "capture" : "capture";
+  const [tab, setTab] = useState(startTab);
+  const [toast, setToast] = useState("");
+  const flash = (m) => { setToast(m); setTimeout(() => setToast(""), 2200); };
+
+  const nav = [
+    ["capture", "Capture", IcMic],
+    ["review", "Review", IcInbox],
+    ["library", "Organised", IcGrid],
+    ["calendar", "Calendar", IcCal],
+    ["settings", "Settings", IcGear],
+  ];
+
+  return (
+    <div className="min-h-screen max-w-2xl mx-auto flex flex-col">
+      <div className="flex-1 px-4 pt-4 pb-28">
+        {tab === "capture" && <Capture store={store} jobs={jobs} flash={flash} goReview={() => setTab("review")} draftCount={drafts.length} />}
+        {tab === "review" && <Review store={store} drafts={drafts} jobs={jobs} flash={flash} />}
+        {tab === "library" && <Library store={store} items={items} jobs={jobs} flash={flash} />}
+        {tab === "calendar" && <Calendar items={items} />}
+        {tab === "settings" && <Settings store={store} jobs={jobs} user={user} flash={flash} />}
+      </div>
+
+      {toast && <div className="fixed left-1/2 -translate-x-1/2 bottom-24 z-50 surface bd-2 rounded-full px-4 py-2 text-sm pop">{toast}</div>}
+
+      <nav className="nav fixed bottom-0 inset-x-0 z-40">
+        <div className="max-w-2xl mx-auto flex justify-around px-2 py-2" style={{ paddingBottom: "calc(8px + env(safe-area-inset-bottom))" }}>
+          {nav.map(([id, label, Ic]) => {
+            const on = tab === id;
+            const badge = id === "review" && drafts.length ? drafts.length : 0;
+            return (
+              <button key={id} onClick={() => setTab(id)} className="relative flex flex-col items-center gap-0.5 px-3 py-1 press" style={{ color: on ? "var(--accent)" : "var(--muted)" }}>
+                <Ic size={22} />
+                <span className="text-[10px] font-semibold">{label}</span>
+                {badge > 0 && <span className="absolute -top-0.5 right-1 bg-accent text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-1">{badge}</span>}
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
+  );
+}
+
+// ============================================================ Capture =======
+function Capture({ store, jobs, flash, goReview, draftCount }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+  const ta = useRef(null);
+  const recog = useRef(null);
+
+  const startVoice = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) { // Chrome/Android — live dictation
+      const r = new SR(); recog.current = r;
+      r.continuous = true; r.interimResults = true; r.lang = "en-AU";
+      let base = text ? text + " " : "";
+      r.onresult = (e) => { let s = ""; for (let i = e.resultIndex; i < e.results.length; i++) s += e.results[i][0].transcript; setText(base + s); };
+      r.onend = () => setListening(false);
+      try { r.start(); setListening(true); } catch {}
+    } else { // iPad/Safari — use the keyboard's built-in dictation mic
+      ta.current && ta.current.focus();
+      flash("Tap the 🎤 on your keyboard to dictate");
+    }
+  };
+  const stopVoice = () => { if (recog.current) recog.current.stop(); setListening(false); };
+
+  const sort = async () => {
+    const raw = text.trim(); if (!raw) return;
+    setBusy(true);
+    let items;
+    try {
+      const r = await fetch("/api/parse", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: raw, jobs: jobs.map((j) => j.name), now: new Date().toISOString() }) });
+      items = (await r.json()).items || [];
+    } catch { items = [{ type: "note", title: raw.slice(0, 120), detail: raw.length > 120 ? raw : "", dueDate: null, jobName: null, keywords: [], priority: "normal" }]; }
+    for (const it of items) await store.add("drafts", { ...it, raw });
+    setBusy(false); setText(""); flash(items.length + " item" + (items.length !== 1 ? "s" : "") + " ready to review"); goReview();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-extrabold">What's on your mind?</h1>
+        {draftCount > 0 && <button onClick={goReview} className="text-xs bg-accent-soft accent rounded-full px-3 py-1 font-semibold">{draftCount} to review</button>}
+      </div>
+      <p className="muted text-sm -mt-2">Dump everything — jobs, calls, dates, ideas. Scribe splits and sorts it.</p>
+
+      <div className="surface bd rounded-2xl p-4">
+        <textarea ref={ta} value={text} onChange={(e) => setText(e.target.value)} rows={7}
+          className="w-full rounded-xl p-3 text-base leading-relaxed resize-none bd"
+          placeholder="e.g. Ring the sparky about Miller St tomorrow, order 20 bags of concrete for the Bourke Rd slab Friday, and I've got a site meeting with the certifier Tuesday 9am…" />
+        <div className="flex items-center gap-2 mt-3">
+          <button onClick={listening ? stopVoice : startVoice}
+            className={"flex items-center gap-2 rounded-xl px-4 py-3 font-semibold press " + (listening ? "bg-rose-500 text-white rec" : "surface-2")}>
+            <IcMic size={18} /> {listening ? "Stop" : "Speak"}
+          </button>
+          <button onClick={sort} disabled={busy || !text.trim()}
+            className="flex-1 bg-accent rounded-xl px-4 py-3 font-bold press disabled:opacity-40 flex items-center justify-center gap-2">
+            {busy ? "Sorting…" : <>Sort it <span className="opacity-70">→</span></>}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {Object.entries(TYPES).map(([k, v]) => (
+          <span key={k} className="chip rounded-full px-3 py-1 text-xs flex items-center gap-1.5" style={{ color: v.color }}>
+            <span>{v.ico}</span><span className="muted">{v.label}s</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================ Review ========
+function Review({ store, drafts, jobs, flash }) {
+  const approve = async (d) => { const { id, raw, ...rest } = d; await store.add("items", { ...rest, status: "open" }); await store.remove("drafts", id); };
+  const approveAll = async () => { for (const d of drafts) await approve(d); flash("All approved"); };
+  if (!drafts.length) return <Empty ico={<IcInbox size={40} />} title="Nothing to review" sub="Captured items land here for you to check, tweak and approve." />;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-extrabold">Review <span className="muted font-semibold text-lg">{drafts.length}</span></h1>
+        <button onClick={approveAll} className="text-sm bg-accent rounded-full px-4 py-2 font-semibold press flex items-center gap-1.5"><IcCheck size={16}/> Approve all</button>
+      </div>
+      {drafts.map((d) => <DraftCard key={d.id} draft={d} jobs={jobs}
+        onApprove={() => approve(d)} onDiscard={() => store.remove("drafts", d.id)}
+        onChange={(patch) => store.update("drafts", d.id, patch)} />)}
+    </div>
+  );
+}
+
+function DraftCard({ draft, jobs, onApprove, onDiscard, onChange }) {
+  const t = TYPES[draft.type] || TYPES.note;
+  return (
+    <div className="surface bd rounded-2xl p-4 pop space-y-3">
+      <div className="flex items-start gap-3">
+        <select value={draft.type} onChange={(e) => onChange({ type: e.target.value })}
+          className="rounded-lg px-2 py-1.5 text-xs font-bold bd" style={{ color: t.color }}>
+          {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v.ico} {v.label}</option>)}
+        </select>
+        <input value={draft.title} onChange={(e) => onChange({ title: e.target.value })}
+          className="flex-1 bg-transparent font-semibold text-base outline-none border-b border-transparent focus:border-b" style={{ borderColor: "var(--border-10)" }} />
+      </div>
+      {draft.detail && <input value={draft.detail} onChange={(e) => onChange({ detail: e.target.value })} className="w-full rounded-lg px-3 py-2 text-sm bd" placeholder="Detail" />}
+      <div className="grid grid-cols-2 gap-2">
+        <label className="text-xs muted flex flex-col gap-1">Date
+          <input type="date" value={(draft.dueDate || "").slice(0, 10)} onChange={(e) => onChange({ dueDate: e.target.value || null })} className="rounded-lg px-2 py-2 bd text-sm" style={{ color: "var(--app-text)" }} />
+        </label>
+        <label className="text-xs muted flex flex-col gap-1">Job
+          <input list="joblist" value={draft.jobName || ""} onChange={(e) => onChange({ jobName: e.target.value || null })} className="rounded-lg px-2 py-2 bd text-sm" placeholder="—" />
+        </label>
+      </div>
+      <datalist id="joblist">{jobs.map((j) => <option key={j.id} value={j.name} />)}</datalist>
+      <TagEditor tags={draft.keywords || []} onChange={(keywords) => onChange({ keywords })} />
+      <div className="flex items-center gap-2 pt-1">
+        <PriorityToggle value={draft.priority} onChange={(priority) => onChange({ priority })} />
+        <div className="flex-1" />
+        <button onClick={onDiscard} className="surface-2 rounded-xl px-3 py-2 press"><IcX size={18} /></button>
+        <button onClick={onApprove} className="bg-accent rounded-xl px-4 py-2 font-semibold press flex items-center gap-1.5"><IcCheck size={16} /> Approve</button>
+      </div>
+    </div>
+  );
+}
+
+function PriorityToggle({ value, onChange }) {
+  const opts = [["low", "Low"], ["normal", "Normal"], ["high", "High"]];
+  return (
+    <div className="flex rounded-lg overflow-hidden bd text-xs">
+      {opts.map(([k, l]) => (
+        <button key={k} onClick={() => onChange(k)} className="px-2.5 py-1.5 font-semibold"
+          style={{ background: value === k ? (k === "high" ? "#f43f5e" : "var(--accent)") : "transparent", color: value === k ? "#fff" : "var(--muted)" }}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+function TagEditor({ tags, onChange }) {
+  const [v, setV] = useState("");
+  const add = () => { const t = v.trim().toLowerCase(); if (t && !tags.includes(t)) onChange([...tags, t]); setV(""); };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {tags.map((t) => (
+        <span key={t} className="chip rounded-full pl-2.5 pr-1 py-1 text-xs flex items-center gap-1 muted">#{t}
+          <button onClick={() => onChange(tags.filter((x) => x !== t))} className="opacity-60"><IcX size={12} /></button>
+        </span>
+      ))}
+      <input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), add())} onBlur={add}
+        className="bg-transparent text-xs outline-none w-20 py-1" placeholder="+ tag" />
+    </div>
+  );
+}
+
+// ============================================================ Library =======
+function Library({ store, items, jobs, flash }) {
+  const [group, setGroup] = useState("date");
+  const [q, setQ] = useState("");
+  const [showDone, setShowDone] = useState(false);
+  const [editing, setEditing] = useState(null);
+
+  const filtered = items.filter((i) => (showDone || i.status !== "done") &&
+    (!q || (i.title + " " + (i.jobName || "") + " " + (i.keywords || []).join(" ")).toLowerCase().includes(q.toLowerCase())));
+
+  const groups = useMemo(() => groupItems(filtered, group), [filtered, group]);
+
+  const sendReminder = async (i) => {
+    flash("Sending to Reminders…");
+    try {
+      const r = await fetch("/api/reminders", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create", title: i.title, notes: i.detail || "", due: i.dueDate || null }) });
+      const j = await r.json();
+      flash(r.ok ? "Added to Apple Reminders ✓" : (j.message || "Reminders not set up"));
+    } catch { flash("Couldn't reach Reminders"); }
+  };
+
+  return (
+    <div className="space-y-3">
+      <h1 className="text-2xl font-extrabold">Organised</h1>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, job, #tag…" className="w-full rounded-xl px-3 py-2.5 bd text-sm" />
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        {[["date", "Date"], ["job", "Job"], ["keyword", "Keyword"], ["type", "Type"]].map(([k, l]) => (
+          <button key={k} onClick={() => setGroup(k)} className="rounded-full px-3.5 py-1.5 text-xs font-semibold whitespace-nowrap press"
+            style={{ background: group === k ? "var(--accent)" : "var(--surface-2)", color: group === k ? "var(--accent-ink)" : "var(--muted)" }}>{l}</button>
+        ))}
+        <div className="flex-1" />
+        <button onClick={() => setShowDone(!showDone)} className="rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap muted chip">{showDone ? "Hide done" : "Show done"}</button>
+      </div>
+
+      {!filtered.length && <Empty ico={<IcGrid size={40} />} title="Nothing here yet" sub="Approved items from Review show up here, grouped and searchable." />}
+
+      {groups.map(([label, rows]) => (
+        <div key={label} className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wide muted px-1 pt-2">{label} <span className="opacity-60">· {rows.length}</span></h2>
+          {rows.map((i) => <ItemRow key={i.id} item={i}
+            onToggle={() => store.update("items", i.id, { status: i.status === "done" ? "open" : "done" })}
+            onEdit={() => setEditing(i)} onDelete={() => store.remove("items", i.id)} onRemind={() => sendReminder(i)} />)}
+        </div>
+      ))}
+
+      {editing && <EditModal item={editing} jobs={jobs} onClose={() => setEditing(null)} onSave={(patch) => { store.update("items", editing.id, patch); setEditing(null); }} />}
+    </div>
+  );
+}
+
+function groupItems(items, mode) {
+  const map = new Map();
+  const push = (k, i) => { if (!map.has(k)) map.set(k, []); map.get(k).push(i); };
+  items.forEach((i) => {
+    if (mode === "date") push(i.dueDate ? fmtDate(i.dueDate) : "No date", i);
+    else if (mode === "job") push(i.jobName || "No job", i);
+    else if (mode === "type") push((TYPES[i.type] || TYPES.note).label + "s", i);
+    else { const ks = (i.keywords || []); if (!ks.length) push("Untagged", i); else ks.forEach((k) => push("#" + k, i)); }
+  });
+  const arr = [...map.entries()];
+  if (mode === "date") arr.sort((a, b) => rankDate(a[0]) - rankDate(b[0]));
+  else arr.sort((a, b) => b[1].length - a[1].length);
+  return arr;
+}
+function rankDate(label) {
+  if (label === "No date") return 1e12;
+  const order = { Yesterday: -1, Today: 0, Tomorrow: 1 };
+  if (label in order) return order[label];
+  return 2; // named days after the fixed ones, before "No date"
+}
+
+function ItemRow({ item, onToggle, onEdit, onDelete, onRemind }) {
+  const t = TYPES[item.type] || TYPES.note;
+  const done = item.status === "done";
+  const late = !done && overdue(item.dueDate);
+  return (
+    <div className="surface bd rounded-xl p-3 flex items-start gap-3 pop">
+      <button onClick={onToggle} className="mt-0.5 w-5 h-5 rounded-md flex items-center justify-center press shrink-0"
+        style={{ border: "2px solid " + (done ? t.color : "var(--border-20)"), background: done ? t.color : "transparent" }}>
+        {done && <IcCheck size={13} className="text-black" />}
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className={"font-semibold text-sm leading-snug " + (done ? "line-through opacity-50" : "")}>{item.title}</div>
+        {item.detail && <div className="muted text-xs mt-0.5">{item.detail}</div>}
+        <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ color: t.color, background: "var(--inset)" }}>{t.ico} {t.label}</span>
+          {item.dueDate && <span className={"text-[11px] font-semibold " + (late ? "text-rose-400" : "muted")}>◷ {fmtDate(item.dueDate)}</span>}
+          {item.jobName && <span className="text-[11px] accent font-semibold truncate">▣ {item.jobName}</span>}
+          {(item.keywords || []).map((k) => <span key={k} className="text-[10px] muted">#{k}</span>)}
+        </div>
+      </div>
+      <div className="flex flex-col gap-1 shrink-0">
+        <button onClick={onRemind} className="p-1.5 muted press" title="Send to Apple Reminders"><IcBell size={16} /></button>
+        <button onClick={onEdit} className="p-1.5 muted press"><IcEdit size={16} /></button>
+        <button onClick={onDelete} className="p-1.5 muted press"><IcTrash size={16} /></button>
+      </div>
+    </div>
+  );
+}
+
+function EditModal({ item, jobs, onClose, onSave }) {
+  const [d, setD] = useState({ ...item });
+  const set = (p) => setD({ ...d, ...p });
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3" style={{ background: "rgba(0,0,0,0.5)" }} onClick={onClose}>
+      <div className="surface bd-2 rounded-2xl p-4 w-full max-w-md space-y-3 pop" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between"><h2 className="font-bold text-lg">Edit</h2><button onClick={onClose} className="muted press"><IcX /></button></div>
+        <select value={d.type} onChange={(e) => set({ type: e.target.value })} className="w-full rounded-lg px-3 py-2.5 bd text-sm font-semibold">
+          {Object.entries(TYPES).map(([k, v]) => <option key={k} value={k}>{v.ico} {v.label}</option>)}
+        </select>
+        <input value={d.title} onChange={(e) => set({ title: e.target.value })} className="w-full rounded-lg px-3 py-2.5 bd font-semibold" placeholder="Title" />
+        <textarea value={d.detail || ""} onChange={(e) => set({ detail: e.target.value })} rows={2} className="w-full rounded-lg px-3 py-2.5 bd text-sm resize-none" placeholder="Detail" />
+        <div className="grid grid-cols-2 gap-2">
+          <input type="date" value={(d.dueDate || "").slice(0, 10)} onChange={(e) => set({ dueDate: e.target.value || null })} className="rounded-lg px-3 py-2.5 bd text-sm" />
+          <input list="joblist2" value={d.jobName || ""} onChange={(e) => set({ jobName: e.target.value || null })} className="rounded-lg px-3 py-2.5 bd text-sm" placeholder="Job" />
+          <datalist id="joblist2">{jobs.map((j) => <option key={j.id} value={j.name} />)}</datalist>
+        </div>
+        <TagEditor tags={d.keywords || []} onChange={(keywords) => set({ keywords })} />
+        <PriorityToggle value={d.priority} onChange={(priority) => set({ priority })} />
+        <button onClick={() => onSave(d)} className="w-full bg-accent rounded-xl py-3 font-bold press">Save</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================ Calendar ======
+function Calendar({ items }) {
+  const [events, setEvents] = useState(null);
+  const [connected, setConnected] = useState(null);
+  useEffect(() => {
+    fetch("/api/outlook/calendar?days=21").then((r) => r.json()).then((d) => { setConnected(d.connected); setEvents(d.events || []); })
+      .catch(() => { setConnected(false); setEvents([]); });
+  }, []);
+
+  const dated = items.filter((i) => i.dueDate && i.status !== "done")
+    .map((i) => ({ kind: "item", when: i.dueDate, title: i.title, sub: i.jobName || "", color: (TYPES[i.type] || TYPES.note).color }));
+  const evs = (events || []).map((e) => ({ kind: "outlook", when: e.start, title: e.subject, sub: e.location || e.organizer || "", color: "#38bdf8" }));
+  const all = [...dated, ...evs].filter((x) => x.when).sort((a, b) => new Date(a.when.length <= 10 ? a.when + "T00:00" : a.when) - new Date(b.when.length <= 10 ? b.when + "T00:00" : b.when));
+  const byDay = groupItems(all.map((x) => ({ ...x, dueDate: x.when })), "date");
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-extrabold">Calendar</h1>
+        {connected === false && <a href="/api/outlook/auth?returnTo=/" className="text-xs bg-accent rounded-full px-3 py-1.5 font-semibold press">Connect Outlook</a>}
+        {connected && <span className="text-xs muted flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#38bdf8" }} />Outlook linked</span>}
+      </div>
+      <p className="muted text-sm -mt-2">Your Scribe dates and Outlook calendar, side by side.</p>
+      {events === null && <p className="muted text-sm">Loading…</p>}
+      {events !== null && !all.length && <Empty ico={<IcCal size={40} />} title="Nothing scheduled" sub={connected ? "No upcoming items or events." : "Give items a date, or connect Outlook to see your calendar."} />}
+      {byDay.map(([label, rows]) => (
+        <div key={label} className="space-y-2">
+          <h2 className="text-xs font-bold uppercase tracking-wide muted px-1 pt-2">{label}</h2>
+          {rows.map((r, idx) => (
+            <div key={idx} className="surface bd rounded-xl p-3 flex items-center gap-3">
+              <span className="w-1.5 h-9 rounded-full" style={{ background: r.color }} />
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm truncate">{r.title}</div>
+                <div className="muted text-xs truncate">{r.kind === "outlook" ? "Outlook" : "Scribe"}{r.sub ? " · " + r.sub : ""}{r.when.length > 10 ? " · " + fmtDate(r.when) : ""}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================ Settings ======
+function Settings({ store, jobs, user, flash }) {
+  const [jobName, setJobName] = useState("");
+  const [light, setLight] = useState(document.documentElement.classList.contains("light"));
+  const toggleTheme = () => { const on = !light; setLight(on); document.documentElement.classList.toggle("light", on); localStorage.setItem("scribe_theme", on ? "light" : "dark"); };
+  const addJob = async () => { const n = jobName.trim(); if (!n) return; await store.add("jobs", { name: n, active: true }); setJobName(""); };
+
+  return (
+    <div className="space-y-5">
+      <h1 className="text-2xl font-extrabold">Settings</h1>
+
+      <Section title="Jobs / Projects" sub="Scribe matches these when sorting, and you can group & filter by them.">
+        <div className="flex gap-2">
+          <input value={jobName} onChange={(e) => setJobName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addJob()} placeholder="Add a job name…" className="flex-1 rounded-xl px-3 py-2.5 bd text-sm" />
+          <button onClick={addJob} className="bg-accent rounded-xl px-4 press font-semibold"><IcPlus size={18} /></button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-3">
+          {jobs.map((j) => (
+            <span key={j.id} className="chip rounded-full pl-3 pr-1.5 py-1.5 text-sm flex items-center gap-1.5">{j.name}
+              <button onClick={() => store.remove("jobs", j.id)} className="muted press"><IcX size={14} /></button>
+            </span>
+          ))}
+          {!jobs.length && <span className="muted text-sm">No jobs yet.</span>}
+        </div>
+      </Section>
+
+      <Section title="Integrations">
+        <Row label="Cloud sync" value={CLOUD ? "Firebase — on" : "On-device only"} good={CLOUD} />
+        <Row label="AI sorting" value="Claude (via /api/parse)" good />
+        <Row label="Apple Reminders" value="iCloud CalDAV" hint="Set iCloud env vars in Vercel" />
+        <a href="/api/outlook/auth?returnTo=/" className="flex items-center justify-between py-2.5 press">
+          <span className="text-sm">Outlook calendar</span>
+          <span className="text-xs bg-accent-soft accent rounded-full px-3 py-1 font-semibold">Connect →</span>
+        </a>
+      </Section>
+
+      <Section title="Appearance">
+        <button onClick={toggleTheme} className="flex items-center justify-between w-full py-2.5 press">
+          <span className="text-sm">Theme</span>
+          <span className="text-xs surface-2 rounded-full px-3 py-1 font-semibold">{light ? "Light" : "Dark"}</span>
+        </button>
+      </Section>
+
+      {!CLOUD && (
+        <div className="surface bd rounded-2xl p-4 text-sm">
+          <p className="font-semibold mb-1">Turn on cloud sync</p>
+          <p className="muted text-xs leading-relaxed">Running on this device only. Paste your Firebase project's web config into <code>index.html</code> to sync across iPad and web. See <code>docs/SETUP.md</code>.</p>
+        </div>
+      )}
+
+      {CLOUD && <button onClick={() => auth.signOut()} className="w-full surface bd rounded-2xl py-3 font-semibold press text-rose-400">Sign out</button>}
+      <p className="text-center muted text-xs pt-2">Scribe · RJG Builders {user.uid !== "local" ? "· " + (user.email || "") : ""}</p>
+    </div>
+  );
+}
+
+function Section({ title, sub, children }) {
+  return (
+    <div className="surface bd rounded-2xl p-4">
+      <h2 className="font-bold">{title}</h2>
+      {sub && <p className="muted text-xs mt-0.5 mb-3">{sub}</p>}
+      {!sub && <div className="mt-2" />}
+      {children}
+    </div>
+  );
+}
+function Row({ label, value, good, hint }) {
+  return (
+    <div className="flex items-center justify-between py-2.5 hairline" style={{ borderTop: "1px solid var(--hairline)" }}>
+      <div><div className="text-sm">{label}</div>{hint && <div className="muted text-[11px]">{hint}</div>}</div>
+      <span className="text-xs font-semibold flex items-center gap-1.5" style={{ color: good ? "#4ade80" : "var(--muted)" }}>
+        {good && <span className="w-1.5 h-1.5 rounded-full bg-current" />}{value}
+      </span>
+    </div>
+  );
+}
+
+function Empty({ ico, title, sub }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+      <div className="muted mb-3 opacity-40">{ico}</div>
+      <div className="font-semibold">{title}</div>
+      <div className="muted text-sm mt-1 max-w-xs">{sub}</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script>
+  var src = document.getElementById("app-source").textContent;
+  var out = Babel.transform(src, { presets: [["react", { runtime: "classic" }]] }).code;
+  var s = document.createElement("script");
+  s.textContent = out;
+  document.body.appendChild(s);
+</script>
+</body>
+</html>

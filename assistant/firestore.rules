@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Scribe — Firestore security rules.
+// Every user's data lives under users/{uid}/... and is private to that user.
+// Nobody can read or write another user's items, drafts or jobs.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function mine(uid) { return signedIn() && request.auth.uid == uid; }
+
+    match /users/{uid} {
+      allow read, write: if mine(uid);
+
+      match /{sub=**} {
+        allow read, write: if mine(uid);
+      }
+    }
+  }
+}

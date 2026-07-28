@@ -1,0 +1,17 @@
+{
+  "name": "Scribe — RJG Assistant",
+  "short_name": "Scribe",
+  "description": "Speak it, it sorts it, you approve. Voice-first reminders & organiser.",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b0c10",
+  "theme_color": "#0b0c10",
+  "start_url": "/",
+  "shortcuts": [
+    { "name": "New capture", "short_name": "Capture", "url": "/#capture" }
+  ],
+  "icons": [
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
