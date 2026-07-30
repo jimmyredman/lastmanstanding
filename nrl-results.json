@@ -180,10 +180,10 @@
         {
           "home": "Cowboys",
           "away": "Roosters",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 12,
+          "awayScore": 82,
+          "winner": "Roosters",
+          "completed": true,
           "date": "2026-07-30T09:50Z",
           "venue": "Queensland Country Bank Stadium"
         },
