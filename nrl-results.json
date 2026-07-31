@@ -190,20 +190,20 @@
         {
           "home": "Dragons",
           "away": "Dolphins",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 22,
+          "awayScore": 28,
+          "winner": "Dolphins",
+          "completed": true,
           "date": "2026-07-31T08:00Z",
           "venue": "WIN Stadium"
         },
         {
           "home": "Storm",
           "away": "Bulldogs",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 22,
+          "awayScore": 36,
+          "winner": "Bulldogs",
+          "completed": true,
           "date": "2026-07-31T10:00Z",
           "venue": "AAMI Park"
         },
