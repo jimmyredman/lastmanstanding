@@ -240,20 +240,20 @@
         {
           "home": "Sharks",
           "away": "Rabbitohs",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 32,
+          "awayScore": 16,
+          "winner": "Sharks",
+          "completed": true,
           "date": "2026-08-02T04:00Z",
           "venue": "Ocean Protect Stadium"
         },
         {
           "home": "Tigers",
           "away": "Eels",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 13,
+          "awayScore": 16,
+          "winner": "Eels",
+          "completed": true,
           "date": "2026-08-02T06:05Z",
           "venue": "CommBank Stadium"
         }
