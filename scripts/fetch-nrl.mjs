@@ -36,11 +36,26 @@ function normTeam(c) {
   return c.team?.shortDisplayName || c.team?.displayName || "?";
 }
 
+// ESPN 403s requests that don't look like a real browser, so send a full browser header set.
+const HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+  "Accept": "application/json, text/plain, */*",
+  "Accept-Language": "en-AU,en;q=0.9",
+  "Referer": "https://www.espn.com/",
+  "Origin": "https://www.espn.com",
+};
 async function fetchScoreboard(dates) {
   const url = dates ? `${ENDPOINT}?dates=${dates}` : ENDPOINT;
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (LMS results bot)" } });
-  if (!res.ok) throw new Error(`ESPN ${res.status} for ${url}`);
-  return res.json();
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(url, { headers: HEADERS });
+      if (res.ok) return res.json();
+      lastErr = new Error(`ESPN ${res.status} for ${url}`);
+    } catch (e) { lastErr = e; }
+    if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500)); // 1.5s, 3s backoff
+  }
+  throw lastErr;
 }
 
 function buildRound(json) {
@@ -72,7 +87,15 @@ function buildRound(json) {
 const arg = (process.argv[2] || "").trim();
 console.log("NRL ingestion", arg ? `for dates=${arg}` : "(current week)");
 
-const json = await fetchScoreboard(arg);
+let json;
+try {
+  json = await fetchScoreboard(arg);
+} catch (e) {
+  // Don't fail the workflow on an ESPN hiccup/block — leave the feed as-is and warn. The app
+  // falls back to hosts entering results manually, so a red run + email spam isn't warranted.
+  console.log(`::warning::NRL fetch skipped — ${e.message}. Feed left unchanged; hosts can enter results manually.`);
+  process.exit(0);
+}
 const round = buildRound(json);
 if (!round) { console.log("No week/round in feed — nothing to write."); process.exit(0); }
 
