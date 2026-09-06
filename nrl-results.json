@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-08-06T09:50Z",
+  "updatedAt": "2026-09-03T09:50Z",
   "rounds": {
     "r20": {
       "week": 20,
@@ -342,6 +342,92 @@
           "completed": false,
           "date": "2026-08-09T06:05Z",
           "venue": "Jubilee Stadium"
+        }
+      ]
+    },
+    "r27": {
+      "week": 27,
+      "year": 2026,
+      "games": [
+        {
+          "home": "Bulldogs",
+          "away": "Broncos",
+          "homeScore": 20,
+          "awayScore": 34,
+          "winner": "Broncos",
+          "completed": true,
+          "date": "2026-09-03T09:50Z",
+          "venue": "Accor Stadium"
+        },
+        {
+          "home": "Titans",
+          "away": "Dolphins",
+          "homeScore": 20,
+          "awayScore": 24,
+          "winner": "Dolphins",
+          "completed": true,
+          "date": "2026-09-04T08:00Z",
+          "venue": "Cbus Super Stadium"
+        },
+        {
+          "home": "Rabbitohs",
+          "away": "Roosters",
+          "homeScore": 50,
+          "awayScore": 20,
+          "winner": "Rabbitohs",
+          "completed": true,
+          "date": "2026-09-04T10:00Z",
+          "venue": "Allianz Stadium"
+        },
+        {
+          "home": "Warriors",
+          "away": "Manly",
+          "homeScore": 31,
+          "awayScore": 30,
+          "winner": "Warriors",
+          "completed": true,
+          "date": "2026-09-05T05:00Z",
+          "venue": "Go Media Stadium"
+        },
+        {
+          "home": "Cowboys",
+          "away": "Raiders",
+          "homeScore": 30,
+          "awayScore": 50,
+          "winner": "Raiders",
+          "completed": true,
+          "date": "2026-09-05T07:30Z",
+          "venue": "Queensland Country Bank Stadium"
+        },
+        {
+          "home": "Sharks",
+          "away": "Storm",
+          "homeScore": 20,
+          "awayScore": 24,
+          "winner": "Storm",
+          "completed": true,
+          "date": "2026-09-05T09:35Z",
+          "venue": "Ocean Protect Stadium"
+        },
+        {
+          "home": "Dragons",
+          "away": "Eels",
+          "homeScore": 24,
+          "awayScore": 22,
+          "winner": "Dragons",
+          "completed": true,
+          "date": "2026-09-06T04:00Z",
+          "venue": "WIN Stadium"
+        },
+        {
+          "home": "Panthers",
+          "away": "Tigers",
+          "homeScore": 38,
+          "awayScore": 10,
+          "winner": "Panthers",
+          "completed": true,
+          "date": "2026-09-06T06:05Z",
+          "venue": "CommBank Stadium"
         }
       ]
     }
