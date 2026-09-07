@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-03T09:50Z",
+  "updatedAt": "2026-09-11T09:50Z",
   "rounds": {
     "r20": {
       "week": 20,
@@ -427,6 +427,52 @@
           "winner": "Panthers",
           "completed": true,
           "date": "2026-09-06T06:05Z",
+          "venue": "CommBank Stadium"
+        }
+      ]
+    },
+    "r1": {
+      "week": 1,
+      "year": 2026,
+      "games": [
+        {
+          "home": "Rabbitohs",
+          "away": "Knights",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-09-11T09:50Z",
+          "venue": "Allianz Stadium"
+        },
+        {
+          "home": "Warriors",
+          "away": "Dolphins",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-09-12T06:05Z",
+          "venue": "Go Media Stadium"
+        },
+        {
+          "home": "Sharks",
+          "away": "Cowboys",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-09-12T09:50Z",
+          "venue": "Allianz Stadium"
+        },
+        {
+          "home": "Panthers",
+          "away": "Roosters",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-09-13T06:05Z",
           "venue": "CommBank Stadium"
         }
       ]
