@@ -448,20 +448,20 @@
         {
           "home": "Warriors",
           "away": "Dolphins",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 16,
+          "awayScore": 26,
+          "winner": "Dolphins",
+          "completed": true,
           "date": "2026-09-12T06:05Z",
           "venue": "Go Media Stadium"
         },
         {
           "home": "Sharks",
           "away": "Cowboys",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 26,
+          "awayScore": 16,
+          "winner": "Sharks",
+          "completed": true,
           "date": "2026-09-12T09:50Z",
           "venue": "Allianz Stadium"
         },
