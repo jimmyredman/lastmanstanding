@@ -468,10 +468,10 @@
         {
           "home": "Panthers",
           "away": "Roosters",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 19,
+          "awayScore": 12,
+          "winner": "Panthers",
+          "completed": true,
           "date": "2026-09-13T06:05Z",
           "venue": "CommBank Stadium"
         }
