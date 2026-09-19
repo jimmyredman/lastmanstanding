@@ -484,10 +484,10 @@
         {
           "home": "Roosters",
           "away": "Sharks",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 46,
+          "awayScore": 10,
+          "winner": "Roosters",
+          "completed": true,
           "date": "2026-09-19T09:50Z",
           "venue": "Allianz Stadium"
         },
