@@ -494,10 +494,10 @@
         {
           "home": "Warriors",
           "away": "Knights",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 10,
+          "awayScore": 12,
+          "winner": "Knights",
+          "completed": true,
           "date": "2026-09-20T06:05Z",
           "venue": "Eden Park"
         }
