@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-25T09:50Z",
+  "updatedAt": "2026-10-04T08:30Z",
   "rounds": {
     "r20": {
       "week": 20,
@@ -525,6 +525,22 @@
           "winner": "Knights",
           "completed": true,
           "date": "2026-09-27T06:00Z",
+          "venue": "Accor Stadium"
+        }
+      ]
+    },
+    "r4": {
+      "week": 4,
+      "year": 2026,
+      "games": [
+        {
+          "home": "Roosters",
+          "away": "Knights",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2026-10-04T08:30Z",
           "venue": "Accor Stadium"
         }
       ]
