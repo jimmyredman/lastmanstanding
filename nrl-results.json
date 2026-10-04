@@ -536,10 +536,10 @@
         {
           "home": "Roosters",
           "away": "Knights",
-          "homeScore": 0,
-          "awayScore": 0,
-          "winner": null,
-          "completed": false,
+          "homeScore": 19,
+          "awayScore": 18,
+          "winner": "Roosters",
+          "completed": true,
           "date": "2026-10-04T08:30Z",
           "venue": "Accor Stadium"
         }
