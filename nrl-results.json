@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-10-04T08:30Z",
+  "updatedAt": "2027-02-28T05:00Z",
   "rounds": {
     "r20": {
       "week": 20,
@@ -433,47 +433,97 @@
     },
     "r1": {
       "week": 1,
-      "year": 2026,
+      "year": 2027,
       "games": [
         {
-          "home": "Rabbitohs",
-          "away": "Knights",
-          "homeScore": 10,
-          "awayScore": 20,
-          "winner": "Knights",
-          "completed": true,
-          "date": "2026-09-11T09:50Z",
+          "home": "Eels",
+          "away": "Titans",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-02-28T05:00Z",
+          "venue": "Allegiant Stadium"
+        },
+        {
+          "home": "Storm",
+          "away": "Tigers",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-02-28T05:00Z",
+          "venue": "Allegiant Stadium"
+        },
+        {
+          "home": "Roosters",
+          "away": "Broncos",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-04T09:00Z",
           "venue": "Allianz Stadium"
         },
         {
           "home": "Warriors",
-          "away": "Dolphins",
-          "homeScore": 16,
-          "awayScore": 26,
-          "winner": "Dolphins",
-          "completed": true,
-          "date": "2026-09-12T06:05Z",
+          "away": "Bulldogs",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-05T07:00Z",
           "venue": "Go Media Stadium"
         },
         {
-          "home": "Sharks",
+          "home": "Dragons",
           "away": "Cowboys",
-          "homeScore": 26,
-          "awayScore": 16,
-          "winner": "Sharks",
-          "completed": true,
-          "date": "2026-09-12T09:50Z",
-          "venue": "Allianz Stadium"
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-05T09:00Z",
+          "venue": "Jubilee Stadium"
         },
         {
-          "home": "Panthers",
-          "away": "Roosters",
-          "homeScore": 19,
-          "awayScore": 12,
-          "winner": "Panthers",
-          "completed": true,
-          "date": "2026-09-13T06:05Z",
-          "venue": "CommBank Stadium"
+          "home": "Dolphins",
+          "away": "Sharks",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-06T06:30Z",
+          "venue": "Kayo Stadium"
+        },
+        {
+          "home": "Knights",
+          "away": "Panthers",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-06T08:35Z",
+          "venue": "McDonald Jones Stadium"
+        },
+        {
+          "home": "Perth Bears",
+          "away": "Manly",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-07T05:05Z",
+          "venue": "Perth Stadium"
+        },
+        {
+          "home": "Raiders",
+          "away": "Rabbitohs",
+          "homeScore": 0,
+          "awayScore": 0,
+          "winner": null,
+          "completed": false,
+          "date": "2027-03-07T07:15Z",
+          "venue": "GIO Stadium"
         }
       ]
     },
